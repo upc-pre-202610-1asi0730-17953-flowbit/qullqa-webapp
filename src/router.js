@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import iamPublicRoutes from './iam/presentation/iam.routes.js';
 import Layout from './shared/presentation/components/layout.vue';
+import dashboardRoutes from './dashboard/presentation/dashboard.routes.js';
 import Home from './shared/presentation/views/home.vue';
 
 const pageNotFound = () => import('./shared/presentation/views/page-not-found.vue');
@@ -29,7 +30,7 @@ const routes = [
         component: Layout,
         children: [
             { path: 'home',  name: 'home',  component: Home,  meta: { title: 'Home' } },
-
+            ...dashboardRoutes,
         ]
     },
 
