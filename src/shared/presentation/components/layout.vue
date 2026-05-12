@@ -77,7 +77,7 @@ function handleSignOut() {
         class="lg:hidden fixed top-0 left-0 right-0 z-50 flex align-items-center justify-content-between px-4 py-3"
         style="background-color: #0B3558;"
     >
-      <img src="/qullqa-logo.svg" alt="Qullqa" style="height: 40px;" />
+      <img src="../../../assets/qullqa_logo.jpeg" alt="Qullqa" style="height: 40px;" />
       <div class="flex align-items-center gap-2">
         <language-switcher/>
         <pv-button
@@ -102,7 +102,7 @@ function handleSignOut() {
     >
       <!-- Logo — hidden on mobile (shown in top bar instead) -->
       <div class="hidden lg:flex justify-content-center align-items-center p-5">
-        <img src="/qullqa-logo.svg" alt="Qullqa" style="height: 64px;" />
+        <img src="../../../assets/qullqa_logo.jpeg" alt="Qullqa" style="height: 64px;" />
       </div>
 
       <!-- Navigation menu -->

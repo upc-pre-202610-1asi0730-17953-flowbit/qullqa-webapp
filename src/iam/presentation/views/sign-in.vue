@@ -82,7 +82,7 @@ function navigateToSignUp() {
         <!-- Logo + title -->
         <div class="flex flex-column align-items-center mb-5">
           <img
-              src="/qullqa-logo.svg"
+              src="../../../assets/qullqa_logo.jpeg"
               alt="Qullqa Logo"
               style="width: 96px; height: 96px; margin-bottom: 1rem;"
           />
