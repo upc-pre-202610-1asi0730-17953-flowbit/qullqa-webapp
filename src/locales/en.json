@@ -103,7 +103,16 @@
     "severity-high": "High",
     "severity-medium": "Medium",
     "severity-low": "Low",
-    "loading": "Loading metrics..."
+    "loading": "Loading metrics...",
+    "expiring-soon": "Expiring Soon",
+    "weekly-movements": "Weekly Movements",
+    "top-products": "Top Selling Products",
+    "quick-actions": "Quick Actions",
+    "action-new-product": "Register new product",
+    "action-new-movement": "Register movement",
+    "action-view-reports": "View reports",
+    "units": "units",
+    "unknown-product": "Unknown product"
   },
   "reports": {
     "title": "Reports",
