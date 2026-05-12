@@ -1,0 +1,88 @@
+{
+  "option": {
+    "dashboard":  "Dashboard",
+    "products":   "Products",
+    "pos":        "Point of Sale",
+    "movements":  "Movements",
+    "warehouses": "Warehouses",
+    "suppliers":  "Suppliers",
+    "alerts":     "Alerts",
+    "reports":    "Reports",
+    "deliveries": "Deliveries IoT",
+    "users":      "Users",
+    "plan":       "My Plan",
+    "home":       "Home",
+    "about":      "About"
+  },
+  "authoring-phrase": {
+    "intro":  "Made with",
+    "use":    "using",
+    "author": "by {brand} Developer Team"
+  },
+  "about": {
+    "title":   "About Us",
+    "content": "Qullqa is an inventory management platform designed for independent convenience stores and pharmacies across Peru."
+  },
+  "home": {
+    "title":   "Welcome to Qullqa",
+    "content": "Manage your inventory, sales, suppliers and deliveries all in one place."
+  },
+  "page-not-found": {
+    "title":   "Page Not Found",
+    "content": "The path {unavailable-route} is not available.",
+    "go-home": "Go Home"
+  },
+  "errors": {
+    "occurred": "Errors occurred"
+  },
+  "sign-in": {
+    "title":              "Welcome to Qullqa",
+    "subtitle":           "Intelligent inventory management",
+    "email":              "Email address",
+    "email-placeholder":  "you@example.com",
+    "password":           "Password",
+    "password-placeholder": "••••••••",
+    "submit":             "Sign In",
+    "forgot-password":    "Forgot your password?",
+    "no-account":         "Don't have an account?",
+    "register":           "Sign Up",
+    "roles-hint":         "Available roles: Administrator, Collaborator, Cashier",
+    "demo-hint":          "Demo: admin@qullqa.com / 123456",
+    "error-empty":        "Please enter your email and password.",
+    "error-invalid-email":"Please enter a valid email address.",
+    "error-credentials":  "Invalid credentials. Please check your email and password."
+  },
+  "sign-up": {
+    "title":                "Create your Qullqa account",
+    "subtitle":             "Register your business and start managing your inventory",
+    "section-business":     "Business Information",
+    "section-personal":     "Personal Information",
+    "section-credentials":  "Access Credentials",
+    "business-name":        "Business name",
+    "business-placeholder": "e.g. Bodega San Martín",
+    "ruc":                  "RUC (optional)",
+    "ruc-placeholder":      "20123456789",
+    "full-name":            "Full name",
+    "full-name-placeholder":"Juan Pérez",
+    "phone":                "Phone (optional)",
+    "phone-placeholder":    "987654321",
+    "email":                "Email address",
+    "email-placeholder":    "you@example.com",
+    "password":             "Password",
+    "password-placeholder": "••••••••",
+    "confirm-password":     "Confirm password",
+    "submit":               "Create Account",
+    "terms":                "By registering, you accept our terms and conditions.",
+    "back-to-login":        "Back to sign in",
+    "success":              "Account created successfully. Redirecting to dashboard...",
+    "error-business-name":  "Business name is required.",
+    "error-full-name":      "Full name is required.",
+    "error-email":          "Please enter a valid email address.",
+    "error-password":       "Password must be at least 6 characters.",
+    "error-confirm":        "Passwords do not match."
+  },
+  "sidebar": {
+    "logout":      "Sign Out",
+    "admin-label": "Administrator"
+  }
+}
