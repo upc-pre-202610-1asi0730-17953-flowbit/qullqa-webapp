@@ -37,7 +37,7 @@ const closeSidebar = () => {
  */
 const menuItems = [
   { labelKey: 'option.dashboard',  icon: 'pi pi-home',          routeName: 'dashboard' },
-  { labelKey: 'option.products',   icon: 'pi pi-box',           routeName: 'home' },
+  { labelKey: 'option.products',   icon: 'pi pi-box',           routeName: 'products' },
   { labelKey: 'option.pos',        icon: 'pi pi-shopping-cart', routeName: 'home' },
   { labelKey: 'option.movements',  icon: 'pi pi-chart-line',    routeName: 'home' },
   { labelKey: 'option.warehouses', icon: 'pi pi-building',      routeName: 'home' },
