@@ -3,7 +3,6 @@ import iamPublicRoutes from './iam/presentation/iam.routes.js';
 import Layout from './shared/presentation/components/layout.vue';
 import Home from './shared/presentation/views/home.vue';
 
-const about        = () => import('./shared/presentation/views/about.vue');
 const pageNotFound = () => import('./shared/presentation/views/page-not-found.vue');
 
 /**
