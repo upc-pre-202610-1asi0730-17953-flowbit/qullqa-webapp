@@ -17,21 +17,21 @@ const pageNotFound = () => import('./shared/presentation/views/page-not-found.vu
  * @type {import('vue-router').RouteRecordRaw[]}
  */
 const routes = [
+    // Redirect Sign-in
+    {path: '/', redirect: '/sign-in'},
+
     // Public IAM routes
     ...iamPublicRoutes,
 
     // Authenticated routes wrapped in the sidebar Layout
     {
-        path:      '/',
+        path:      '/app',
         component: Layout,
         children: [
             { path: 'home',  name: 'home',  component: Home,  meta: { title: 'Home' } },
 
         ]
     },
-
-    // Default redirect
-    { path: '/', redirect: '/sign-in' },
 
     // Catch-all 404
     { path: '/:pathMatch(.*)*', name: 'not-found', component: pageNotFound, meta: { title: 'Page Not Found' } }

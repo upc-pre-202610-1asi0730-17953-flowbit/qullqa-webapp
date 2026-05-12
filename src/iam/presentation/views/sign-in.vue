@@ -166,12 +166,6 @@ function navigateToSignUp() {
               outlined
               @click="navigateToSignUp"
           />
-          <p class="text-center mt-4 mb-1" style="color: #64748B; font-size: 0.875rem;">
-            {{ t('sign-in.roles-hint') }}
-          </p>
-          <p class="text-center m-0" style="color: #06B6D4; font-size: 0.75rem;">
-            {{ t('sign-in.demo-hint') }}
-          </p>
         </div>
 
       </template>

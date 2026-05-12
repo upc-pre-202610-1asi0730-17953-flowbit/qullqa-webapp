@@ -180,11 +180,6 @@ function handleSignOut() {
         style="margin-left: 0; transition: margin-left 0.3s ease;"
         :style="{ 'margin-left': '256px' }"
     >
-      <!-- Desktop language switcher top-right -->
-      <div class="hidden lg:flex justify-content-end mb-4">
-        <language-switcher/>
-      </div>
-
       <div style="max-width: 1280px; margin: 0 auto;">
         <router-view/>
       </div>

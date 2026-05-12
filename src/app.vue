@@ -6,5 +6,5 @@ const { t } = useI18n();
 </script>
 
 <template>
-  <layout/>
+  <router-view/>
 </template>
