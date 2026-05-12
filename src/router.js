@@ -27,7 +27,6 @@ const routes = [
         component: Layout,
         children: [
             { path: 'home',  name: 'home',  component: Home,  meta: { title: 'Home' } },
-            { path: 'about', name: 'about', component: about, meta: { title: 'About' } },
 
         ]
     },
