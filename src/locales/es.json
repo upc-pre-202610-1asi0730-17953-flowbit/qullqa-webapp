@@ -1,0 +1,88 @@
+{
+  "option": {
+    "dashboard":  "Dashboard",
+    "products":   "Productos",
+    "pos":        "Venta POS",
+    "movements":  "Movimientos",
+    "warehouses": "Almacenes",
+    "suppliers":  "Proveedores",
+    "alerts":     "Alertas",
+    "reports":    "Reportes",
+    "deliveries": "Entregas IoT",
+    "users":      "Usuarios",
+    "plan":       "Mi Plan",
+    "home":       "Inicio",
+    "about":      "Acerca de"
+  },
+  "authoring-phrase": {
+    "intro":  "Hecho con",
+    "use":    "utilizando",
+    "author": "por el Equipo de Desarrollo de {brand}"
+  },
+  "about": {
+    "title":   "Acerca de Nosotros",
+    "content": "Qullqa es una plataforma de gestión de inventario diseñada para bodegas y farmacias independientes en el Perú."
+  },
+  "home": {
+    "title":   "Bienvenido a Qullqa",
+    "content": "Gestiona tu inventario, ventas, proveedores y entregas desde un solo lugar."
+  },
+  "page-not-found": {
+    "title":   "Página no encontrada",
+    "content": "La ruta {unavailable-route} no está disponible.",
+    "go-home": "Ir al Inicio"
+  },
+  "errors": {
+    "occurred": "Ocurrieron errores"
+  },
+  "sign-in": {
+    "title":               "Bienvenido a Qullqa",
+    "subtitle":            "Gestión inteligente de inventario",
+    "email":               "Correo electrónico",
+    "email-placeholder":   "tu@correo.com",
+    "password":            "Contraseña",
+    "password-placeholder":"••••••••",
+    "submit":              "Iniciar sesión",
+    "forgot-password":     "¿Olvidaste tu contraseña?",
+    "no-account":          "¿No tienes una cuenta?",
+    "register":            "Registrarse",
+    "roles-hint":          "Roles disponibles: Administrador, Colaborador, Vendedor",
+    "demo-hint":           "Demo: admin@qullqa.com / 123456",
+    "error-empty":         "Por favor ingresa tu correo y contraseña.",
+    "error-invalid-email": "Por favor ingresa un correo válido.",
+    "error-credentials":   "Credenciales inválidas. El correo o la contraseña son incorrectos."
+  },
+  "sign-up": {
+    "title":                "Crear cuenta en Qullqa",
+    "subtitle":             "Registra tu negocio y comienza a gestionar tu inventario",
+    "section-business":     "Datos del Negocio",
+    "section-personal":     "Datos Personales",
+    "section-credentials":  "Credenciales de Acceso",
+    "business-name":        "Nombre del negocio",
+    "business-placeholder": "Ej: Bodega San Martín",
+    "ruc":                  "RUC (opcional)",
+    "ruc-placeholder":      "20123456789",
+    "full-name":            "Nombre completo",
+    "full-name-placeholder":"Juan Pérez",
+    "phone":                "Teléfono (opcional)",
+    "phone-placeholder":    "987654321",
+    "email":                "Correo electrónico",
+    "email-placeholder":    "tu@correo.com",
+    "password":             "Contraseña",
+    "password-placeholder": "••••••••",
+    "confirm-password":     "Confirmar contraseña",
+    "submit":               "Crear Cuenta",
+    "terms":                "Al registrarte, aceptas nuestros términos y condiciones.",
+    "back-to-login":        "Volver al inicio de sesión",
+    "success":              "Cuenta creada exitosamente. Redirigiendo al dashboard...",
+    "error-business-name":  "El nombre del negocio es obligatorio.",
+    "error-full-name":      "El nombre es obligatorio.",
+    "error-email":          "Ingresa un correo válido.",
+    "error-password":       "La contraseña debe tener al menos 6 caracteres.",
+    "error-confirm":        "Las contraseñas no coinciden."
+  },
+  "sidebar": {
+    "logout":      "Cerrar Sesión",
+    "admin-label": "Administrador"
+  }
+}
