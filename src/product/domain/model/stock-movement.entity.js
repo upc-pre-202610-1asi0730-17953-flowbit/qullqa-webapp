@@ -1,26 +1,39 @@
-import { MovementType } from './movement-type.entity.js';
+/**
+ * Enumeration of the supported stock movement types.
+ *
+ * Business rules:
+ * - INTAKE     → stock increases; triggered by purchase reception or manual intake.
+ * - SALE       → stock decreases; triggered by a completed POS sale.
+ * - ADJUSTMENT → manual stock correction; direction depends on signed quantity.
+ *
+ * @enum {string}
+ */
+export const MovementType = Object.freeze({
+    INTAKE:     'INTAKE',
+    SALE:       'SALE',
+    ADJUSTMENT: 'ADJUSTMENT'
+});
 
 /**
  * StockMovement entity within the Product & Inventory Management bounded context.
  * Records a single stock change event for a product.
  *
  * Business rules:
- * - quantity must be a positive integer; the direction is encoded by type.
- * - INTAKE and ADJUSTMENT movements increase stock.
- * - SALE movements decrease stock.
- * - signedQuantity returns the quantity with the correct sign for display.
+ * - quantity is always a positive integer stored as an absolute value.
+ * - The direction of the change is determined by the type field.
+ * - signedQuantity returns a negative value for SALE movements and positive for all others.
  *
  * @class StockMovement
  */
 export class StockMovement {
     /**
-     * @param {Object} params - Entity attributes.
-     * @param {number|null} [params.id=null]                       - Movement identifier.
-     * @param {number|null} [params.productId=null]                 - Foreign key of the related product.
-     * @param {number|null} [params.businessId=null]                - Foreign key of the owning business.
-     * @param {number}      [params.quantity=0]                     - Absolute quantity moved (always positive).
-     * @param {string}      [params.type=MovementType.INTAKE]       - Movement type value.
-     * @param {string}      [params.registeredAt='']                - ISO 8601 timestamp of the movement.
+     * @param {Object}      params
+     * @param {number|null} [params.id=null]
+     * @param {number|null} [params.productId=null]
+     * @param {number|null} [params.businessId=null]
+     * @param {number}      [params.quantity=0]
+     * @param {string}      [params.type=MovementType.INTAKE]
+     * @param {string}      [params.registeredAt='']
      */
     constructor({
                     id           = null,
@@ -39,21 +52,19 @@ export class StockMovement {
     }
 
     /**
-     * Returns the quantity with its directional sign.
-     * INTAKE and ADJUSTMENT → positive (+N).
-     * SALE → negative (-N).
-     *
-     * @returns {number} Signed quantity.
-     */
-    get signedQuantity() {
-        return this.type === MovementType.SALE ? -this.quantity : this.quantity;
-    }
-
-    /**
-     * Returns true when this movement increases stock.
+     * Returns true when this movement increases stock (INTAKE or ADJUSTMENT).
      * @returns {boolean}
      */
     get isIntake() {
         return this.type === MovementType.INTAKE || this.type === MovementType.ADJUSTMENT;
+    }
+
+    /**
+     * Returns the quantity with the correct directional sign for display.
+     * SALE → negative. INTAKE / ADJUSTMENT → positive.
+     * @returns {number}
+     */
+    get signedQuantity() {
+        return this.type === MovementType.SALE ? -this.quantity : this.quantity;
     }
 }

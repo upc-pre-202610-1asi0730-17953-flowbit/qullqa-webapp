@@ -6,11 +6,11 @@
  */
 export class WarehouseStock {
     /**
-     * @param {Object} params - Entity attributes.
-     * @param {number|null} [params.id=null]          - Record identifier.
-     * @param {number|null} [params.warehouseId=null]  - Foreign key of the warehouse.
-     * @param {number|null} [params.productId=null]    - Foreign key of the product.
-     * @param {number}      [params.stock=0]           - Units stored in this warehouse.
+     * @param {Object}      params
+     * @param {number|null} [params.id=null]
+     * @param {number|null} [params.warehouseId=null]
+     * @param {number|null} [params.productId=null]
+     * @param {number}      [params.stock=0]
      */
     constructor({ id = null, warehouseId = null, productId = null, stock = 0 }) {
         this.id          = id;
