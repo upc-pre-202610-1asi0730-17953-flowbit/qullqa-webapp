@@ -1,5 +1,5 @@
-import { BaseApi } from '../../../shared/infrastructure/base-api.js';
-import { BaseEndpoint } from '../../../shared/infrastructure/base-endpoint.js';
+import { BaseApi } from '../../shared/infrastructure/base-api.js';
+import { BaseEndpoint } from '../../shared/infrastructure/base-endpoint.js';
 
 const usersEndpointPath = import.meta.env.VITE_USERS_ENDPOINT_PATH;
 const rolesEndpointPath = import.meta.env.VITE_ROLES_ENDPOINT_PATH;
