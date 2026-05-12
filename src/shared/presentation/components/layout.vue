@@ -38,14 +38,15 @@ const closeSidebar = () => {
 const menuItems = [
   { labelKey: 'option.dashboard',  icon: 'pi pi-home',          routeName: 'dashboard' },
   { labelKey: 'option.products',   icon: 'pi pi-box',           routeName: 'products' },
-  { labelKey: 'option.pos',        icon: 'pi pi-shopping-cart', routeName: 'home' },
+  { labelKey: 'option.pos',        icon: 'pi pi-shopping-cart', routeName: 'sales-list' },
+  { labelKey: 'option.customers',  icon: 'pi pi-users',         routeName: 'customer-list' },
   { labelKey: 'option.movements',  icon: 'pi pi-chart-line',    routeName: 'home' },
   { labelKey: 'option.warehouses', icon: 'pi pi-building',      routeName: 'home' },
   { labelKey: 'option.suppliers',  icon: 'pi pi-truck',         routeName: 'home' },
   { labelKey: 'option.alerts',     icon: 'pi pi-bell',          routeName: 'home' },
   { labelKey: 'option.reports',    icon: 'pi pi-chart-bar',     routeName: 'home' },
   { labelKey: 'option.deliveries', icon: 'pi pi-map-marker',    routeName: 'home' },
-  { labelKey: 'option.users',      icon: 'pi pi-users',         routeName: 'home' },
+  { labelKey: 'option.users',      icon: 'pi pi-cog',         routeName: 'home' },
   { labelKey: 'option.plan',       icon: 'pi pi-crown',         routeName: 'home' }
 ];
 
