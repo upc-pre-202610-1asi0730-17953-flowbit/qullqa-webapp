@@ -51,7 +51,7 @@ function navigateToAlerts() {
  * Navigates to the new product view (placeholder until products bounded context is ready).
  */
 function navigateToNewProduct() {
-  router.push({ name: 'home' });
+  router.push({ name: 'product-new' });
 }
 
 /**
