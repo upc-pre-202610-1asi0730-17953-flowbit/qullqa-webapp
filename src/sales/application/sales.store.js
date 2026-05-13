@@ -24,7 +24,7 @@ import { SalesApi }           from '../infrastructure/sales.api.js';
 import { SaleAssembler }      from '../infrastructure/sale.assembler.js';
 import { SaleDetailAssembler } from '../infrastructure/sale-detail.assembler.js';
 import { CustomerAssembler }  from '../infrastructure/customer.assembler.js';
-import { Sale }               from '../domain/model/sale.entity.js';
+import { Sale, SaleStatus, PaymentMethod }               from '../domain/model/sale.entity.js';
 import { SaleDetail }         from '../domain/model/sale-detail.entity.js';
 
 const salesApi = new SalesApi();
