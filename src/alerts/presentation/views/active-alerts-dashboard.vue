@@ -14,11 +14,11 @@ const alertsStore = useAlertsStore();
 const iamStore    = useIamStore();
 
 const {
-    alerts,
-    alertsLoaded,
-    errors,
-    lowStockActiveCount,
-    expirationActiveCount
+  alerts,
+  alertsLoaded,
+  errors,
+  lowStockActiveCount,
+  expirationActiveCount
 } = toRefs(alertsStore);
 
 const { fetchAlerts, resolveAlert, filterByType, filterByStatus } = alertsStore;
@@ -36,9 +36,9 @@ const activeTab = ref('LOW_STOCK');
  * the current user session is not yet available.
  */
 onMounted(() => {
-    if (alertsLoaded.value) return;
-    const businessId = iamStore.currentUser?.businessId ?? null;
-    fetchAlerts(businessId);
+  if (alertsLoaded.value) return;
+  const businessId = iamStore.currentUser?.businessId ?? null;
+  fetchAlerts(businessId);
 });
 
 /**
@@ -67,9 +67,9 @@ const resolvedAlerts = computed(() => filterByStatus(AlertStatus.RESOLVED));
  * @returns {string}
  */
 function severityLabelKey(severity) {
-    if (severity === 'HIGH')   return 'alerts.severity-high';
-    if (severity === 'MEDIUM') return 'alerts.severity-medium';
-    return 'alerts.severity-low';
+  if (severity === 'HIGH')   return 'alerts.severity-high';
+  if (severity === 'MEDIUM') return 'alerts.severity-medium';
+  return 'alerts.severity-low';
 }
 
 /**
@@ -79,9 +79,9 @@ function severityLabelKey(severity) {
  * @returns {string}
  */
 function badgeSeverity(severity) {
-    if (severity === 'HIGH')   return 'danger';
-    if (severity === 'MEDIUM') return 'warn';
-    return 'info';
+  if (severity === 'HIGH')   return 'danger';
+  if (severity === 'MEDIUM') return 'warn';
+  return 'info';
 }
 
 /**
@@ -90,7 +90,7 @@ function badgeSeverity(severity) {
  * @returns {string}
  */
 function typeIcon(type) {
-    return type === AlertType.EXPIRATION ? 'pi pi-calendar' : 'pi pi-exclamation-triangle';
+  return type === AlertType.EXPIRATION ? 'pi pi-calendar' : 'pi pi-exclamation-triangle';
 }
 
 /**
@@ -98,7 +98,7 @@ function typeIcon(type) {
  * @param {number} id
  */
 function navigateToDetail(id) {
-    router.push({ name: 'alert-detail', params: { id } });
+  router.push({ name: 'alert-detail', params: { id } });
 }
 
 /**
@@ -107,12 +107,12 @@ function navigateToDetail(id) {
  * @param {import('../../domain/model/alert.entity.js').Alert} alert
  */
 function confirmResolve(alert) {
-    confirm.require({
-        message: t('alerts.confirm-resolve', { message: alert.message }),
-        header:  t('alerts.resolve-header'),
-        icon:    'pi pi-check-circle',
-        accept:  () => { resolveAlert(alert); }
-    });
+  confirm.require({
+    message: t('alerts.confirm-resolve', { message: alert.message }),
+    header:  t('alerts.resolve-header'),
+    icon:    'pi pi-check-circle',
+    accept:  () => { resolveAlert(alert); }
+  });
 }
 
 /**
@@ -121,98 +121,98 @@ function confirmResolve(alert) {
  * @returns {string}
  */
 function formatDate(isoDate) {
-    if (!isoDate) return '';
-    return new Date(isoDate).toLocaleDateString('es-PE', {
-        year: 'numeric', month: 'short', day: 'numeric'
-    });
+  if (!isoDate) return '';
+  return new Date(isoDate).toLocaleDateString('es-PE', {
+    year: 'numeric', month: 'short', day: 'numeric'
+  });
 }
 </script>
 
 <template>
-    <div class="p-3 md:p-5">
+  <div class="p-3 md:p-5">
 
-        <!-- Page header -->
-        <div class="mb-4">
-            <h1 class="text-2xl font-bold m-0">{{ t('alerts.title') }}</h1>
-            <p class="text-color-secondary mt-1 mb-0">{{ t('alerts.subtitle') }}</p>
+    <!-- Page header -->
+    <div class="mb-4">
+      <h1 class="text-2xl font-bold m-0">{{ t('alerts.title') }}</h1>
+      <p class="text-color-secondary mt-1 mb-0">{{ t('alerts.subtitle') }}</p>
+    </div>
+
+    <!-- Loading indicator -->
+    <div v-if="!alertsLoaded" class="flex justify-content-center align-items-center py-6">
+      <i class="pi pi-spin pi-spinner text-4xl text-primary"></i>
+      <span class="ml-3 text-color-secondary">{{ t('alerts.loading') }}</span>
+    </div>
+
+    <div v-else>
+      <!-- Summary cards -->
+      <div class="grid mb-4">
+        <div class="col-12 md:col-6 lg:col-4">
+          <pv-card class="h-full">
+            <template #content>
+              <div class="flex align-items-center justify-content-between">
+                <div>
+                  <p class="text-color-secondary text-sm mt-0 mb-1">{{ t('alerts.low-stock-count') }}</p>
+                  <p class="text-3xl font-bold m-0" style="color: #F97316;">
+                    {{ lowStockActiveCount }}
+                  </p>
+                </div>
+                <div class="border-round p-3" style="background-color: #FFEDD5;">
+                  <i class="pi pi-exclamation-triangle text-2xl" style="color: #F97316;"></i>
+                </div>
+              </div>
+            </template>
+          </pv-card>
         </div>
 
-        <!-- Loading indicator -->
-        <div v-if="!alertsLoaded" class="flex justify-content-center align-items-center py-6">
-            <i class="pi pi-spin pi-spinner text-4xl text-primary"></i>
-            <span class="ml-3 text-color-secondary">{{ t('alerts.loading') }}</span>
+        <div class="col-12 md:col-6 lg:col-4">
+          <pv-card class="h-full">
+            <template #content>
+              <div class="flex align-items-center justify-content-between">
+                <div>
+                  <p class="text-color-secondary text-sm mt-0 mb-1">{{ t('alerts.expiration-count') }}</p>
+                  <p class="text-3xl font-bold m-0" style="color: #EF4444;">
+                    {{ expirationActiveCount }}
+                  </p>
+                </div>
+                <div class="border-round p-3" style="background-color: #FEE2E2;">
+                  <i class="pi pi-calendar text-2xl" style="color: #EF4444;"></i>
+                </div>
+              </div>
+            </template>
+          </pv-card>
         </div>
 
-        <div v-else>
-            <!-- Summary cards -->
-            <div class="grid mb-4">
-                <div class="col-12 md:col-6 lg:col-4">
-                    <pv-card class="h-full">
-                        <template #content>
-                            <div class="flex align-items-center justify-content-between">
-                                <div>
-                                    <p class="text-color-secondary text-sm mt-0 mb-1">{{ t('alerts.low-stock-count') }}</p>
-                                    <p class="text-3xl font-bold m-0" style="color: #F97316;">
-                                        {{ lowStockActiveCount }}
-                                    </p>
-                                </div>
-                                <div class="border-round p-3" style="background-color: #FFEDD5;">
-                                    <i class="pi pi-exclamation-triangle text-2xl" style="color: #F97316;"></i>
-                                </div>
-                            </div>
-                        </template>
-                    </pv-card>
+        <div class="col-12 md:col-6 lg:col-4">
+          <pv-card class="h-full">
+            <template #content>
+              <div class="flex align-items-center justify-content-between">
+                <div>
+                  <p class="text-color-secondary text-sm mt-0 mb-1">{{ t('alerts.resolved-count') }}</p>
+                  <p class="text-3xl font-bold m-0" style="color: #22C55E;">
+                    {{ resolvedAlerts.length }}
+                  </p>
                 </div>
-
-                <div class="col-12 md:col-6 lg:col-4">
-                    <pv-card class="h-full">
-                        <template #content>
-                            <div class="flex align-items-center justify-content-between">
-                                <div>
-                                    <p class="text-color-secondary text-sm mt-0 mb-1">{{ t('alerts.expiration-count') }}</p>
-                                    <p class="text-3xl font-bold m-0" style="color: #EF4444;">
-                                        {{ expirationActiveCount }}
-                                    </p>
-                                </div>
-                                <div class="border-round p-3" style="background-color: #FEE2E2;">
-                                    <i class="pi pi-calendar text-2xl" style="color: #EF4444;"></i>
-                                </div>
-                            </div>
-                        </template>
-                    </pv-card>
+                <div class="border-round p-3" style="background-color: #DCFCE7;">
+                  <i class="pi pi-check-circle text-2xl" style="color: #22C55E;"></i>
                 </div>
+              </div>
+            </template>
+          </pv-card>
+        </div>
+      </div>
 
-                <div class="col-12 md:col-6 lg:col-4">
-                    <pv-card class="h-full">
-                        <template #content>
-                            <div class="flex align-items-center justify-content-between">
-                                <div>
-                                    <p class="text-color-secondary text-sm mt-0 mb-1">{{ t('alerts.resolved-count') }}</p>
-                                    <p class="text-3xl font-bold m-0" style="color: #22C55E;">
-                                        {{ resolvedAlerts.length }}
-                                    </p>
-                                </div>
-                                <div class="border-round p-3" style="background-color: #DCFCE7;">
-                                    <i class="pi pi-check-circle text-2xl" style="color: #22C55E;"></i>
-                                </div>
-                            </div>
-                        </template>
-                    </pv-card>
-                </div>
-            </div>
-
-            <!-- Tab selector -->
-            <pv-select-button
-                v-model="activeTab"
-                :options="[
+      <!-- Tab selector -->
+      <pv-select-button
+          v-model="activeTab"
+          :options="[
                     { label: t('alerts.tab-low-stock'),  value: 'LOW_STOCK' },
                     { label: t('alerts.tab-expiration'), value: 'EXPIRATION' },
                     { label: t('alerts.tab-resolved'),   value: 'RESOLVED' }
                 ]"
-                option-label="label"
-                option-value="value"
-                class="mb-4 w-full"
-            />
+          option-label="label"
+          option-value="value"
+          class="mb-4 w-full"
+      />
 
       <!-- LOW_STOCK tab -->
       <div v-if="activeTab === 'LOW_STOCK'" class="flex flex-column gap-3">
@@ -260,6 +260,9 @@ function formatDate(isoDate) {
                 />
               </div>
             </div>
+          </template>
+        </pv-card>
+      </div>
 
       <!-- EXPIRATION tab -->
       <div v-if="activeTab === 'EXPIRATION'" class="flex flex-column gap-3">
@@ -307,6 +310,9 @@ function formatDate(isoDate) {
                 />
               </div>
             </div>
+          </template>
+        </pv-card>
+      </div>
 
       <!-- RESOLVED tab -->
       <div v-if="activeTab === 'RESOLVED'" class="flex flex-column gap-3">
@@ -340,24 +346,27 @@ function formatDate(isoDate) {
                   @click="navigateToDetail(currentAlert.id)"
               />
             </div>
+          </template>
+        </pv-card>
+      </div>
 
-            <!-- Error display -->
-            <div v-if="errors.length > 0" class="mt-3">
-                <pv-card>
-                    <template #content>
-                        <p class="text-red-500 m-0">
-                            {{ t('errors.occurred') }}: {{ errors.map(error => error.message).join(', ') }}
-                        </p>
-                    </template>
-                </pv-card>
-            </div>
-        </div>
+      <!-- Error display -->
+      <div v-if="errors.length > 0" class="mt-3">
+        <pv-card>
+          <template #content>
+            <p class="text-red-500 m-0">
+              {{ t('errors.occurred') }}: {{ errors.map(error => error.message).join(', ') }}
+            </p>
+          </template>
+        </pv-card>
+      </div>
     </div>
+  </div>
 </template>
 
 <style scoped>
 .border-left-alert {
-    border-left-width: 4px;
-    border-left-style: solid;
+  border-left-width: 4px;
+  border-left-style: solid;
 }
 </style>
