@@ -129,11 +129,11 @@ const statusSeverity = computed(() => {
  * @returns {string}
  */
 function formatDate(isoDate) {
-  if (!isoDate) return '';
-  return new Date(isoDate).toLocaleDateString('es-PE', {
-    year: 'numeric', month: 'long', day: 'numeric',
-    hour: '2-digit', minute: '2-digit'
-  });
+    if (!isoDate) return '';
+    return new Date(isoDate).toLocaleDateString('es-PE', {
+        year: 'numeric', month: 'long', day: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+    });
 }
 
 /**
@@ -157,7 +157,7 @@ function confirmResolve() {
  * Navigates back to the alerts list view.
  */
 function navigateBack() {
-  router.push({ name: 'alerts' });
+    router.push({ name: 'alerts' });
 }
 
 /**
@@ -263,7 +263,6 @@ function navigateToProduct() {
         </template>
       </pv-card>
     </div>
-  </div>
 </template>
 
 <style scoped>
