@@ -104,6 +104,7 @@ function handleSignOut() {
       <!-- Logo — hidden on mobile (shown in top bar instead) -->
       <div class="hidden lg:flex justify-content-center align-items-center p-5">
         <img src="../../../assets/qullqa_logo.jpeg" alt="Qullqa" style="height: 64px;" />
+        <language-switcher/>
       </div>
 
       <!-- Navigation menu -->
