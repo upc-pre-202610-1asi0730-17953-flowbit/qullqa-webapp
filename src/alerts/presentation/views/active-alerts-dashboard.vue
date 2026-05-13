@@ -1,15 +1,15 @@
 <script setup>
-import { computed, onMounted, toRefs } from 'vue';
-import { useRouter }                   from 'vue-router';
-import { useI18n }                     from 'vue-i18n';
-import { useConfirm }                  from 'primevue';
-import useAlertsStore                  from '../../application/alerts.store.js';
-import useIamStore                     from '../../../iam/application/iam.store.js';
-import { AlertType, AlertStatus }      from '../../domain/model/alert.entity.js';
+import { computed, onMounted, ref, toRefs } from 'vue';
+import { useRouter }                         from 'vue-router';
+import { useI18n }                           from 'vue-i18n';
+import { useConfirm }                        from 'primevue';
+import useAlertsStore                        from '../../application/alerts.store.js';
+import useIamStore                           from '../../../iam/application/iam.store.js';
+import { AlertType, AlertStatus }            from '../../domain/model/alert.entity.js';
 
-const { t }      = useI18n();
-const router     = useRouter();
-const confirm    = useConfirm();
+const { t }       = useI18n();
+const router      = useRouter();
+const confirm     = useConfirm();
 const alertsStore = useAlertsStore();
 const iamStore    = useIamStore();
 
@@ -23,43 +23,46 @@ const {
 
 const { fetchAlerts, resolveAlert, filterByType, filterByStatus } = alertsStore;
 
-/** Currently selected tab: 'LOW_STOCK' | 'EXPIRATION' | 'RESOLVED' */
+/**
+ * Currently selected tab identifier.
+ * Possible values: 'LOW_STOCK' | 'EXPIRATION' | 'RESOLVED'
+ * @type {import('vue').Ref<string>}
+ */
 const activeTab = ref('LOW_STOCK');
-
-import { ref } from 'vue';
 
 /**
  * Loads all alerts for the authenticated business on mount.
+ * Falls back to fetching all alerts without businessId filter when
+ * the current user session is not yet available.
  */
 onMounted(() => {
+  if (alertsLoaded.value) return;
   const businessId = iamStore.currentUser?.businessId ?? null;
-  if (businessId && !alertsLoaded.value) {
-    fetchAlerts(businessId);
-  }
+  fetchAlerts(businessId);
 });
 
 /**
  * Alerts filtered and sorted for the LOW_STOCK tab.
  * Business rule: sorted HIGH → MEDIUM → LOW severity.
- * @type {import('vue').ComputedRef}
+ * @type {import('vue').ComputedRef<import('../../domain/model/alert.entity.js').Alert[]>}
  */
 const lowStockAlerts = computed(() => filterByType(AlertType.LOW_STOCK));
 
 /**
  * Alerts filtered and sorted for the EXPIRATION tab.
  * Business rule: sorted ascending by date (most urgent first).
- * @type {import('vue').ComputedRef}
+ * @type {import('vue').ComputedRef<import('../../domain/model/alert.entity.js').Alert[]>}
  */
 const expirationAlerts = computed(() => filterByType(AlertType.EXPIRATION));
 
 /**
  * Resolved alerts shown in the history tab.
- * @type {import('vue').ComputedRef}
+ * @type {import('vue').ComputedRef<import('../../domain/model/alert.entity.js').Alert[]>}
  */
 const resolvedAlerts = computed(() => filterByStatus(AlertStatus.RESOLVED));
 
 /**
- * Returns the i18n severity label key for a given severity string.
+ * Returns the i18n key for a given severity string.
  * @param {string} severity
  * @returns {string}
  */
@@ -70,7 +73,7 @@ function severityLabelKey(severity) {
 }
 
 /**
- * Returns the PrimeVue severity prop for a given alert severity.
+ * Returns the PrimeVue Tag severity prop for a given alert severity.
  * Business rule: HIGH → danger, MEDIUM → warn, LOW → info.
  * @param {string} severity
  * @returns {string}
@@ -82,7 +85,7 @@ function badgeSeverity(severity) {
 }
 
 /**
- * Returns the icon class for a given alert type.
+ * Returns the PrimeIcon class for a given alert type.
  * @param {string} type
  * @returns {string}
  */
@@ -91,7 +94,7 @@ function typeIcon(type) {
 }
 
 /**
- * Navigates to the alert detail / notification status view.
+ * Navigates to the alert detail view.
  * @param {number} id
  */
 function navigateToDetail(id) {
@@ -113,7 +116,7 @@ function confirmResolve(alert) {
 }
 
 /**
- * Formats an ISO date string for display in the user's locale.
+ * Formats an ISO date string for display in Peruvian locale.
  * @param {string} isoDate
  * @returns {string}
  */
@@ -202,9 +205,9 @@ function formatDate(isoDate) {
       <pv-select-button
           v-model="activeTab"
           :options="[
-                    { label: t('alerts.tab-low-stock'),   value: 'LOW_STOCK' },
-                    { label: t('alerts.tab-expiration'),  value: 'EXPIRATION' },
-                    { label: t('alerts.tab-resolved'),    value: 'RESOLVED' }
+                    { label: t('alerts.tab-low-stock'),  value: 'LOW_STOCK' },
+                    { label: t('alerts.tab-expiration'), value: 'EXPIRATION' },
+                    { label: t('alerts.tab-resolved'),   value: 'RESOLVED' }
                 ]"
           option-label="label"
           option-value="value"
@@ -214,29 +217,29 @@ function formatDate(isoDate) {
       <!-- LOW_STOCK tab -->
       <div v-if="activeTab === 'LOW_STOCK'" class="flex flex-column gap-3">
         <div v-if="lowStockAlerts.length === 0" class="text-center text-color-secondary py-5">
-          <i class="pi pi-check-circle text-4xl text-green-500 mb-2"></i>
+          <i class="pi pi-check-circle text-4xl text-green-500 mb-2 block"></i>
           <p>{{ t('alerts.no-low-stock') }}</p>
         </div>
         <pv-card
-            v-for="alert in lowStockAlerts"
-            :key="alert.id"
-            class="border-left-3"
-            :style="{ borderColor: alert.severity === 'HIGH' ? '#EF4444' : alert.severity === 'MEDIUM' ? '#F97316' : '#FACC15' }"
+            v-for="currentAlert in lowStockAlerts"
+            :key="currentAlert.id"
+            class="border-left-alert"
+            :style="{ borderLeftColor: currentAlert.severity === 'HIGH' ? '#EF4444' : currentAlert.severity === 'MEDIUM' ? '#F97316' : '#FACC15' }"
         >
           <template #content>
             <div class="flex flex-column md:flex-row md:align-items-center gap-3">
               <div class="border-round p-3 flex-shrink-0 align-self-start" style="background-color: #FFEDD5;">
-                <i :class="typeIcon(alert.type)" class="text-xl" style="color: #F97316;"></i>
+                <i :class="typeIcon(currentAlert.type)" class="text-xl" style="color: #F97316;"></i>
               </div>
               <div class="flex-1">
                 <div class="flex flex-wrap align-items-center gap-2 mb-2">
                   <pv-tag
-                      :severity="badgeSeverity(alert.severity)"
-                      :value="t(severityLabelKey(alert.severity))"
+                      :severity="badgeSeverity(currentAlert.severity)"
+                      :value="t(severityLabelKey(currentAlert.severity))"
                   />
-                  <span class="text-color-secondary text-sm">{{ formatDate(alert.date) }}</span>
+                  <span class="text-color-secondary text-sm">{{ formatDate(currentAlert.date) }}</span>
                 </div>
-                <p class="m-0 font-medium">{{ alert.message }}</p>
+                <p class="m-0 font-medium">{{ currentAlert.message }}</p>
               </div>
               <div class="flex gap-2 flex-shrink-0">
                 <pv-button
@@ -244,16 +247,16 @@ function formatDate(isoDate) {
                     :label="t('alerts.btn-detail')"
                     size="small"
                     text
-                    @click="navigateToDetail(alert.id)"
+                    @click="navigateToDetail(currentAlert.id)"
                 />
                 <pv-button
-                    v-if="alert.status !== 'RESOLVED'"
+                    v-if="currentAlert.status !== 'RESOLVED'"
                     icon="pi pi-check"
                     :label="t('alerts.btn-resolve')"
                     size="small"
                     severity="success"
                     outlined
-                    @click="confirmResolve(alert)"
+                    @click="confirmResolve(currentAlert)"
                 />
               </div>
             </div>
@@ -264,29 +267,29 @@ function formatDate(isoDate) {
       <!-- EXPIRATION tab -->
       <div v-if="activeTab === 'EXPIRATION'" class="flex flex-column gap-3">
         <div v-if="expirationAlerts.length === 0" class="text-center text-color-secondary py-5">
-          <i class="pi pi-check-circle text-4xl text-green-500 mb-2"></i>
+          <i class="pi pi-check-circle text-4xl text-green-500 mb-2 block"></i>
           <p>{{ t('alerts.no-expiration') }}</p>
         </div>
         <pv-card
-            v-for="alert in expirationAlerts"
-            :key="alert.id"
-            class="border-left-3"
-            :style="{ borderColor: alert.severity === 'HIGH' ? '#EF4444' : alert.severity === 'MEDIUM' ? '#F97316' : '#FACC15' }"
+            v-for="currentAlert in expirationAlerts"
+            :key="currentAlert.id"
+            class="border-left-alert"
+            :style="{ borderLeftColor: currentAlert.severity === 'HIGH' ? '#EF4444' : currentAlert.severity === 'MEDIUM' ? '#F97316' : '#FACC15' }"
         >
           <template #content>
             <div class="flex flex-column md:flex-row md:align-items-center gap-3">
               <div class="border-round p-3 flex-shrink-0 align-self-start" style="background-color: #FEE2E2;">
-                <i :class="typeIcon(alert.type)" class="text-xl" style="color: #EF4444;"></i>
+                <i :class="typeIcon(currentAlert.type)" class="text-xl" style="color: #EF4444;"></i>
               </div>
               <div class="flex-1">
                 <div class="flex flex-wrap align-items-center gap-2 mb-2">
                   <pv-tag
-                      :severity="badgeSeverity(alert.severity)"
-                      :value="t(severityLabelKey(alert.severity))"
+                      :severity="badgeSeverity(currentAlert.severity)"
+                      :value="t(severityLabelKey(currentAlert.severity))"
                   />
-                  <span class="text-color-secondary text-sm">{{ formatDate(alert.date) }}</span>
+                  <span class="text-color-secondary text-sm">{{ formatDate(currentAlert.date) }}</span>
                 </div>
-                <p class="m-0 font-medium">{{ alert.message }}</p>
+                <p class="m-0 font-medium">{{ currentAlert.message }}</p>
               </div>
               <div class="flex gap-2 flex-shrink-0">
                 <pv-button
@@ -294,16 +297,16 @@ function formatDate(isoDate) {
                     :label="t('alerts.btn-detail')"
                     size="small"
                     text
-                    @click="navigateToDetail(alert.id)"
+                    @click="navigateToDetail(currentAlert.id)"
                 />
                 <pv-button
-                    v-if="alert.status !== 'RESOLVED'"
+                    v-if="currentAlert.status !== 'RESOLVED'"
                     icon="pi pi-check"
                     :label="t('alerts.btn-resolve')"
                     size="small"
                     severity="success"
                     outlined
-                    @click="confirmResolve(alert)"
+                    @click="confirmResolve(currentAlert)"
                 />
               </div>
             </div>
@@ -314,14 +317,14 @@ function formatDate(isoDate) {
       <!-- RESOLVED tab -->
       <div v-if="activeTab === 'RESOLVED'" class="flex flex-column gap-3">
         <div v-if="resolvedAlerts.length === 0" class="text-center text-color-secondary py-5">
-          <i class="pi pi-inbox text-4xl text-color-secondary mb-2"></i>
+          <i class="pi pi-inbox text-4xl text-color-secondary mb-2 block"></i>
           <p>{{ t('alerts.no-resolved') }}</p>
         </div>
         <pv-card
-            v-for="alert in resolvedAlerts"
-            :key="alert.id"
-            class="border-left-3"
-            style="border-color: #22C55E;"
+            v-for="currentAlert in resolvedAlerts"
+            :key="currentAlert.id"
+            class="border-left-alert"
+            style="border-left-color: #22C55E;"
         >
           <template #content>
             <div class="flex flex-column md:flex-row md:align-items-center gap-3">
@@ -331,16 +334,16 @@ function formatDate(isoDate) {
               <div class="flex-1">
                 <div class="flex flex-wrap align-items-center gap-2 mb-2">
                   <pv-tag severity="success" :value="t('alerts.status-resolved')" />
-                  <span class="text-color-secondary text-sm">{{ formatDate(alert.date) }}</span>
+                  <span class="text-color-secondary text-sm">{{ formatDate(currentAlert.date) }}</span>
                 </div>
-                <p class="m-0 font-medium text-color-secondary">{{ alert.message }}</p>
+                <p class="m-0 font-medium text-color-secondary">{{ currentAlert.message }}</p>
               </div>
               <pv-button
                   icon="pi pi-eye"
                   :label="t('alerts.btn-detail')"
                   size="small"
                   text
-                  @click="navigateToDetail(alert.id)"
+                  @click="navigateToDetail(currentAlert.id)"
               />
             </div>
           </template>
@@ -362,7 +365,7 @@ function formatDate(isoDate) {
 </template>
 
 <style scoped>
-.border-left-3 {
+.border-left-alert {
   border-left-width: 4px;
   border-left-style: solid;
 }

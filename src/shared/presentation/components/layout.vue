@@ -43,7 +43,7 @@ const menuItems = [
   { labelKey: 'option.movements',  icon: 'pi pi-chart-line',    routeName: 'home' },
   { labelKey: 'option.warehouses', icon: 'pi pi-building',      routeName: 'home' },
   { labelKey: 'option.suppliers',  icon: 'pi pi-truck',         routeName: 'home' },
-  { labelKey: 'option.alerts',     icon: 'pi pi-bell',          routeName: 'home' },
+  { labelKey: 'option.alerts',     icon: 'pi pi-bell',          routeName: 'alerts' },
   { labelKey: 'option.reports',    icon: 'pi pi-chart-bar',     routeName: 'home' },
   { labelKey: 'option.deliveries', icon: 'pi pi-map-marker',    routeName: 'home' },
   { labelKey: 'option.users',      icon: 'pi pi-cog',         routeName: 'home' },
