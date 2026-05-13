@@ -3,6 +3,10 @@ import iamPublicRoutes from './iam/presentation/iam.routes.js';
 import Layout from './shared/presentation/components/layout.vue';
 import dashboardRoutes from './dashboard/presentation/dashboard.routes.js';
 import Home from './shared/presentation/views/home.vue';
+import productRoutes from './product/presentation/product.routes.js';
+import alertsRoutes from './alerts/presentation/alerts.routes.js';
+import salesRoutes from './sales/presentation/sales.routes.js';
+
 
 const pageNotFound = () => import('./shared/presentation/views/page-not-found.vue');
 
@@ -31,6 +35,9 @@ const routes = [
         children: [
             { path: 'home',  name: 'home',  component: Home,  meta: { title: 'Home' } },
             ...dashboardRoutes,
+            ...productRoutes,
+            ...alertsRoutes,
+            ...salesRoutes,
         ]
     },
 

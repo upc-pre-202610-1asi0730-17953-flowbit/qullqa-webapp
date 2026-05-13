@@ -44,14 +44,14 @@ function navigateToMovements() {
  * Navigates to the alerts view (placeholder until that bounded context is ready).
  */
 function navigateToAlerts() {
-  router.push({ name: 'home' });
+  router.push({ name: 'alerts' });
 }
 
 /**
  * Navigates to the new product view (placeholder until products bounded context is ready).
  */
 function navigateToNewProduct() {
-  router.push({ name: 'home' });
+  router.push({ name: 'product-new' });
 }
 
 /**
