@@ -214,140 +214,131 @@ function formatDate(isoDate) {
                 class="mb-4 w-full"
             />
 
-            <!-- LOW_STOCK tab -->
-            <div v-if="activeTab === 'LOW_STOCK'" class="flex flex-column gap-3">
-                <div v-if="lowStockAlerts.length === 0" class="text-center text-color-secondary py-5">
-                    <i class="pi pi-check-circle text-4xl text-green-500 mb-2 block"></i>
-                    <p>{{ t('alerts.no-low-stock') }}</p>
+      <!-- LOW_STOCK tab -->
+      <div v-if="activeTab === 'LOW_STOCK'" class="flex flex-column gap-3">
+        <div v-if="lowStockAlerts.length === 0" class="text-center text-color-secondary py-5">
+          <i class="pi pi-check-circle text-4xl text-green-500 mb-2 block"></i>
+          <p>{{ t('alerts.no-low-stock') }}</p>
+        </div>
+        <pv-card
+            v-for="currentAlert in lowStockAlerts"
+            :key="currentAlert.id"
+            class="border-left-alert"
+            :style="{ borderLeftColor: currentAlert.severity === 'HIGH' ? '#EF4444' : currentAlert.severity === 'MEDIUM' ? '#F97316' : '#FACC15' }"
+        >
+          <template #content>
+            <div class="flex flex-column md:flex-row md:align-items-center gap-3">
+              <div class="border-round p-3 flex-shrink-0 align-self-start" style="background-color: #FFEDD5;">
+                <i :class="typeIcon(currentAlert.type)" class="text-xl" style="color: #F97316;"></i>
+              </div>
+              <div class="flex-1">
+                <div class="flex flex-wrap align-items-center gap-2 mb-2">
+                  <pv-tag
+                      :severity="badgeSeverity(currentAlert.severity)"
+                      :value="t(severityLabelKey(currentAlert.severity))"
+                  />
+                  <span class="text-color-secondary text-sm">{{ formatDate(currentAlert.date) }}</span>
                 </div>
-                <pv-card
-                    v-for="currentAlert in lowStockAlerts"
-                    :key="currentAlert.id"
-                    class="border-left-alert"
-                    :style="{ borderLeftColor: currentAlert.severity === 'HIGH' ? '#EF4444' : currentAlert.severity === 'MEDIUM' ? '#F97316' : '#FACC15' }"
-                >
-                    <template #content>
-                        <div class="flex flex-column md:flex-row md:align-items-center gap-3">
-                            <div class="border-round p-3 flex-shrink-0 align-self-start" style="background-color: #FFEDD5;">
-                                <i :class="typeIcon(currentAlert.type)" class="text-xl" style="color: #F97316;"></i>
-                            </div>
-                            <div class="flex-1">
-                                <div class="flex flex-wrap align-items-center gap-2 mb-2">
-                                    <pv-tag
-                                        :severity="badgeSeverity(currentAlert.severity)"
-                                        :value="t(severityLabelKey(currentAlert.severity))"
-                                    />
-                                    <span class="text-color-secondary text-sm">{{ formatDate(currentAlert.date) }}</span>
-                                </div>
-                                <p class="m-0 font-medium">{{ currentAlert.message }}</p>
-                            </div>
-                            <div class="flex gap-2 flex-shrink-0">
-                                <pv-button
-                                    icon="pi pi-eye"
-                                    :label="t('alerts.btn-detail')"
-                                    size="small"
-                                    text
-                                    @click="navigateToDetail(currentAlert.id)"
-                                />
-                                <pv-button
-                                    v-if="currentAlert.status !== 'RESOLVED'"
-                                    icon="pi pi-check"
-                                    :label="t('alerts.btn-resolve')"
-                                    size="small"
-                                    severity="success"
-                                    outlined
-                                    @click="confirmResolve(currentAlert)"
-                                />
-                            </div>
-                        </div>
-                    </template>
-                </pv-card>
+                <p class="m-0 font-medium">{{ currentAlert.message }}</p>
+              </div>
+              <div class="flex gap-2 flex-shrink-0">
+                <pv-button
+                    icon="pi pi-eye"
+                    :label="t('alerts.btn-detail')"
+                    size="small"
+                    text
+                    @click="navigateToDetail(currentAlert.id)"
+                />
+                <pv-button
+                    v-if="currentAlert.status !== 'RESOLVED'"
+                    icon="pi pi-check"
+                    :label="t('alerts.btn-resolve')"
+                    size="small"
+                    severity="success"
+                    outlined
+                    @click="confirmResolve(currentAlert)"
+                />
+              </div>
             </div>
 
-            <!-- EXPIRATION tab -->
-            <div v-if="activeTab === 'EXPIRATION'" class="flex flex-column gap-3">
-                <div v-if="expirationAlerts.length === 0" class="text-center text-color-secondary py-5">
-                    <i class="pi pi-check-circle text-4xl text-green-500 mb-2 block"></i>
-                    <p>{{ t('alerts.no-expiration') }}</p>
+      <!-- EXPIRATION tab -->
+      <div v-if="activeTab === 'EXPIRATION'" class="flex flex-column gap-3">
+        <div v-if="expirationAlerts.length === 0" class="text-center text-color-secondary py-5">
+          <i class="pi pi-check-circle text-4xl text-green-500 mb-2 block"></i>
+          <p>{{ t('alerts.no-expiration') }}</p>
+        </div>
+        <pv-card
+            v-for="currentAlert in expirationAlerts"
+            :key="currentAlert.id"
+            class="border-left-alert"
+            :style="{ borderLeftColor: currentAlert.severity === 'HIGH' ? '#EF4444' : currentAlert.severity === 'MEDIUM' ? '#F97316' : '#FACC15' }"
+        >
+          <template #content>
+            <div class="flex flex-column md:flex-row md:align-items-center gap-3">
+              <div class="border-round p-3 flex-shrink-0 align-self-start" style="background-color: #FEE2E2;">
+                <i :class="typeIcon(currentAlert.type)" class="text-xl" style="color: #EF4444;"></i>
+              </div>
+              <div class="flex-1">
+                <div class="flex flex-wrap align-items-center gap-2 mb-2">
+                  <pv-tag
+                      :severity="badgeSeverity(currentAlert.severity)"
+                      :value="t(severityLabelKey(currentAlert.severity))"
+                  />
+                  <span class="text-color-secondary text-sm">{{ formatDate(currentAlert.date) }}</span>
                 </div>
-                <pv-card
-                    v-for="currentAlert in expirationAlerts"
-                    :key="currentAlert.id"
-                    class="border-left-alert"
-                    :style="{ borderLeftColor: currentAlert.severity === 'HIGH' ? '#EF4444' : currentAlert.severity === 'MEDIUM' ? '#F97316' : '#FACC15' }"
-                >
-                    <template #content>
-                        <div class="flex flex-column md:flex-row md:align-items-center gap-3">
-                            <div class="border-round p-3 flex-shrink-0 align-self-start" style="background-color: #FEE2E2;">
-                                <i :class="typeIcon(currentAlert.type)" class="text-xl" style="color: #EF4444;"></i>
-                            </div>
-                            <div class="flex-1">
-                                <div class="flex flex-wrap align-items-center gap-2 mb-2">
-                                    <pv-tag
-                                        :severity="badgeSeverity(currentAlert.severity)"
-                                        :value="t(severityLabelKey(currentAlert.severity))"
-                                    />
-                                    <span class="text-color-secondary text-sm">{{ formatDate(currentAlert.date) }}</span>
-                                </div>
-                                <p class="m-0 font-medium">{{ currentAlert.message }}</p>
-                            </div>
-                            <div class="flex gap-2 flex-shrink-0">
-                                <pv-button
-                                    icon="pi pi-eye"
-                                    :label="t('alerts.btn-detail')"
-                                    size="small"
-                                    text
-                                    @click="navigateToDetail(currentAlert.id)"
-                                />
-                                <pv-button
-                                    v-if="currentAlert.status !== 'RESOLVED'"
-                                    icon="pi pi-check"
-                                    :label="t('alerts.btn-resolve')"
-                                    size="small"
-                                    severity="success"
-                                    outlined
-                                    @click="confirmResolve(currentAlert)"
-                                />
-                            </div>
-                        </div>
-                    </template>
-                </pv-card>
+                <p class="m-0 font-medium">{{ currentAlert.message }}</p>
+              </div>
+              <div class="flex gap-2 flex-shrink-0">
+                <pv-button
+                    icon="pi pi-eye"
+                    :label="t('alerts.btn-detail')"
+                    size="small"
+                    text
+                    @click="navigateToDetail(currentAlert.id)"
+                />
+                <pv-button
+                    v-if="currentAlert.status !== 'RESOLVED'"
+                    icon="pi pi-check"
+                    :label="t('alerts.btn-resolve')"
+                    size="small"
+                    severity="success"
+                    outlined
+                    @click="confirmResolve(currentAlert)"
+                />
+              </div>
             </div>
 
-            <!-- RESOLVED tab -->
-            <div v-if="activeTab === 'RESOLVED'" class="flex flex-column gap-3">
-                <div v-if="resolvedAlerts.length === 0" class="text-center text-color-secondary py-5">
-                    <i class="pi pi-inbox text-4xl text-color-secondary mb-2 block"></i>
-                    <p>{{ t('alerts.no-resolved') }}</p>
+      <!-- RESOLVED tab -->
+      <div v-if="activeTab === 'RESOLVED'" class="flex flex-column gap-3">
+        <div v-if="resolvedAlerts.length === 0" class="text-center text-color-secondary py-5">
+          <i class="pi pi-inbox text-4xl text-color-secondary mb-2 block"></i>
+          <p>{{ t('alerts.no-resolved') }}</p>
+        </div>
+        <pv-card
+            v-for="currentAlert in resolvedAlerts"
+            :key="currentAlert.id"
+            class="border-left-alert"
+            style="border-left-color: #22C55E;"
+        >
+          <template #content>
+            <div class="flex flex-column md:flex-row md:align-items-center gap-3">
+              <div class="border-round p-3 flex-shrink-0 align-self-start" style="background-color: #DCFCE7;">
+                <i class="pi pi-check-circle text-xl" style="color: #22C55E;"></i>
+              </div>
+              <div class="flex-1">
+                <div class="flex flex-wrap align-items-center gap-2 mb-2">
+                  <pv-tag severity="success" :value="t('alerts.status-resolved')" />
+                  <span class="text-color-secondary text-sm">{{ formatDate(currentAlert.date) }}</span>
                 </div>
-                <pv-card
-                    v-for="currentAlert in resolvedAlerts"
-                    :key="currentAlert.id"
-                    class="border-left-alert"
-                    style="border-left-color: #22C55E;"
-                >
-                    <template #content>
-                        <div class="flex flex-column md:flex-row md:align-items-center gap-3">
-                            <div class="border-round p-3 flex-shrink-0 align-self-start" style="background-color: #DCFCE7;">
-                                <i class="pi pi-check-circle text-xl" style="color: #22C55E;"></i>
-                            </div>
-                            <div class="flex-1">
-                                <div class="flex flex-wrap align-items-center gap-2 mb-2">
-                                    <pv-tag severity="success" :value="t('alerts.status-resolved')" />
-                                    <span class="text-color-secondary text-sm">{{ formatDate(currentAlert.date) }}</span>
-                                </div>
-                                <p class="m-0 font-medium text-color-secondary">{{ currentAlert.message }}</p>
-                            </div>
-                            <pv-button
-                                icon="pi pi-eye"
-                                :label="t('alerts.btn-detail')"
-                                size="small"
-                                text
-                                @click="navigateToDetail(currentAlert.id)"
-                            />
-                        </div>
-                    </template>
-                </pv-card>
+                <p class="m-0 font-medium text-color-secondary">{{ currentAlert.message }}</p>
+              </div>
+              <pv-button
+                  icon="pi pi-eye"
+                  :label="t('alerts.btn-detail')"
+                  size="small"
+                  text
+                  @click="navigateToDetail(currentAlert.id)"
+              />
             </div>
 
             <!-- Error display -->
