@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import iamPublicRoutes from './iam/presentation/iam.routes.js';
 import Layout from './shared/presentation/components/layout.vue';
 import dashboardRoutes from './dashboard/presentation/dashboard.routes.js';
+import {iamAuthenticatedRoutes} from "./iam/presentation/iam.routes.js";
 import Home from './shared/presentation/views/home.vue';
 import productRoutes from './product/presentation/product.routes.js';
 import alertsRoutes from './alerts/presentation/alerts.routes.js';
@@ -38,6 +39,7 @@ const routes = [
             ...productRoutes,
             ...alertsRoutes,
             ...salesRoutes,
+            ...iamAuthenticatedRoutes,
         ]
     },
 
