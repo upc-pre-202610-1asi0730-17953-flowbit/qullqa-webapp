@@ -968,7 +968,7 @@ const warehouseSummary = [
             />
           </div>
 
-          <!-- Actions -->
+          <!--- Actions --->
           <div class="flex gap-3 mt-1">
             <button
                 class="flex-1 py-2 border-round-xl cursor-pointer"
