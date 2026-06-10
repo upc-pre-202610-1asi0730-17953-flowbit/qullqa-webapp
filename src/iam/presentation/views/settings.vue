@@ -12,15 +12,8 @@ const iamStore = useIamStore();
 const { users, usersLoaded } = toRefs(iamStore);
 const { fetchUsers, deleteUser } = iamStore;
 
-/**
- * Currently active settings tab.
- * @type {import('vue').Ref<'profile'|'users'|'preferences'|'security'|'plan'>}
- */
 const activeTab = ref('profile');
 
-/**
- * Settings tabs definition.
- */
 const tabs = [
   { key: 'profile',     labelKey: 'settings.tab-profile',     icon: 'pi pi-user'      },
   { key: 'users',       labelKey: 'settings.tab-users',       icon: 'pi pi-users'     },
@@ -29,9 +22,6 @@ const tabs = [
   { key: 'plan',        labelKey: 'settings.tab-plan',        icon: 'pi pi-crown'     }
 ];
 
-/**
- * Profile form state — pre-filled from the current user and business.
- */
 const profileForm = ref({
   businessName: 'Bodega Lima Norte',
   businessType: 'BODEGA',
@@ -41,67 +31,34 @@ const profileForm = ref({
   email:        iamStore.currentUser ? iamStore.currentUser.email    : ''
 });
 
-/**
- * Security form state for password change.
- */
-const securityForm = ref({
-  currentPassword: '',
-  newPassword:     '',
-  confirmPassword: ''
-});
-
-/**
- * Per-field security form errors.
- */
+const securityForm   = ref({ currentPassword: '', newPassword: '', confirmPassword: '' });
 const securityErrors = ref({ currentPassword: '', newPassword: '', confirmPassword: '' });
-
-/**
- * Whether the security form was submitted successfully.
- * @type {import('vue').Ref<boolean>}
- */
 const securitySuccess = ref(false);
+const showNewPassword = ref(false);
 
-/**
- * Whether email alert notifications are enabled.
- * @type {import('vue').Ref<boolean>}
- */
 const notificationsEnabled = ref(true);
 
-onMounted(() => {
-  if (!usersLoaded.value) fetchUsers();
-});
+onMounted(() => { if (!usersLoaded.value) fetchUsers(); });
 
-/**
- * Returns the display label for a role identifier.
- * @param {number|null} roleId - The role identifier from the API.
- * @returns {string} Translated role label.
- */
 function resolveRoleLabel(roleId) {
-  const roleMap = {
-    1: t('settings.role-admin'),
-    2: t('settings.role-collaborator'),
-    3: t('settings.role-seller')
-  };
+  const roleMap = { 1: t('settings.role-admin'), 2: t('settings.role-collaborator'), 3: t('settings.role-seller') };
   return roleMap[roleId] ?? t('settings.role-seller');
 }
 
-/**
- * Returns the badge style for a user status.
- * @param {string} status - 'ACTIVE' or 'INACTIVE'.
- * @returns {{ background: string, color: string, label: string }}
- */
+function resolveRoleStyle(roleId) {
+  const styles = {
+    1: { bg: '#FEE2E2', color: '#DC2626' },
+    2: { bg: '#EDE9FE', color: '#7C3AED' },
+    3: { bg: '#DBEAFE', color: '#1D4ED8' }
+  };
+  return styles[roleId] ?? styles[3];
+}
+
 function resolveStatusStyle(status) {
-  if (status === 'ACTIVE') {
-    return { background: '#DCFCE7', color: '#16A34A', label: t('settings.status-active') };
-  }
+  if (status === 'ACTIVE') return { background: '#DCFCE7', color: '#16A34A', label: t('settings.status-active') };
   return { background: '#F1F5F9', color: '#64748B', label: t('settings.status-inactive') };
 }
 
-/**
- * Opens a PrimeVue confirmation dialog before deleting a user.
- * Business rule: the current authenticated user cannot delete themselves.
- * @param {import('../../domain/model/user-account.entity.js').UserAccount} userAccount
- */
 function confirmDeleteUser(userAccount) {
   confirm.require({
     message: t('settings.confirm-delete-user', { name: userAccount.fullName }),
@@ -111,114 +68,125 @@ function confirmDeleteUser(userAccount) {
   });
 }
 
-/**
- * Validates and submits the security (password change) form.
- * Business rules:
- * - currentPassword is required.
- * - newPassword must be at least 8 characters.
- * - confirmPassword must match newPassword.
- */
 function submitPasswordChange() {
   securityErrors.value = { currentPassword: '', newPassword: '', confirmPassword: '' };
   let isValid = true;
-
-  if (!securityForm.value.currentPassword) {
-    securityErrors.value.currentPassword = t('settings.error-current-password');
-    isValid = false;
-  }
-  if (!securityForm.value.newPassword || securityForm.value.newPassword.length < 8) {
-    securityErrors.value.newPassword = t('settings.error-new-password');
-    isValid = false;
-  }
-  if (securityForm.value.newPassword !== securityForm.value.confirmPassword) {
-    securityErrors.value.confirmPassword = t('settings.error-confirm-password');
-    isValid = false;
-  }
-
+  if (!securityForm.value.currentPassword)                                              { securityErrors.value.currentPassword = t('settings.error-current-password'); isValid = false; }
+  if (!securityForm.value.newPassword || securityForm.value.newPassword.length < 8)     { securityErrors.value.newPassword     = t('settings.error-new-password');     isValid = false; }
+  if (securityForm.value.newPassword !== securityForm.value.confirmPassword)            { securityErrors.value.confirmPassword  = t('settings.error-confirm-password'); isValid = false; }
   if (!isValid) return;
-
   securitySuccess.value = true;
   securityForm.value    = { currentPassword: '', newPassword: '', confirmPassword: '' };
-  setTimeout(() => { securitySuccess.value = false; }, 3000);
+  setTimeout(() => { securitySuccess.value = false; }, 3500);
 }
+
+function computePasswordStrength(password) {
+  if (!password) return 0;
+  if (password.length < 4)  return 1;
+  if (password.length < 7)  return 2;
+  if (password.length < 10) return 3;
+  return 4;
+}
+const strengthColors = ['', '#EF4444', '#FACC15', '#0E7490', '#16A34A'];
+const strengthLabels = ['', 'Débil', 'Regular', 'Buena', 'Fuerte'];
 </script>
 
 <template>
-  <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+  <div style="display: flex; flex-direction: column; gap: 1.25rem;">
 
-    <!-- Header -->
-    <div>
-      <h1 class="m-0" style="color: #0B3558; font-size: 1.75rem; font-weight: 700;">{{ t('settings.title') }}</h1>
+    <!-- ── Header ─────────────────────────────────────────────────── -->
+    <div class="flex align-items-start justify-content-between flex-wrap gap-3">
+      <div>
+        <h1 class="m-0" style="color: #0B3558; font-size: 1.5rem; font-weight: 700;">{{ t('settings.title') }}</h1>
+        <p class="m-0 mt-1" style="color: #64748B; font-size: 0.82rem;">Gestiona tu perfil, usuarios y preferencias del sistema</p>
+      </div>
+      <!-- User avatar chip -->
+      <div v-if="iamStore.currentUser" class="flex align-items-center gap-3 px-4 py-2 border-round-xl" style="background-color: #ffffff; border: 1px solid #E2E8F0; box-shadow: 0 1px 4px rgba(0,0,0,0.04);">
+        <div class="flex align-items-center justify-content-center border-circle flex-shrink-0" style="width: 36px; height: 36px; background: linear-gradient(135deg, #0E7490, #0B3558); font-size: 0.8rem; font-weight: 700; color: #fff;">
+          {{ iamStore.currentUser.initials }}
+        </div>
+        <div>
+          <p class="m-0" style="font-size: 0.85rem; font-weight: 600; color: #0B3558;">{{ iamStore.currentUser.fullName }}</p>
+          <p class="m-0" style="font-size: 0.72rem; color: #64748B;">{{ iamStore.currentUser.email }}</p>
+        </div>
+      </div>
     </div>
 
-    <!-- Tabs (horizontal scroll on mobile) -->
-    <div style="overflow-x: auto;">
-      <div
-          class="flex"
-          style="gap: 2px; background-color: #F1F5F9; border-radius: 12px; padding: 4px; width: fit-content; min-width: 100%;"
-      >
+    <!-- ── Tabs ────────────────────────────────────────────────────── -->
+    <div style="overflow-x: auto; -ms-overflow-style: none; scrollbar-width: none;">
+      <div class="flex" style="gap: 2px; background-color: #F1F5F9; border-radius: 12px; padding: 4px; width: fit-content; min-width: 100%;">
         <button
             v-for="tab in tabs"
             :key="tab.key"
             class="flex align-items-center gap-2 px-4 py-2 border-round-lg border-none cursor-pointer"
-            style="white-space: nowrap; font-size: 0.875rem; transition: all 0.15s;"
+            style="white-space: nowrap; font-size: 0.875rem; transition: all 0.18s;"
             :style="{
-                        backgroundColor: activeTab === tab.key ? '#ffffff' : 'transparent',
-                        color:           activeTab === tab.key ? '#0B3558' : '#64748B',
-                        fontWeight:      activeTab === tab.key ? 600 : 400,
-                        boxShadow:       activeTab === tab.key ? '0 1px 3px rgba(0,0,0,0.1)' : 'none'
-                    }"
+              backgroundColor: activeTab === tab.key ? '#ffffff' : 'transparent',
+              color:           activeTab === tab.key ? '#0B3558' : '#64748B',
+              fontWeight:      activeTab === tab.key ? 700 : 400,
+              boxShadow:       activeTab === tab.key ? '0 1px 6px rgba(0,0,0,0.10)' : 'none'
+            }"
             @click="activeTab = tab.key"
         >
-          <i :class="tab.icon" style="font-size: 0.9rem;"/>
+          <i :class="tab.icon" style="font-size: 0.88rem;" :style="{ color: activeTab === tab.key ? '#0E7490' : '#94A3B8' }"/>
           {{ t(tab.labelKey) }}
         </button>
       </div>
     </div>
 
-    <!-- ── Profile tab ──────────────────────────────────────────────── -->
-    <div v-if="activeTab === 'profile'" class="p-5 border-round-xl shadow-1" style="background-color: #ffffff;">
-      <h3 class="m-0 mb-5" style="color: #0B3558;">{{ t('settings.profile-title') }}</h3>
-      <div class="grid m-0" style="gap: 1.25rem;">
-        <div class="col-12 md:col-6 p-0">
-          <label class="block mb-2" style="color: #1E293B; font-size: 0.875rem; font-weight: 500;">{{ t('settings.field-business-name') }}</label>
-          <input v-model="profileForm.businessName" type="text"
-                 style="width: 100%; border-radius: 10px; padding: 10px 14px; background-color: #F1F5F9; border: 1.5px solid #E2E8F0; color: #0B3558; font-size: 0.92rem; outline: none; box-sizing: border-box;"
-                 @focus="(e) => { e.target.style.borderColor = '#0E7490'; e.target.style.backgroundColor = '#fff'; }"
-                 @blur="(e) => { e.target.style.borderColor = '#E2E8F0'; e.target.style.backgroundColor = '#F1F5F9'; }"
-          />
-        </div>
-        <div class="col-12 md:col-6 p-0">
-          <label class="block mb-2" style="color: #1E293B; font-size: 0.875rem; font-weight: 500;">{{ t('settings.field-address') }}</label>
-          <input v-model="profileForm.address" type="text"
-                 style="width: 100%; border-radius: 10px; padding: 10px 14px; background-color: #F1F5F9; border: 1.5px solid #E2E8F0; color: #0B3558; font-size: 0.92rem; outline: none; box-sizing: border-box;"
-                 @focus="(e) => { e.target.style.borderColor = '#0E7490'; e.target.style.backgroundColor = '#fff'; }"
-                 @blur="(e) => { e.target.style.borderColor = '#E2E8F0'; e.target.style.backgroundColor = '#F1F5F9'; }"
-          />
-        </div>
-        <div class="col-12 md:col-6 p-0">
-          <label class="block mb-2" style="color: #1E293B; font-size: 0.875rem; font-weight: 500;">{{ t('settings.field-full-name') }}</label>
-          <input v-model="profileForm.fullName" type="text"
-                 style="width: 100%; border-radius: 10px; padding: 10px 14px; background-color: #F1F5F9; border: 1.5px solid #E2E8F0; color: #0B3558; font-size: 0.92rem; outline: none; box-sizing: border-box;"
-                 @focus="(e) => { e.target.style.borderColor = '#0E7490'; e.target.style.backgroundColor = '#fff'; }"
-                 @blur="(e) => { e.target.style.borderColor = '#E2E8F0'; e.target.style.backgroundColor = '#F1F5F9'; }"
-          />
-        </div>
-        <div class="col-12 md:col-6 p-0">
-          <label class="block mb-2" style="color: #1E293B; font-size: 0.875rem; font-weight: 500;">{{ t('settings.field-phone') }}</label>
-          <input v-model="profileForm.phone" type="tel"
-                 style="width: 100%; border-radius: 10px; padding: 10px 14px; background-color: #F1F5F9; border: 1.5px solid #E2E8F0; color: #0B3558; font-size: 0.92rem; outline: none; box-sizing: border-box;"
-                 @focus="(e) => { e.target.style.borderColor = '#0E7490'; e.target.style.backgroundColor = '#fff'; }"
-                 @blur="(e) => { e.target.style.borderColor = '#E2E8F0'; e.target.style.backgroundColor = '#F1F5F9'; }"
-          />
+    <!-- ══════════════════════════════════════════════════════════════
+         TAB: PROFILE
+    ═══════════════════════════════════════════════════════════════ -->
+    <div v-if="activeTab === 'profile'" class="border-round-xl overflow-hidden" style="background-color: #ffffff; border: 1px solid #E2E8F0; box-shadow: 0 1px 6px rgba(0,0,0,0.05);">
+
+      <!-- Profile avatar header -->
+      <div style="background: linear-gradient(135deg, #0B3558, #0E7490); padding: 2rem 1.5rem 3.5rem;">
+        <div class="flex align-items-center gap-4">
+          <div class="flex align-items-center justify-content-center border-circle" style="width: 72px; height: 72px; background-color: rgba(255,255,255,0.15); backdrop-filter: blur(4px); border: 3px solid rgba(255,255,255,0.3); font-size: 1.6rem; font-weight: 700; color: #fff; flex-shrink: 0;">
+            {{ iamStore.currentUser ? iamStore.currentUser.initials : '?' }}
+          </div>
+          <div>
+            <p class="m-0" style="font-size: 1.1rem; font-weight: 700; color: #fff;">{{ iamStore.currentUser ? iamStore.currentUser.fullName : '—' }}</p>
+            <p class="m-0 mt-1" style="font-size: 0.82rem; color: rgba(255,255,255,0.7);">{{ iamStore.currentUser ? iamStore.currentUser.email : '—' }}</p>
+            <span class="inline-block mt-2 border-round-3xl px-2 py-1" style="background-color: rgba(255,255,255,0.15); font-size: 0.72rem; font-weight: 600; color: #7DD3E8;">Administrador</span>
+          </div>
         </div>
       </div>
-      <div class="flex justify-content-end mt-5 pt-4" style="border-top: 1px solid #E2E8F0;">
+
+      <!-- Form area (pulled up with negative margin) -->
+      <div class="px-5 pb-5" style="margin-top: -1.5rem;">
+        <div class="border-round-xl p-5" style="background-color: #fff; border: 1px solid #E2E8F0; box-shadow: 0 2px 12px rgba(0,0,0,0.06);">
+          <div class="flex align-items-center gap-2 mb-4">
+            <i class="pi pi-building" style="color: #0E7490; font-size: 0.9rem;"/>
+            <p class="m-0" style="font-size: 0.9rem; font-weight: 700; color: #0B3558;">{{ t('settings.profile-title') }}</p>
+          </div>
+          <div class="settings-form-grid">
+            <div class="settings-field">
+              <label class="settings-label"><i class="pi pi-building" style="font-size: 0.7rem;"/> {{ t('settings.field-business-name') }}</label>
+              <input v-model="profileForm.businessName" type="text" class="settings-input"/>
+            </div>
+            <div class="settings-field">
+              <label class="settings-label"><i class="pi pi-map-marker" style="font-size: 0.7rem;"/> {{ t('settings.field-address') }}</label>
+              <input v-model="profileForm.address" type="text" class="settings-input"/>
+            </div>
+            <div class="settings-field">
+              <label class="settings-label"><i class="pi pi-user" style="font-size: 0.7rem;"/> {{ t('settings.field-full-name') }}</label>
+              <input v-model="profileForm.fullName" type="text" class="settings-input"/>
+            </div>
+            <div class="settings-field">
+              <label class="settings-label"><i class="pi pi-phone" style="font-size: 0.7rem;"/> {{ t('settings.field-phone') }}</label>
+              <input v-model="profileForm.phone" type="tel" class="settings-input"/>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-content-end px-5 pb-5 pt-2">
         <button
-            class="flex align-items-center gap-2 px-5 py-2 border-round-lg border-none cursor-pointer"
-            style="background-color: #0B3558; color: #FAFAF7; font-size: 0.9rem; font-weight: 600;"
-            @mouseenter="(e) => e.currentTarget.style.backgroundColor = '#0E7490'"
-            @mouseleave="(e) => e.currentTarget.style.backgroundColor = '#0B3558'"
+            class="flex align-items-center gap-2 px-5 py-2 border-round-xl border-none cursor-pointer"
+            style="background: linear-gradient(135deg, #0E7490, #0B3558); color: #fff; font-size: 0.9rem; font-weight: 700; box-shadow: 0 2px 10px rgba(14,116,144,0.3); transition: all 0.18s;"
+            @mouseenter="(e) => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(14,116,144,0.45)'; e.currentTarget.style.transform = 'translateY(-1px)'; }"
+            @mouseleave="(e) => { e.currentTarget.style.boxShadow = '0 2px 10px rgba(14,116,144,0.3)'; e.currentTarget.style.transform = 'translateY(0)'; }"
         >
           <i class="pi pi-check"/>
           {{ t('settings.save-changes') }}
@@ -226,61 +194,69 @@ function submitPasswordChange() {
       </div>
     </div>
 
-    <!-- ── Users tab ────────────────────────────────────────────────── -->
-    <div v-if="activeTab === 'users'" class="p-5 border-round-xl shadow-1" style="background-color: #ffffff;">
-      <div class="flex align-items-center justify-content-between mb-5">
-        <h3 class="m-0" style="color: #0B3558;">{{ t('settings.users-title') }}</h3>
+    <!-- ══════════════════════════════════════════════════════════════
+         TAB: USERS
+    ═══════════════════════════════════════════════════════════════ -->
+    <div v-if="activeTab === 'users'" class="border-round-xl overflow-hidden" style="background-color: #ffffff; border: 1px solid #E2E8F0; box-shadow: 0 1px 6px rgba(0,0,0,0.05);">
+      <!-- Header row -->
+      <div class="flex align-items-center justify-content-between px-5 py-4" style="border-bottom: 1px solid #E2E8F0; background-color: #F8FAFC;">
+        <div class="flex align-items-center gap-2">
+          <i class="pi pi-users" style="color: #0E7490; font-size: 0.9rem;"/>
+          <h3 class="m-0" style="color: #0B3558; font-size: 0.92rem; font-weight: 700;">{{ t('settings.users-title') }}</h3>
+          <span v-if="usersLoaded" class="border-round-3xl px-2" style="background-color: #E0F2FE; color: #0E7490; font-size: 0.7rem; font-weight: 700; padding: 2px 8px;">{{ users.length }}</span>
+        </div>
         <button
-            class="flex align-items-center gap-2 px-4 py-2 border-round-lg border-none cursor-pointer"
-            style="background-color: #0B3558; color: #FAFAF7; font-size: 0.875rem; font-weight: 600;"
-            @mouseenter="(e) => e.currentTarget.style.backgroundColor = '#0E7490'"
-            @mouseleave="(e) => e.currentTarget.style.backgroundColor = '#0B3558'"
+            class="flex align-items-center gap-2 px-4 py-2 border-round-xl border-none cursor-pointer"
+            style="background: linear-gradient(135deg, #0E7490, #0B3558); color: #fff; font-size: 0.82rem; font-weight: 700; box-shadow: 0 2px 8px rgba(14,116,144,0.3); transition: all 0.18s;"
+            @mouseenter="(e) => { e.currentTarget.style.boxShadow = '0 4px 14px rgba(14,116,144,0.45)'; e.currentTarget.style.transform = 'translateY(-1px)'; }"
+            @mouseleave="(e) => { e.currentTarget.style.boxShadow = '0 2px 8px rgba(14,116,144,0.3)'; e.currentTarget.style.transform = 'translateY(0)'; }"
         >
-          <i class="pi pi-plus" style="font-size: 0.85rem;"/>
+          <i class="pi pi-user-plus" style="font-size: 0.82rem;"/>
           {{ t('settings.invite-user') }}
         </button>
       </div>
 
       <!-- Loading -->
-      <div v-if="!usersLoaded" class="flex justify-content-center py-6">
-        <i class="pi pi-spin pi-spinner" style="font-size: 1.5rem; color: #0E7490;"/>
+      <div v-if="!usersLoaded" class="flex justify-content-center align-items-center gap-3 py-8">
+        <i class="pi pi-spin pi-spinner" style="font-size: 1.3rem; color: #0E7490;"/>
+        <span style="color: #64748B; font-size: 0.88rem;">Cargando usuarios…</span>
       </div>
 
-      <!-- Users list (card view on mobile, table on desktop) -->
       <div v-else>
         <!-- Mobile: card list -->
-        <div class="lg:hidden" style="display: flex; flex-direction: column; gap: 0.75rem;">
+        <div class="lg:hidden" style="display: flex; flex-direction: column;">
           <div
-              v-for="userAccount in users"
+              v-for="(userAccount, index) in users"
               :key="userAccount.id"
-              class="flex align-items-start gap-3 p-3 border-round-lg"
-              style="border: 1px solid #E2E8F0;"
+              class="flex align-items-start gap-3 p-4"
+              :style="{ borderBottom: index < users.length - 1 ? '1px solid #F1F5F9' : 'none' }"
           >
-            <div
-                class="flex align-items-center justify-content-center border-circle flex-shrink-0"
-                style="width: 36px; height: 36px; background-color: #0E7490; font-size: 0.75rem; font-weight: 700; color: #fff;"
-            >
+            <div class="flex align-items-center justify-content-center border-circle flex-shrink-0" style="width: 40px; height: 40px; background: linear-gradient(135deg, #0E7490, #0B3558); font-size: 0.8rem; font-weight: 700; color: #fff;">
               {{ userAccount.initials }}
             </div>
             <div style="flex: 1; min-width: 0;">
-              <p class="m-0" style="color: #1E293B; font-weight: 600; font-size: 0.9rem;">{{ userAccount.fullName }}</p>
+              <p class="m-0" style="color: #1E293B; font-weight: 700; font-size: 0.9rem;">{{ userAccount.fullName }}</p>
               <p class="m-0 mt-1" style="color: #64748B; font-size: 0.78rem;">{{ userAccount.email }}</p>
               <div class="flex align-items-center gap-2 mt-2 flex-wrap">
-                                <span class="border-round px-2 py-1" style="font-size: 0.72rem; font-weight: 600; background-color: #EDE9FE; color: #7C3AED;">
-                                    {{ resolveRoleLabel(userAccount.roleId) }}
-                                </span>
                 <span
-                    class="border-round px-2 py-1"
-                    style="font-size: 0.72rem; font-weight: 600;"
+                    class="border-round-2xl px-2 py-1"
+                    style="font-size: 0.7rem; font-weight: 700; display: inline-block;"
+                    :style="{ backgroundColor: resolveRoleStyle(userAccount.roleId).bg, color: resolveRoleStyle(userAccount.roleId).color }"
+                >
+                  {{ resolveRoleLabel(userAccount.roleId) }}
+                </span>
+                <span
+                    class="border-round-2xl px-2 py-1"
+                    style="font-size: 0.7rem; font-weight: 700; display: inline-block;"
                     :style="{ backgroundColor: resolveStatusStyle(userAccount.status).background, color: resolveStatusStyle(userAccount.status).color }"
                 >
-                                    {{ resolveStatusStyle(userAccount.status).label }}
-                                </span>
+                  {{ resolveStatusStyle(userAccount.status).label }}
+                </span>
               </div>
             </div>
             <button
-                class="flex align-items-center justify-content-center border-round border-none cursor-pointer flex-shrink-0"
-                style="width: 30px; height: 30px; background: none;"
+                class="flex align-items-center justify-content-center border-round-lg border-none cursor-pointer flex-shrink-0"
+                style="width: 32px; height: 32px; background: none; transition: background-color 0.15s;"
                 @click="confirmDeleteUser(userAccount)"
                 @mouseenter="(e) => e.currentTarget.style.backgroundColor = '#FEE2E2'"
                 @mouseleave="(e) => e.currentTarget.style.backgroundColor = 'transparent'"
@@ -294,55 +270,56 @@ function submitPasswordChange() {
         <div class="hidden lg:block" style="overflow-x: auto;">
           <table style="width: 100%; border-collapse: collapse;">
             <thead>
-            <tr style="border-bottom: 1px solid #E2E8F0;">
-              <th class="py-2 px-3 text-left" style="color: #64748B; font-size: 0.8rem; font-weight: 500;">{{ t('settings.col-name') }}</th>
-              <th class="py-2 px-3 text-left" style="color: #64748B; font-size: 0.8rem; font-weight: 500;">{{ t('settings.col-email') }}</th>
-              <th class="py-2 px-3 text-left" style="color: #64748B; font-size: 0.8rem; font-weight: 500;">{{ t('settings.col-role') }}</th>
-              <th class="py-2 px-3 text-left" style="color: #64748B; font-size: 0.8rem; font-weight: 500;">{{ t('settings.col-status') }}</th>
-              <th class="py-2 px-3 text-right" style="color: #64748B; font-size: 0.8rem; font-weight: 500;">{{ t('settings.col-actions') }}</th>
+            <tr style="background: linear-gradient(to right, #F8FAFC, #F1F5F9); border-bottom: 2px solid #E2E8F0;">
+              <th v-for="col in [t('settings.col-name'), t('settings.col-email'), t('settings.col-role'), t('settings.col-status'), t('settings.col-actions')]"
+                  :key="col" class="py-3 px-4 text-left"
+                  style="color: #64748B; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; white-space: nowrap;"
+                  :style="{ textAlign: col === t('settings.col-actions') ? 'right' : 'left' }"
+              >{{ col }}</th>
             </tr>
             </thead>
             <tbody>
             <tr
                 v-for="userAccount in users"
                 :key="userAccount.id"
-                style="border-bottom: 1px solid #F1F5F9; transition: background-color 0.15s;"
-                @mouseenter="(e) => e.currentTarget.style.backgroundColor = '#FAFAF7'"
-                @mouseleave="(e) => e.currentTarget.style.backgroundColor = 'transparent'"
+                class="user-row"
+                style="border-bottom: 1px solid #F1F5F9; transition: background-color 0.1s;"
             >
-              <td class="py-3 px-3">
-                <div class="flex align-items-center gap-2">
-                  <div
-                      class="flex align-items-center justify-content-center border-circle flex-shrink-0"
-                      style="width: 32px; height: 32px; background-color: #0E7490; font-size: 0.68rem; font-weight: 700; color: #fff;"
-                  >
+              <td class="py-3 px-4">
+                <div class="flex align-items-center gap-3">
+                  <div class="flex align-items-center justify-content-center border-circle flex-shrink-0" style="width: 34px; height: 34px; background: linear-gradient(135deg, #0E7490, #0B3558); font-size: 0.72rem; font-weight: 700; color: #fff;">
                     {{ userAccount.initials }}
                   </div>
-                  <span style="color: #1E293B; font-weight: 500; font-size: 0.9rem;">{{ userAccount.fullName }}</span>
+                  <span style="color: #1E293B; font-weight: 600; font-size: 0.88rem;">{{ userAccount.fullName }}</span>
                 </div>
               </td>
-              <td class="py-3 px-3" style="color: #64748B; font-size: 0.875rem;">{{ userAccount.email }}</td>
-              <td class="py-3 px-3">
-                                    <span class="border-round px-2 py-1" style="font-size: 0.72rem; font-weight: 600; background-color: #EDE9FE; color: #7C3AED;">
-                                        {{ resolveRoleLabel(userAccount.roleId) }}
-                                    </span>
+              <td class="py-3 px-4" style="color: #64748B; font-size: 0.875rem;">{{ userAccount.email }}</td>
+              <td class="py-3 px-4">
+                <span
+                    class="border-round-2xl px-3 py-1"
+                    style="font-size: 0.7rem; font-weight: 700; display: inline-block;"
+                    :style="{ backgroundColor: resolveRoleStyle(userAccount.roleId).bg, color: resolveRoleStyle(userAccount.roleId).color }"
+                >
+                  {{ resolveRoleLabel(userAccount.roleId) }}
+                </span>
               </td>
-              <td class="py-3 px-3">
-                                    <span
-                                        class="border-round px-2 py-1"
-                                        style="font-size: 0.72rem; font-weight: 600;"
-                                        :style="{ backgroundColor: resolveStatusStyle(userAccount.status).background, color: resolveStatusStyle(userAccount.status).color }"
-                                    >
-                                        {{ resolveStatusStyle(userAccount.status).label }}
-                                    </span>
+              <td class="py-3 px-4">
+                <span
+                    class="border-round-2xl px-3 py-1 inline-flex align-items-center gap-1"
+                    style="font-size: 0.7rem; font-weight: 700;"
+                    :style="{ backgroundColor: resolveStatusStyle(userAccount.status).background, color: resolveStatusStyle(userAccount.status).color }"
+                >
+                  <span style="width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0;" :style="{ backgroundColor: resolveStatusStyle(userAccount.status).color }"/>
+                  {{ resolveStatusStyle(userAccount.status).label }}
+                </span>
               </td>
-              <td class="py-3 px-3 text-right">
+              <td class="py-3 px-4 text-right">
                 <button
-                    class="flex align-items-center justify-content-center border-round border-none cursor-pointer ml-auto"
-                    style="width: 30px; height: 30px; background: none;"
+                    class="flex align-items-center justify-content-center border-round-lg border-none cursor-pointer ml-auto"
+                    style="width: 32px; height: 32px; background: none; transition: all 0.15s;"
                     @click="confirmDeleteUser(userAccount)"
-                    @mouseenter="(e) => e.currentTarget.style.backgroundColor = '#FEE2E2'"
-                    @mouseleave="(e) => e.currentTarget.style.backgroundColor = 'transparent'"
+                    @mouseenter="(e) => { e.currentTarget.style.backgroundColor = '#FEE2E2'; e.currentTarget.style.transform = 'scale(1.1)'; }"
+                    @mouseleave="(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.transform = 'scale(1)'; }"
                 >
                   <i class="pi pi-trash" style="color: #EF4444; font-size: 0.85rem;"/>
                 </button>
@@ -350,125 +327,213 @@ function submitPasswordChange() {
             </tr>
             </tbody>
           </table>
+          <div v-if="!users.length" class="flex flex-column align-items-center py-10 gap-3">
+            <div class="flex align-items-center justify-content-center border-round-xl" style="width: 56px; height: 56px; background-color: #F1F5F9;">
+              <i class="pi pi-users" style="font-size: 1.5rem; color: #CBD5E1;"/>
+            </div>
+            <p class="m-0" style="color: #94A3B8; font-size: 0.88rem;">No hay usuarios registrados</p>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- ── Preferences tab ─────────────────────────────────────────── -->
-    <div v-if="activeTab === 'preferences'" class="p-5 border-round-xl shadow-1" style="background-color: #ffffff;">
-      <h3 class="m-0 mb-5" style="color: #0B3558;">{{ t('settings.preferences-title') }}</h3>
-      <div style="display: flex; flex-direction: column; gap: 1.5rem;">
-        <div class="flex align-items-center justify-content-between p-4 border-round-lg" style="border: 1px solid #E2E8F0;">
-          <div>
-            <p class="m-0" style="color: #1E293B; font-weight: 500;">{{ t('settings.language-label') }}</p>
+    <!-- ══════════════════════════════════════════════════════════════
+         TAB: PREFERENCES
+    ═══════════════════════════════════════════════════════════════ -->
+    <div v-if="activeTab === 'preferences'" class="border-round-xl overflow-hidden" style="background-color: #ffffff; border: 1px solid #E2E8F0; box-shadow: 0 1px 6px rgba(0,0,0,0.05);">
+      <div class="px-5 py-4 flex align-items-center gap-2" style="border-bottom: 1px solid #E2E8F0; background-color: #F8FAFC;">
+        <i class="pi pi-sliders-h" style="color: #0E7490; font-size: 0.9rem;"/>
+        <h3 class="m-0" style="color: #0B3558; font-size: 0.92rem; font-weight: 700;">{{ t('settings.preferences-title') }}</h3>
+      </div>
+      <div class="px-5 py-4" style="display: flex; flex-direction: column; gap: 0;">
+
+        <!-- Language row -->
+        <div class="flex align-items-center justify-content-between py-4" style="border-bottom: 1px solid #F1F5F9;">
+          <div class="flex align-items-center gap-3">
+            <div class="flex align-items-center justify-content-center border-round-lg flex-shrink-0" style="width: 40px; height: 40px; background-color: #E0F2FE;">
+              <i class="pi pi-globe" style="color: #0E7490; font-size: 1rem;"/>
+            </div>
+            <div>
+              <p class="m-0" style="color: #1E293B; font-weight: 600; font-size: 0.9rem;">{{ t('settings.language-label') }}</p>
+              <p class="m-0 mt-1" style="color: #64748B; font-size: 0.78rem;">Idioma de la interfaz</p>
+            </div>
           </div>
           <language-switcher/>
         </div>
-        <div class="flex align-items-start justify-content-between p-4 border-round-lg" style="border: 1px solid #E2E8F0;">
-          <div style="flex: 1; padding-right: 1rem;">
-            <p class="m-0" style="color: #1E293B; font-weight: 500;">{{ t('settings.notifications-label') }}</p>
-            <p class="m-0 mt-1" style="color: #64748B; font-size: 0.85rem;">{{ t('settings.notifications-desc') }}</p>
+
+        <!-- Notifications row -->
+        <div class="flex align-items-start justify-content-between py-4">
+          <div class="flex align-items-start gap-3">
+            <div class="flex align-items-center justify-content-center border-round-lg flex-shrink-0" style="width: 40px; height: 40px;" :style="{ backgroundColor: notificationsEnabled ? '#DCFCE7' : '#F1F5F9' }">
+              <i class="pi pi-bell" style="font-size: 1rem;" :style="{ color: notificationsEnabled ? '#16A34A' : '#94A3B8' }"/>
+            </div>
+            <div style="padding-right: 1rem;">
+              <p class="m-0" style="color: #1E293B; font-weight: 600; font-size: 0.9rem;">{{ t('settings.notifications-label') }}</p>
+              <p class="m-0 mt-1" style="color: #64748B; font-size: 0.78rem; line-height: 1.4;">{{ t('settings.notifications-desc') }}</p>
+            </div>
           </div>
+          <!-- Toggle -->
           <button
               type="button"
               class="flex-shrink-0"
-              style="width: 44px; height: 24px; border-radius: 12px; border: none; cursor: pointer; transition: background-color 0.2s; position: relative;"
+              style="width: 48px; height: 26px; border-radius: 13px; border: none; cursor: pointer; transition: background-color 0.2s; position: relative; margin-top: 2px;"
               :style="{ backgroundColor: notificationsEnabled ? '#0E7490' : '#CBD5E1' }"
               @click="notificationsEnabled = !notificationsEnabled"
           >
-                        <span
-                            class="absolute"
-                            style="width: 18px; height: 18px; border-radius: 50%; background-color: #fff; top: 3px; transition: left 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2);"
-                            :style="{ left: notificationsEnabled ? '23px' : '3px' }"
-                        />
+            <span
+                class="absolute"
+                style="width: 20px; height: 20px; border-radius: 50%; background-color: #fff; top: 3px; transition: left 0.2s; box-shadow: 0 1px 4px rgba(0,0,0,0.25);"
+                :style="{ left: notificationsEnabled ? '25px' : '3px' }"
+            />
           </button>
         </div>
       </div>
     </div>
 
-    <!-- ── Security tab ─────────────────────────────────────────────── -->
-    <div v-if="activeTab === 'security'" class="p-5 border-round-xl shadow-1" style="background-color: #ffffff;">
-      <h3 class="m-0 mb-5" style="color: #0B3558;">{{ t('settings.security-title') }}</h3>
-
-      <div v-if="securitySuccess" class="p-3 border-round-lg mb-4" style="background-color: #DCFCE7; border: 1px solid #22C55E;">
-        <p class="m-0" style="color: #16A34A; font-size: 0.875rem;">{{ t('settings.success-password') }}</p>
+    <!-- ══════════════════════════════════════════════════════════════
+         TAB: SECURITY
+    ═══════════════════════════════════════════════════════════════ -->
+    <div v-if="activeTab === 'security'" class="border-round-xl overflow-hidden" style="background-color: #ffffff; border: 1px solid #E2E8F0; box-shadow: 0 1px 6px rgba(0,0,0,0.05);">
+      <div class="px-5 py-4 flex align-items-center gap-2" style="border-bottom: 1px solid #E2E8F0; background-color: #F8FAFC;">
+        <i class="pi pi-shield" style="color: #0E7490; font-size: 0.9rem;"/>
+        <h3 class="m-0" style="color: #0B3558; font-size: 0.92rem; font-weight: 700;">{{ t('settings.security-title') }}</h3>
       </div>
+      <div class="p-5">
 
-      <form @submit.prevent="submitPasswordChange" style="display: flex; flex-direction: column; gap: 1rem; max-width: 480px;">
-        <div v-for="field in [
-                    { key: 'currentPassword', labelKey: 'settings.current-password' },
-                    { key: 'newPassword',     labelKey: 'settings.new-password'     },
-                    { key: 'confirmPassword', labelKey: 'settings.confirm-password' }
-                ]" :key="field.key" style="display: flex; flex-direction: column; gap: 6px;">
-          <label style="font-size: 0.875rem; font-weight: 500; color: #1E293B;">{{ t(field.labelKey) }}</label>
-          <input
-              v-model="securityForm[field.key]"
-              type="password"
-              style="border-radius: 10px; padding: 10px 14px; background-color: #F1F5F9; border: 1.5px solid #E2E8F0; color: #0B3558; font-size: 0.92rem; outline: none;"
-              @focus="(e) => { e.target.style.borderColor = '#0E7490'; e.target.style.backgroundColor = '#fff'; }"
-              @blur="(e) => { e.target.style.borderColor = '#E2E8F0'; e.target.style.backgroundColor = '#F1F5F9'; }"
-          />
-          <p v-if="securityErrors[field.key]" class="m-0" style="color: #EF4444; font-size: 0.78rem;">
-            {{ securityErrors[field.key] }}
-          </p>
+        <!-- Success banner -->
+        <div v-if="securitySuccess" class="flex align-items-center gap-3 p-4 border-round-xl mb-4" style="background-color: #F0FDF4; border: 1.5px solid #86EFAC;">
+          <div class="flex align-items-center justify-content-center border-round-lg flex-shrink-0" style="width: 36px; height: 36px; background-color: #DCFCE7;">
+            <i class="pi pi-check-circle" style="color: #16A34A; font-size: 1rem;"/>
+          </div>
+          <p class="m-0" style="color: #15803D; font-size: 0.9rem; font-weight: 600;">{{ t('settings.success-password') }}</p>
         </div>
-        <button
-            type="submit"
-            class="flex align-items-center gap-2 px-5 py-2 border-round-lg border-none cursor-pointer mt-2"
-            style="background-color: #0B3558; color: #FAFAF7; font-size: 0.9rem; font-weight: 600; width: fit-content;"
-            @mouseenter="(e) => e.currentTarget.style.backgroundColor = '#0E7490'"
-            @mouseleave="(e) => e.currentTarget.style.backgroundColor = '#0B3558'"
-        >
-          <i class="pi pi-lock"/>
-          {{ t('settings.change-password') }}
-        </button>
-      </form>
+
+        <form @submit.prevent="submitPasswordChange" style="max-width: 480px; display: flex; flex-direction: column; gap: 1.25rem;">
+          <!-- Current password -->
+          <div class="settings-field">
+            <label class="settings-label"><i class="pi pi-lock" style="font-size: 0.7rem;"/> {{ t('settings.current-password') }}</label>
+            <input v-model="securityForm.currentPassword" type="password" class="settings-input"/>
+            <p v-if="securityErrors.currentPassword" class="settings-error"><i class="pi pi-exclamation-circle" style="font-size: 0.7rem;"/> {{ securityErrors.currentPassword }}</p>
+          </div>
+
+          <!-- New password + strength -->
+          <div class="settings-field">
+            <label class="settings-label"><i class="pi pi-key" style="font-size: 0.7rem;"/> {{ t('settings.new-password') }}</label>
+            <div class="relative">
+              <input v-model="securityForm.newPassword" :type="showNewPassword ? 'text' : 'password'" class="settings-input" style="padding-right: 44px;"/>
+              <button type="button" class="absolute" style="right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #94A3B8; cursor: pointer; padding: 4px; border-radius: 6px; display: flex; transition: color 0.15s;"
+                @click="showNewPassword = !showNewPassword"
+                @mouseenter="(e) => e.currentTarget.style.color = '#0E7490'"
+                @mouseleave="(e) => e.currentTarget.style.color = '#94A3B8'"
+              >
+                <i :class="showNewPassword ? 'pi pi-eye-slash' : 'pi pi-eye'" style="font-size: 0.9rem;"/>
+              </button>
+            </div>
+            <div v-if="securityForm.newPassword.length > 0" class="flex align-items-center gap-2 mt-1">
+              <div class="flex gap-1 flex-1">
+                <div v-for="i in [1,2,3,4]" :key="i" class="flex-1 border-round-lg" style="height: 4px; transition: background-color 0.3s;"
+                  :style="{ backgroundColor: computePasswordStrength(securityForm.newPassword) >= i ? strengthColors[computePasswordStrength(securityForm.newPassword)] : '#E2E8F0' }"
+                />
+              </div>
+              <span style="font-size: 0.72rem; font-weight: 600; min-width: 42px; text-align: right;" :style="{ color: strengthColors[computePasswordStrength(securityForm.newPassword)] }">
+                {{ strengthLabels[computePasswordStrength(securityForm.newPassword)] }}
+              </span>
+            </div>
+            <p v-if="securityErrors.newPassword" class="settings-error"><i class="pi pi-exclamation-circle" style="font-size: 0.7rem;"/> {{ securityErrors.newPassword }}</p>
+          </div>
+
+          <!-- Confirm password -->
+          <div class="settings-field">
+            <label class="settings-label"><i class="pi pi-check-circle" style="font-size: 0.7rem;"/> {{ t('settings.confirm-password') }}</label>
+            <input v-model="securityForm.confirmPassword" type="password" class="settings-input"/>
+            <p v-if="securityErrors.confirmPassword" class="settings-error"><i class="pi pi-exclamation-circle" style="font-size: 0.7rem;"/> {{ securityErrors.confirmPassword }}</p>
+          </div>
+
+          <button
+              type="submit"
+              class="flex align-items-center gap-2 px-5 py-2 border-round-xl border-none cursor-pointer"
+              style="background: linear-gradient(135deg, #0E7490, #0B3558); color: #fff; font-size: 0.9rem; font-weight: 700; width: fit-content; box-shadow: 0 2px 10px rgba(14,116,144,0.3); transition: all 0.18s;"
+              @mouseenter="(e) => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(14,116,144,0.45)'; e.currentTarget.style.transform = 'translateY(-1px)'; }"
+              @mouseleave="(e) => { e.currentTarget.style.boxShadow = '0 2px 10px rgba(14,116,144,0.3)'; e.currentTarget.style.transform = 'translateY(0)'; }"
+          >
+            <i class="pi pi-lock"/>
+            {{ t('settings.change-password') }}
+          </button>
+        </form>
+      </div>
     </div>
 
-    <!-- ── Plan tab ─────────────────────────────────────────────────── -->
-    <div v-if="activeTab === 'plan'" class="p-5 border-round-xl shadow-1" style="background-color: #ffffff;">
-      <h3 class="m-0 mb-5" style="color: #0B3558;">{{ t('settings.plan-title') }}</h3>
-      <div class="grid m-0" style="gap: 1rem;">
+    <!-- ══════════════════════════════════════════════════════════════
+         TAB: PLAN
+    ═══════════════════════════════════════════════════════════════ -->
+    <div v-if="activeTab === 'plan'">
+      <div class="flex align-items-center gap-2 mb-4">
+        <i class="pi pi-crown" style="color: #0E7490; font-size: 0.9rem;"/>
+        <h3 class="m-0" style="color: #0B3558; font-size: 0.92rem; font-weight: 700;">{{ t('settings.plan-title') }}</h3>
+      </div>
+      <div class="plan-grid">
         <div
             v-for="plan in [
-                        { key: 'basic',      labelKey: 'settings.plan-basic',      price: '19.90', isCurrent: false, color: '#64748B', features: ['Inventario básico', 'Ventas POS', '1 almacén', 'Hasta 100 productos'] },
-                        { key: 'pro',        labelKey: 'settings.plan-pro',        price: '49.90', isCurrent: true,  color: '#0E7490', features: ['Todo el Plan Básico', 'Alertas inteligentes', '3 almacenes', 'Tracking IoT'] },
-                        { key: 'enterprise', labelKey: 'settings.plan-enterprise', price: '99.90', isCurrent: false, color: '#7C3AED', features: ['Todo el Plan Pro', 'Almacenes ilimitados', 'Soporte prioritario', 'Multi-negocio'] }
-                    ]"
+              { key: 'basic',      labelKey: 'settings.plan-basic',      price: '19.90', isCurrent: false,
+                color: '#64748B', gradFrom: '#64748B', gradTo: '#475569',
+                features: ['Inventario básico', 'Ventas POS', '1 almacén', 'Hasta 100 productos'] },
+              { key: 'pro',        labelKey: 'settings.plan-pro',        price: '49.90', isCurrent: true,
+                color: '#0E7490', gradFrom: '#0E7490', gradTo: '#0B3558',
+                features: ['Todo el Plan Básico', 'Alertas inteligentes', '3 almacenes', 'Tracking IoT'] },
+              { key: 'enterprise', labelKey: 'settings.plan-enterprise', price: '99.90', isCurrent: false,
+                color: '#7C3AED', gradFrom: '#7C3AED', gradTo: '#5B21B6',
+                features: ['Todo el Plan Pro', 'Almacenes ilimitados', 'Soporte prioritario', 'Multi-negocio'] }
+            ]"
             :key="plan.key"
-            class="col-12 md:col-4 p-0"
         >
           <div
-              class="p-4 border-round-xl h-full"
-              style="display: flex; flex-direction: column; gap: 1rem;"
+              class="border-round-xl overflow-hidden"
+              style="display: flex; flex-direction: column; height: 100%; transition: transform 0.18s, box-shadow 0.18s;"
               :style="{
-                            border:    plan.isCurrent ? `2px solid ${plan.color}` : '1.5px solid #E2E8F0',
-                            boxShadow: plan.isCurrent ? `0 0 0 3px rgba(14,116,144,0.12)` : 'none'
-                        }"
+                border:    plan.isCurrent ? `2px solid ${plan.color}` : '1.5px solid #E2E8F0',
+                boxShadow: plan.isCurrent ? `0 4px 24px ${plan.color}30` : '0 1px 4px rgba(0,0,0,0.05)'
+              }"
+              @mouseenter="(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = plan.isCurrent ? `0 8px 32px ${plan.color}40` : '0 6px 20px rgba(0,0,0,0.10)'; }"
+              @mouseleave="(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = plan.isCurrent ? `0 4px 24px ${plan.color}30` : '0 1px 4px rgba(0,0,0,0.05)'; }"
           >
-            <div>
-              <p class="m-0" style="font-size: 1rem; font-weight: 700;" :style="{ color: plan.color }">{{ t(plan.labelKey) }}</p>
-              <p class="m-0 mt-1" style="font-size: 1.4rem; font-weight: 700; color: #0B3558;">
+            <!-- Plan header with gradient -->
+            <div class="p-5" :style="{ background: `linear-gradient(135deg, ${plan.gradFrom}, ${plan.gradTo})` }">
+              <div class="flex align-items-start justify-content-between">
+                <p class="m-0" style="font-size: 1rem; font-weight: 700; color: #fff;">{{ t(plan.labelKey) }}</p>
+                <span v-if="plan.isCurrent" class="border-round-3xl px-2 py-1" style="background-color: rgba(255,255,255,0.2); font-size: 0.65rem; font-weight: 700; color: #fff; white-space: nowrap;">ACTUAL</span>
+              </div>
+              <p class="m-0 mt-3" style="font-size: 2rem; font-weight: 700; color: #fff; line-height: 1;">
                 {{ t('settings.plan-price', { price: plan.price }) }}
               </p>
             </div>
-            <div style="display: flex; flex-direction: column; gap: 6px; flex: 1;">
-              <div v-for="feature in plan.features" :key="feature" class="flex align-items-center gap-2">
-                <i class="pi pi-check" style="font-size: 0.8rem;" :style="{ color: plan.color }"/>
-                <span style="font-size: 0.82rem; color: #64748B;">{{ feature }}</span>
+
+            <!-- Features -->
+            <div class="p-5" style="flex: 1; background-color: #fff;">
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                <div v-for="feature in plan.features" :key="feature" class="flex align-items-center gap-2">
+                  <div class="flex align-items-center justify-content-center border-circle flex-shrink-0" style="width: 20px; height: 20px;" :style="{ backgroundColor: plan.color + '18' }">
+                    <i class="pi pi-check" style="font-size: 0.6rem;" :style="{ color: plan.color }"/>
+                  </div>
+                  <span style="font-size: 0.82rem; color: #64748B;">{{ feature }}</span>
+                </div>
               </div>
             </div>
-            <button
-                class="w-full py-2 border-round-lg border-none cursor-pointer"
-                style="font-size: 0.875rem; font-weight: 600; transition: all 0.15s;"
-                :style="{
-                                backgroundColor: plan.isCurrent ? '#F1F5F9' : plan.color,
-                                color:           plan.isCurrent ? '#64748B' : '#fff',
-                                cursor:          plan.isCurrent ? 'default' : 'pointer'
-                            }"
-            >
-              {{ plan.isCurrent ? t('settings.plan-current') : t('settings.plan-upgrade') }}
-            </button>
+
+            <!-- Action button -->
+            <div class="px-5 pb-5" style="background-color: #fff;">
+              <button
+                  class="w-full py-2 border-round-xl border-none cursor-pointer"
+                  style="font-size: 0.875rem; font-weight: 700; transition: all 0.18s;"
+                  :style="{
+                    background: plan.isCurrent ? '#F1F5F9' : `linear-gradient(135deg, ${plan.gradFrom}, ${plan.gradTo})`,
+                    color:      plan.isCurrent ? '#94A3B8' : '#fff',
+                    cursor:     plan.isCurrent ? 'default' : 'pointer',
+                    boxShadow:  plan.isCurrent ? 'none' : `0 2px 10px ${plan.color}30`
+                  }"
+              >
+                {{ plan.isCurrent ? t('settings.plan-current') : t('settings.plan-upgrade') }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -478,4 +543,58 @@ function submitPasswordChange() {
 </template>
 
 <style scoped>
+/* Settings form grid: 1-col mobile → 2-col desktop */
+.settings-form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+}
+@media (min-width: 640px) {
+  .settings-form-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.settings-field { display: flex; flex-direction: column; gap: 6px; }
+
+.settings-label {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 0.8rem; font-weight: 700; color: #374151;
+  letter-spacing: 0.02em;
+}
+
+.settings-input {
+  width: 100%; border-radius: 10px;
+  padding: 10px 14px;
+  background-color: #F8FAFC;
+  border: 1.5px solid #E2E8F0;
+  color: #0B3558; font-size: 0.9rem;
+  outline: none; transition: all 0.18s;
+  box-sizing: border-box; font-family: inherit;
+}
+.settings-input:focus {
+  border-color: #0E7490;
+  background-color: #fff;
+  box-shadow: 0 0 0 3px rgba(14,116,144,0.12);
+}
+
+.settings-error {
+  margin: 2px 0 0;
+  font-size: 0.77rem; color: #DC2626;
+  display: flex; align-items: center; gap: 4px;
+}
+
+/* Plan cards: 1-col mobile → 3-col desktop */
+.plan-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+@media (min-width: 640px) {
+  .plan-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* Table rows */
+.user-row:hover { background-color: #F8FBFF; }
+
+/* Hide scrollbar on tab bar */
+div[style*="overflow-x: auto"]::-webkit-scrollbar { display: none; }
 </style>
