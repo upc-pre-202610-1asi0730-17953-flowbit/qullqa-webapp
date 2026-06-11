@@ -50,4 +50,15 @@ export class AlertsApi extends BaseApi {
     resolveAlert(id, resource) {
         return this.#alertsEndpoint.update(id, resource);
     }
+
+    /**
+     * Acknowledges an alert by patching its status to ACKNOWLEDGED.
+     * Business rule: only ACTIVE alerts may be acknowledged.
+     * @param {number|string} id
+     * @param {Object} resource - Full alert resource with status: 'ACKNOWLEDGED'.
+     * @returns {Promise<import('axios').AxiosResponse>}
+     */
+    acknowledgeAlert(id, resource) {
+        return this.#alertsEndpoint.update(id, resource);
+    }
 }
