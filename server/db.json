@@ -735,7 +735,10 @@
       "phone": "014000000",
       "address": "Av. Argentina 4793, Callao",
       "status": "ACTIVE",
-      "businessId": 1
+      "businessId": 1,
+      "contactPerson": "Miguel Torres",
+      "category": "GROCERIES",
+      "since": "2023-01-15"
     },
     {
       "id": 2,
@@ -746,7 +749,10 @@
       "phone": "016190000",
       "address": "Av. Paseo de la República 3220, Lima",
       "status": "ACTIVE",
-      "businessId": 2
+      "businessId": 2,
+      "contactPerson": "Mauricio Tucto",
+      "category": "GROCERIES",
+      "since": "2023-01-15"
     },
     {
       "id": 3,
@@ -757,7 +763,10 @@
       "phone": "016257000",
       "address": "Av. Nicolás Ayllón 3986, Lima",
       "status": "INACTIVE",
-      "businessId": 1
+      "businessId": 1,
+      "contactPerson": "Miguel Torres",
+      "category": "GROCERIES",
+      "since": "2023-01-15"
     },
     {
       "id": 4,
@@ -768,7 +777,10 @@
       "phone": "013490000",
       "address": "Av. Argentina 1155, Lima",
       "status": "ACTIVE",
-      "businessId": 1
+      "businessId": 1,
+      "contactPerson": "Miguel Torres",
+      "category": "GROCERIES",
+      "since": "2023-01-15"
     },
     {
       "id": 5,
@@ -779,8 +791,12 @@
       "phone": "012345678",
       "address": "Jr. Las Dalias 234, Los Olivos",
       "status": "ACTIVE",
-      "businessId": 1
+      "businessId": 1,
+      "contactPerson": "Miguel Torres",
+      "category": "GROCERIES",
+      "since": "2023-01-15"
     }
+
   ],
   "purchases": [
     {
