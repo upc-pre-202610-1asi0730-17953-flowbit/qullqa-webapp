@@ -7,7 +7,7 @@ import Home from './shared/presentation/views/home.vue';
 import productRoutes from './product/presentation/product.routes.js';
 import alertsRoutes from './alerts/presentation/alerts.routes.js';
 import salesRoutes from './sales/presentation/sales.routes.js';
-
+import suppliersRoutes from './suppliers/presentation/supplier.routes.js';
 
 const pageNotFound = () => import('./shared/presentation/views/page-not-found.vue');
 
@@ -40,6 +40,7 @@ const routes = [
             ...alertsRoutes,
             ...salesRoutes,
             ...iamAuthenticatedRoutes,
+            ...suppliersRoutes,
         ]
     },
 
