@@ -1,15 +1,11 @@
 <script setup>
 import { computed, onMounted, ref, toRefs } from 'vue';
-import { useRouter }                         from 'vue-router';
-import { useI18n }                           from 'vue-i18n';
-import { useConfirm }                        from 'primevue';
-import useAlertsStore                        from '../../application/alerts.store.js';
-import useIamStore                           from '../../../iam/application/iam.store.js';
-import { AlertType, AlertStatus }            from '../../domain/model/alert.entity.js';
+import { useI18n }        from 'vue-i18n';
+import useAlertsStore     from '../../application/alerts.store.js';
+import useIamStore        from '../../../iam/application/iam.store.js';
+import { AlertStatus } from '../../domain/model/alert.entity.js';
 
 const { t }       = useI18n();
-const router      = useRouter();
-const confirm     = useConfirm();
 const alertsStore = useAlertsStore();
 const iamStore    = useIamStore();
 
@@ -17,356 +13,618 @@ const {
   alerts,
   alertsLoaded,
   errors,
+  alertRules,
+  activeAlertsCount,
+  criticalActiveCount,
   lowStockActiveCount,
   expirationActiveCount
 } = toRefs(alertsStore);
 
-const { fetchAlerts, resolveAlert, filterByType, filterByStatus } = alertsStore;
+const { fetchAlerts, acknowledgeAlert, resolveAlert, toggleAlertRule, updateAlertRuleThreshold } = alertsStore;
 
-/**
- * Currently selected tab identifier.
- * Possible values: 'LOW_STOCK' | 'EXPIRATION' | 'RESOLVED'
- * @type {import('vue').Ref<string>}
- */
-const activeTab = ref('LOW_STOCK');
+// ─── Tab state ─────────────────────────────────────────────────────────────────
+const activeTab = ref('activas');
 
-/**
- * Loads all alerts for the authenticated business on mount.
- * Falls back to fetching all alerts without businessId filter when
- * the current user session is not yet available.
- */
+// ─── Filter state ──────────────────────────────────────────────────────────────
+const searchQuery  = ref('');
+const statusFilter = ref('ACTIVE');
+const typeFilter   = ref('ALL');
+
+// ─── Modal state ───────────────────────────────────────────────────────────────
+const selectedAlert = ref(null);
+
+// ─── Rule edit state ───────────────────────────────────────────────────────────
+const editingRuleId    = ref(null);
+const editingThreshold = ref('');
+
+// ─── Config maps ───────────────────────────────────────────────────────────────
+const typeConfig = {
+  LOW_STOCK:    { labelKey: 'alerts.type-low-stock',    color: '#D97706', background: '#FEF9EC', border: '#FDE68A', icon: 'pi-chart-line'  },
+  OUT_OF_STOCK: { labelKey: 'alerts.type-out-of-stock', color: '#EF4444', background: '#FFF1F1', border: '#FECACA', icon: 'pi-box'          },
+  EXPIRATION:   { labelKey: 'alerts.type-expiration',   color: '#EA580C', background: '#FFF7F3', border: '#FED7AA', icon: 'pi-calendar'     },
+  EXPIRED:      { labelKey: 'alerts.type-expired',      color: '#DC2626', background: '#FEF2F2', border: '#FECACA', icon: 'pi-times-circle' }
+};
+const severityConfig = {
+  HIGH:   { labelKey: 'alerts.severity-high',   color: '#DC2626', background: '#FEE2E2' },
+  MEDIUM: { labelKey: 'alerts.severity-medium', color: '#D97706', background: '#FEF3C7' },
+  LOW:    { labelKey: 'alerts.severity-low',    color: '#0891B2', background: '#CFFAFE' }
+};
+const statusConfig = {
+  ACTIVE:       { labelKey: 'alerts.status-active',       color: '#EF4444', background: '#FEE2E2', icon: 'pi-exclamation-circle' },
+  ACKNOWLEDGED: { labelKey: 'alerts.status-acknowledged', color: '#D97706', background: '#FEF3C7', icon: 'pi-eye'                },
+  SENT:         { labelKey: 'alerts.status-sent',         color: '#0891B2', background: '#CFFAFE', icon: 'pi-send'              },
+  RESOLVED:     { labelKey: 'alerts.status-resolved',     color: '#16A34A', background: '#DCFCE7', icon: 'pi-check-circle'      }
+};
+
+function getTypeConfig(type)         { return typeConfig[type]         ?? typeConfig.LOW_STOCK;    }
+function getSeverityConfig(severity) { return severityConfig[severity] ?? severityConfig.LOW;      }
+function getStatusConfig(status)     { return statusConfig[status]     ?? statusConfig.ACTIVE;     }
+
+// ─── Lifecycle ─────────────────────────────────────────────────────────────────
 onMounted(() => {
   if (alertsLoaded.value) return;
   const businessId = iamStore.currentUser?.businessId ?? null;
   fetchAlerts(businessId);
 });
 
-/**
- * Alerts filtered and sorted for the LOW_STOCK tab.
- * Business rule: sorted HIGH → MEDIUM → LOW severity.
- * @type {import('vue').ComputedRef<import('../../domain/model/alert.entity.js').Alert[]>}
- */
-const lowStockAlerts = computed(() => filterByType(AlertType.LOW_STOCK));
+// ─── Stats ─────────────────────────────────────────────────────────────────────
+const statsBarItems = computed(() => [
+  { labelKey: 'alerts.stat-active',     value: String(activeAlertsCount.value),     color: '#EF4444', background: '#FEE2E2' },
+  { labelKey: 'alerts.stat-critical',   value: String(criticalActiveCount.value),   color: '#DC2626', background: '#FEF2F2' },
+  { labelKey: 'alerts.stat-stock',      value: String(lowStockActiveCount.value),   color: '#D97706', background: '#FEF3C7' },
+  { labelKey: 'alerts.stat-expiration', value: String(expirationActiveCount.value), color: '#EA580C', background: '#FFEDD5' }
+]);
 
-/**
- * Alerts filtered and sorted for the EXPIRATION tab.
- * Business rule: sorted ascending by date (most urgent first).
- * @type {import('vue').ComputedRef<import('../../domain/model/alert.entity.js').Alert[]>}
- */
-const expirationAlerts = computed(() => filterByType(AlertType.EXPIRATION));
+// ─── Filtered alerts ───────────────────────────────────────────────────────────
+const severityOrder = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+const statusOrder   = { ACTIVE: 0, ACKNOWLEDGED: 1, SENT: 2, RESOLVED: 3 };
 
-/**
- * Resolved alerts shown in the history tab.
- * @type {import('vue').ComputedRef<import('../../domain/model/alert.entity.js').Alert[]>}
- */
-const resolvedAlerts = computed(() => filterByStatus(AlertStatus.RESOLVED));
+const filteredAlerts = computed(() => {
+  const query = searchQuery.value.trim().toLowerCase();
+  return alerts.value
+      .filter(alert => {
+        const matchesSearch = !query
+            || alert.message.toLowerCase().includes(query)
+            || (alert.productName && alert.productName.toLowerCase().includes(query));
+        const matchesStatus = statusFilter.value === 'ALL' || alert.status === statusFilter.value;
+        const matchesType   = typeFilter.value   === 'ALL' || alert.type   === typeFilter.value;
+        return matchesSearch && matchesStatus && matchesType;
+      })
+      .slice()
+      .sort((alertA, alertB) => {
+        const statusDiff = (statusOrder[alertA.status] ?? 9) - (statusOrder[alertB.status] ?? 9);
+        if (statusDiff !== 0) return statusDiff;
+        return (severityOrder[alertA.severity] ?? 9) - (severityOrder[alertB.severity] ?? 9);
+      });
+});
 
-/**
- * Returns the i18n key for a given severity string.
- * @param {string} severity
- * @returns {string}
- */
-function severityLabelKey(severity) {
-  if (severity === 'HIGH')   return 'alerts.severity-high';
-  if (severity === 'MEDIUM') return 'alerts.severity-medium';
-  return 'alerts.severity-low';
+// ─── Modal actions ─────────────────────────────────────────────────────────────
+function openDetail(alert) { selectedAlert.value = alert; }
+
+function handleAcknowledge() {
+  if (!selectedAlert.value) return;
+  acknowledgeAlert(selectedAlert.value);
+  selectedAlert.value = { ...selectedAlert.value, status: AlertStatus.ACKNOWLEDGED, isActionable: true };
 }
 
-/**
- * Returns the PrimeVue Tag severity prop for a given alert severity.
- * Business rule: HIGH → danger, MEDIUM → warn, LOW → info.
- * @param {string} severity
- * @returns {string}
- */
-function badgeSeverity(severity) {
-  if (severity === 'HIGH')   return 'danger';
-  if (severity === 'MEDIUM') return 'warn';
-  return 'info';
+function handleResolve() {
+  if (!selectedAlert.value) return;
+  resolveAlert(selectedAlert.value);
+  selectedAlert.value = null;
 }
 
-/**
- * Returns the PrimeIcon class for a given alert type.
- * @param {string} type
- * @returns {string}
- */
-function typeIcon(type) {
-  return type === AlertType.EXPIRATION ? 'pi pi-calendar' : 'pi pi-exclamation-triangle';
+// ─── Rule editing ──────────────────────────────────────────────────────────────
+function startEditRule(rule) {
+  editingRuleId.value    = rule.id;
+  editingThreshold.value = String(rule.threshold);
 }
 
-/**
- * Navigates to the alert detail view.
- * @param {number} id
- */
-function navigateToDetail(id) {
-  router.push({ name: 'alert-detail', params: { id } });
+function saveRuleThreshold(ruleId) {
+  const parsedValue = parseFloat(editingThreshold.value);
+  if (!isNaN(parsedValue) && parsedValue >= 0) updateAlertRuleThreshold(ruleId, parsedValue);
+  editingRuleId.value = null;
 }
 
-/**
- * Prompts the user to confirm resolution of an alert.
- * Business rule: only ACTIVE or SENT alerts may be resolved.
- * @param {import('../../domain/model/alert.entity.js').Alert} alert
- */
-function confirmResolve(alert) {
-  confirm.require({
-    message: t('alerts.confirm-resolve', { message: alert.message }),
-    header:  t('alerts.resolve-header'),
-    icon:    'pi pi-check-circle',
-    accept:  () => { resolveAlert(alert); }
-  });
-}
-
-/**
- * Formats an ISO date string for display in Peruvian locale.
- * @param {string} isoDate
- * @returns {string}
- */
+// ─── Helpers ───────────────────────────────────────────────────────────────────
 function formatDate(isoDate) {
-  if (!isoDate) return '';
+  if (!isoDate) return '—';
+  return new Date(isoDate).toLocaleDateString('es-PE', { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function formatDateTime(isoDate) {
+  if (!isoDate) return '—';
   return new Date(isoDate).toLocaleDateString('es-PE', {
-    year: 'numeric', month: 'short', day: 'numeric'
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
   });
 }
 </script>
 
 <template>
-  <div class="p-3 md:p-5">
+  <div class="alerts-page">
 
-    <!-- Page header -->
-    <div class="mb-4">
-      <h1 class="text-2xl font-bold m-0">{{ t('alerts.title') }}</h1>
-      <p class="text-color-secondary mt-1 mb-0">{{ t('alerts.subtitle') }}</p>
+    <!-- ── Page header ─────────────────────────────────────────────────── -->
+    <div class="alerts-header">
+      <div>
+        <h1 class="alerts-title">{{ t('alerts.title') }}</h1>
+        <p class="alerts-subtitle">{{ t('alerts.subtitle') }}</p>
+      </div>
+      <div v-if="activeAlertsCount > 0" class="alerts-active-badge">
+        <i class="pi pi-bell" style="font-size: 0.85rem;" />
+        <span>{{ activeAlertsCount }}</span>
+      </div>
     </div>
 
-    <!-- Loading indicator -->
-    <div v-if="!alertsLoaded" class="flex justify-content-center align-items-center py-6">
-      <i class="pi pi-spin pi-spinner text-4xl text-primary"></i>
-      <span class="ml-3 text-color-secondary">{{ t('alerts.loading') }}</span>
+    <!-- ── Loading ─────────────────────────────────────────────────────── -->
+    <div v-if="!alertsLoaded" class="alerts-loading">
+      <i class="pi pi-spin pi-spinner alerts-spinner" />
+      <span>{{ t('alerts.loading') }}</span>
     </div>
 
     <div v-else>
-      <!-- Summary cards -->
-      <div class="grid mb-4">
-        <div class="col-12 md:col-6 lg:col-4">
-          <pv-card class="h-full">
-            <template #content>
-              <div class="flex align-items-center justify-content-between">
-                <div>
-                  <p class="text-color-secondary text-sm mt-0 mb-1">{{ t('alerts.low-stock-count') }}</p>
-                  <p class="text-3xl font-bold m-0" style="color: #F97316;">
-                    {{ lowStockActiveCount }}
-                  </p>
-                </div>
-                <div class="border-round p-3" style="background-color: #FFEDD5;">
-                  <i class="pi pi-exclamation-triangle text-2xl" style="color: #F97316;"></i>
-                </div>
-              </div>
-            </template>
-          </pv-card>
-        </div>
 
-        <div class="col-12 md:col-6 lg:col-4">
-          <pv-card class="h-full">
-            <template #content>
-              <div class="flex align-items-center justify-content-between">
-                <div>
-                  <p class="text-color-secondary text-sm mt-0 mb-1">{{ t('alerts.expiration-count') }}</p>
-                  <p class="text-3xl font-bold m-0" style="color: #EF4444;">
-                    {{ expirationActiveCount }}
-                  </p>
-                </div>
-                <div class="border-round p-3" style="background-color: #FEE2E2;">
-                  <i class="pi pi-calendar text-2xl" style="color: #EF4444;"></i>
-                </div>
-              </div>
-            </template>
-          </pv-card>
-        </div>
-
-        <div class="col-12 md:col-6 lg:col-4">
-          <pv-card class="h-full">
-            <template #content>
-              <div class="flex align-items-center justify-content-between">
-                <div>
-                  <p class="text-color-secondary text-sm mt-0 mb-1">{{ t('alerts.resolved-count') }}</p>
-                  <p class="text-3xl font-bold m-0" style="color: #22C55E;">
-                    {{ resolvedAlerts.length }}
-                  </p>
-                </div>
-                <div class="border-round p-3" style="background-color: #DCFCE7;">
-                  <i class="pi pi-check-circle text-2xl" style="color: #22C55E;"></i>
-                </div>
-              </div>
-            </template>
-          </pv-card>
-        </div>
-      </div>
-
-      <!-- Tab selector -->
-      <pv-select-button
-          v-model="activeTab"
-          :options="[
-                    { label: t('alerts.tab-low-stock'),  value: 'LOW_STOCK' },
-                    { label: t('alerts.tab-expiration'), value: 'EXPIRATION' },
-                    { label: t('alerts.tab-resolved'),   value: 'RESOLVED' }
-                ]"
-          option-label="label"
-          option-value="value"
-          class="mb-4 w-full"
-      />
-
-      <!-- LOW_STOCK tab -->
-      <div v-if="activeTab === 'LOW_STOCK'" class="flex flex-column gap-3">
-        <div v-if="lowStockAlerts.length === 0" class="text-center text-color-secondary py-5">
-          <i class="pi pi-check-circle text-4xl text-green-500 mb-2 block"></i>
-          <p>{{ t('alerts.no-low-stock') }}</p>
-        </div>
-        <pv-card
-            v-for="currentAlert in lowStockAlerts"
-            :key="currentAlert.id"
-            class="border-left-alert"
-            :style="{ borderLeftColor: currentAlert.severity === 'HIGH' ? '#EF4444' : currentAlert.severity === 'MEDIUM' ? '#F97316' : '#FACC15' }"
+      <!-- ── Stats bar ─────────────────────────────────────────────── -->
+      <div class="alerts-stats-bar">
+        <div
+            v-for="stat in statsBarItems"
+            :key="stat.labelKey"
+            class="alerts-stat-card"
+            :style="{ backgroundColor: stat.background }"
         >
-          <template #content>
-            <div class="flex flex-column md:flex-row md:align-items-center gap-3">
-              <div class="border-round p-3 flex-shrink-0 align-self-start" style="background-color: #FFEDD5;">
-                <i :class="typeIcon(currentAlert.type)" class="text-xl" style="color: #F97316;"></i>
-              </div>
-              <div class="flex-1">
-                <div class="flex flex-wrap align-items-center gap-2 mb-2">
-                  <pv-tag
-                      :severity="badgeSeverity(currentAlert.severity)"
-                      :value="t(severityLabelKey(currentAlert.severity))"
-                  />
-                  <span class="text-color-secondary text-sm">{{ formatDate(currentAlert.date) }}</span>
-                </div>
-                <p class="m-0 font-medium">{{ currentAlert.message }}</p>
-              </div>
-              <div class="flex gap-2 flex-shrink-0">
-                <pv-button
-                    icon="pi pi-eye"
-                    :label="t('alerts.btn-detail')"
-                    size="small"
-                    text
-                    @click="navigateToDetail(currentAlert.id)"
-                />
-                <pv-button
-                    v-if="currentAlert.status !== 'RESOLVED'"
-                    icon="pi pi-check"
-                    :label="t('alerts.btn-resolve')"
-                    size="small"
-                    severity="success"
-                    outlined
-                    @click="confirmResolve(currentAlert)"
-                />
-              </div>
-            </div>
-          </template>
-        </pv-card>
-      </div>
-
-      <!-- EXPIRATION tab -->
-      <div v-if="activeTab === 'EXPIRATION'" class="flex flex-column gap-3">
-        <div v-if="expirationAlerts.length === 0" class="text-center text-color-secondary py-5">
-          <i class="pi pi-check-circle text-4xl text-green-500 mb-2 block"></i>
-          <p>{{ t('alerts.no-expiration') }}</p>
+          <p class="alerts-stat-label" :style="{ color: stat.color }">{{ t(stat.labelKey) }}</p>
+          <p class="alerts-stat-value" :style="{ color: stat.color }">{{ stat.value }}</p>
         </div>
-        <pv-card
-            v-for="currentAlert in expirationAlerts"
-            :key="currentAlert.id"
-            class="border-left-alert"
-            :style="{ borderLeftColor: currentAlert.severity === 'HIGH' ? '#EF4444' : currentAlert.severity === 'MEDIUM' ? '#F97316' : '#FACC15' }"
-        >
-          <template #content>
-            <div class="flex flex-column md:flex-row md:align-items-center gap-3">
-              <div class="border-round p-3 flex-shrink-0 align-self-start" style="background-color: #FEE2E2;">
-                <i :class="typeIcon(currentAlert.type)" class="text-xl" style="color: #EF4444;"></i>
-              </div>
-              <div class="flex-1">
-                <div class="flex flex-wrap align-items-center gap-2 mb-2">
-                  <pv-tag
-                      :severity="badgeSeverity(currentAlert.severity)"
-                      :value="t(severityLabelKey(currentAlert.severity))"
-                  />
-                  <span class="text-color-secondary text-sm">{{ formatDate(currentAlert.date) }}</span>
-                </div>
-                <p class="m-0 font-medium">{{ currentAlert.message }}</p>
-              </div>
-              <div class="flex gap-2 flex-shrink-0">
-                <pv-button
-                    icon="pi pi-eye"
-                    :label="t('alerts.btn-detail')"
-                    size="small"
-                    text
-                    @click="navigateToDetail(currentAlert.id)"
-                />
-                <pv-button
-                    v-if="currentAlert.status !== 'RESOLVED'"
-                    icon="pi pi-check"
-                    :label="t('alerts.btn-resolve')"
-                    size="small"
-                    severity="success"
-                    outlined
-                    @click="confirmResolve(currentAlert)"
-                />
-              </div>
-            </div>
-          </template>
-        </pv-card>
       </div>
 
-      <!-- RESOLVED tab -->
-      <div v-if="activeTab === 'RESOLVED'" class="flex flex-column gap-3">
-        <div v-if="resolvedAlerts.length === 0" class="text-center text-color-secondary py-5">
-          <i class="pi pi-inbox text-4xl text-color-secondary mb-2 block"></i>
-          <p>{{ t('alerts.no-resolved') }}</p>
+      <!-- ── Critical banner ─────────────────────────────────────────── -->
+      <div v-if="criticalActiveCount > 0" class="alerts-critical-banner">
+        <div class="alerts-pulse-wrapper">
+          <span class="alerts-pulse-dot" />
+          <span class="alerts-pulse-ring" />
         </div>
-        <pv-card
-            v-for="currentAlert in resolvedAlerts"
-            :key="currentAlert.id"
-            class="border-left-alert"
-            style="border-left-color: #22C55E;"
-        >
-          <template #content>
-            <div class="flex flex-column md:flex-row md:align-items-center gap-3">
-              <div class="border-round p-3 flex-shrink-0 align-self-start" style="background-color: #DCFCE7;">
-                <i class="pi pi-check-circle text-xl" style="color: #22C55E;"></i>
-              </div>
-              <div class="flex-1">
-                <div class="flex flex-wrap align-items-center gap-2 mb-2">
-                  <pv-tag severity="success" :value="t('alerts.status-resolved')" />
-                  <span class="text-color-secondary text-sm">{{ formatDate(currentAlert.date) }}</span>
-                </div>
-                <p class="m-0 font-medium text-color-secondary">{{ currentAlert.message }}</p>
-              </div>
-              <pv-button
-                  icon="pi pi-eye"
-                  :label="t('alerts.btn-detail')"
-                  size="small"
-                  text
-                  @click="navigateToDetail(currentAlert.id)"
-              />
-            </div>
-          </template>
-        </pv-card>
+        <p class="alerts-critical-text">
+          <strong>{{ criticalActiveCount }}</strong>
+          {{ criticalActiveCount === 1 ? t('alerts.critical-banner-singular') : t('alerts.critical-banner-plural') }}
+        </p>
       </div>
 
-      <!-- Error display -->
-      <div v-if="errors.length > 0" class="mt-3">
-        <pv-card>
-          <template #content>
-            <p class="text-red-500 m-0">
-              {{ t('errors.occurred') }}: {{ errors.map(error => error.message).join(', ') }}
-            </p>
-          </template>
-        </pv-card>
+      <!-- ── Main tabs ──────────────────────────────────────────────── -->
+      <div class="alerts-tabs">
+        <button class="alerts-tab-btn" :class="{ 'alerts-tab-btn-active': activeTab === 'activas' }" @click="activeTab = 'activas'">
+          <i class="pi pi-bell" />
+          <span>{{ t('alerts.tab-active') }}</span>
+          <span v-if="activeAlertsCount > 0" class="alerts-tab-badge">{{ activeAlertsCount }}</span>
+        </button>
+        <button class="alerts-tab-btn" :class="{ 'alerts-tab-btn-active': activeTab === 'reglas' }" @click="activeTab = 'reglas'">
+          <i class="pi pi-cog" />
+          <span>{{ t('alerts.tab-rules') }}</span>
+        </button>
+      </div>
+
+      <!-- ════════════════════════════════════ TAB: Alertas ═══════════ -->
+      <div v-if="activeTab === 'activas'">
+
+        <!-- Filters -->
+        <div class="alerts-filters">
+          <div class="alerts-search-wrapper">
+            <i class="pi pi-search alerts-search-icon" />
+            <input v-model="searchQuery" class="alerts-search-input" :placeholder="t('alerts.search-placeholder')" />
+          </div>
+          <div class="alerts-filter-pills">
+            <!-- Status pills -->
+            <button
+                v-for="statusOption in ['ALL', 'ACTIVE', 'ACKNOWLEDGED', 'RESOLVED']"
+                :key="statusOption"
+                class="alerts-pill"
+                :class="{ 'alerts-pill-active-default': statusFilter === statusOption && statusOption === 'ALL' }"
+                :style="statusFilter === statusOption && statusOption !== 'ALL'
+                                ? { backgroundColor: getStatusConfig(statusOption).background, color: getStatusConfig(statusOption).color, borderColor: getStatusConfig(statusOption).color }
+                                : {}"
+                @click="statusFilter = statusOption"
+            >
+              {{ statusOption === 'ALL' ? t('alerts.filter-all') : t(getStatusConfig(statusOption).labelKey) }}
+            </button>
+            <div class="alerts-filter-divider" />
+            <!-- Type pills -->
+            <button
+                v-for="typeOption in ['ALL', 'OUT_OF_STOCK', 'LOW_STOCK', 'EXPIRATION', 'EXPIRED']"
+                :key="typeOption"
+                class="alerts-pill alerts-pill-type"
+                :class="{ 'alerts-pill-type-all-active': typeFilter === typeOption && typeOption === 'ALL' }"
+                :style="typeFilter === typeOption && typeOption !== 'ALL'
+                                ? { backgroundColor: getTypeConfig(typeOption).background, color: getTypeConfig(typeOption).color, borderColor: getTypeConfig(typeOption).border }
+                                : {}"
+                @click="typeFilter = typeOption"
+            >
+              {{ typeOption === 'ALL' ? t('alerts.filter-type-all') : t(getTypeConfig(typeOption).labelKey) }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Desktop table -->
+        <div class="alerts-table-wrapper">
+          <table class="alerts-table">
+            <thead>
+            <tr class="alerts-thead-row">
+              <th class="alerts-th">{{ t('alerts.col-type') }}</th>
+              <th class="alerts-th">{{ t('alerts.col-product') }}</th>
+              <th class="alerts-th">{{ t('alerts.col-detail') }}</th>
+              <th class="alerts-th">{{ t('alerts.col-severity') }}</th>
+              <th class="alerts-th">{{ t('alerts.col-date') }}</th>
+              <th class="alerts-th">{{ t('alerts.col-status') }}</th>
+              <th class="alerts-th" />
+            </tr>
+            </thead>
+            <tbody>
+            <tr
+                v-for="alert in filteredAlerts"
+                :key="alert.id"
+                class="alerts-tr"
+                :style="alert.status === 'ACTIVE' ? { backgroundColor: `${getTypeConfig(alert.type).background}60` } : {}"
+            >
+              <td class="alerts-td">
+                                    <span class="alerts-type-badge" :style="{ backgroundColor: getTypeConfig(alert.type).background, color: getTypeConfig(alert.type).color, borderColor: getTypeConfig(alert.type).border }">
+                                        <i :class="`pi ${getTypeConfig(alert.type).icon}`" style="font-size: 0.65rem;" />
+                                        {{ t(getTypeConfig(alert.type).labelKey) }}
+                                    </span>
+              </td>
+              <td class="alerts-td alerts-td-product">{{ alert.productName || `#${alert.productId}` }}</td>
+              <td class="alerts-td alerts-td-message">{{ alert.message }}</td>
+              <td class="alerts-td">
+                                    <span class="alerts-severity-badge" :style="{ backgroundColor: getSeverityConfig(alert.severity).background, color: getSeverityConfig(alert.severity).color }">
+                                        {{ t(getSeverityConfig(alert.severity).labelKey) }}
+                                    </span>
+              </td>
+              <td class="alerts-td alerts-td-muted">{{ formatDate(alert.date) }}</td>
+              <td class="alerts-td">
+                                    <span class="alerts-status-badge" :style="{ backgroundColor: getStatusConfig(alert.status).background, color: getStatusConfig(alert.status).color }">
+                                        <i :class="`pi ${getStatusConfig(alert.status).icon}`" style="font-size: 0.6rem;" />
+                                        {{ t(getStatusConfig(alert.status).labelKey) }}
+                                    </span>
+              </td>
+              <td class="alerts-td">
+                <button class="alerts-btn-view" @click="openDetail(alert)">
+                  <i class="pi pi-eye" />
+                  <span>{{ t('alerts.btn-view') }}</span>
+                </button>
+              </td>
+            </tr>
+            </tbody>
+          </table>
+          <div v-if="filteredAlerts.length === 0" class="alerts-empty">
+            <i class="pi pi-bell-slash alerts-empty-icon" />
+            <p class="alerts-empty-text">{{ t('alerts.no-results') }}</p>
+            <p v-if="statusFilter === 'ACTIVE' && typeFilter === 'ALL'" class="alerts-empty-sub">{{ t('alerts.no-results-sub') }}</p>
+          </div>
+        </div>
+
+        <!-- Mobile cards -->
+        <div class="alerts-mobile-cards">
+          <button
+              v-for="alert in filteredAlerts"
+              :key="alert.id"
+              class="alerts-mobile-card"
+              :style="{ borderColor: alert.status === 'ACTIVE' ? getTypeConfig(alert.type).border : '#E2E8F0', backgroundColor: alert.status === 'ACTIVE' ? getTypeConfig(alert.type).background : '#fff' }"
+              @click="openDetail(alert)"
+          >
+            <div class="alerts-mobile-card-top">
+              <div class="alerts-mobile-card-left">
+                <div class="alerts-mobile-icon-wrapper">
+                  <i :class="`pi ${getTypeConfig(alert.type).icon}`" :style="{ color: getTypeConfig(alert.type).color, fontSize: '1rem' }" />
+                </div>
+                <div class="alerts-mobile-card-info">
+                  <div class="alerts-mobile-card-badges">
+                                        <span class="alerts-type-badge" :style="{ backgroundColor: getTypeConfig(alert.type).background, color: getTypeConfig(alert.type).color, borderColor: getTypeConfig(alert.type).border }">
+                                            {{ t(getTypeConfig(alert.type).labelKey) }}
+                                        </span>
+                    <span class="alerts-severity-badge" :style="{ backgroundColor: getSeverityConfig(alert.severity).background, color: getSeverityConfig(alert.severity).color }">
+                                            {{ t(getSeverityConfig(alert.severity).labelKey) }}
+                                        </span>
+                  </div>
+                  <p class="alerts-mobile-card-product">{{ alert.productName || `#${alert.productId}` }}</p>
+                  <p class="alerts-mobile-card-message">{{ alert.message }}</p>
+                </div>
+              </div>
+              <span class="alerts-status-badge" :style="{ backgroundColor: getStatusConfig(alert.status).background, color: getStatusConfig(alert.status).color }">
+                                <i :class="`pi ${getStatusConfig(alert.status).icon}`" style="font-size: 0.6rem;" />
+                                {{ t(getStatusConfig(alert.status).labelKey) }}
+                            </span>
+            </div>
+            <div class="alerts-mobile-card-footer" :style="{ borderTopColor: alert.status === 'ACTIVE' ? getTypeConfig(alert.type).border : '#F1F5F9' }">
+              <span class="alerts-mobile-date">{{ formatDate(alert.date) }}</span>
+              <span v-if="alert.notified" class="alerts-mobile-notified">
+                                <i class="pi pi-bell" style="font-size: 0.65rem;" />
+                                {{ t('alerts.notified-label') }}
+                            </span>
+            </div>
+          </button>
+          <div v-if="filteredAlerts.length === 0" class="alerts-empty">
+            <i class="pi pi-bell-slash alerts-empty-icon" />
+            <p class="alerts-empty-text">{{ t('alerts.no-results') }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ════════════════════════════════════ TAB: Reglas ════════════ -->
+      <div v-if="activeTab === 'reglas'" class="alerts-rules-container">
+        <div class="alerts-rules-info-banner">
+          <i class="pi pi-bolt" style="color: #0E7490; font-size: 0.85rem; flex-shrink: 0;" />
+          <p class="alerts-rules-info-text">{{ t('alerts.rules-info') }}</p>
+        </div>
+        <div class="alerts-rules-list">
+          <div
+              v-for="rule in alertRules"
+              :key="rule.id"
+              class="alerts-rule-card"
+              :style="{ borderColor: rule.active ? getTypeConfig(rule.type).border : '#E2E8F0', opacity: rule.active ? 1 : 0.65 }"
+          >
+            <div class="alerts-rule-card-header">
+              <div class="alerts-rule-card-left">
+                <div class="alerts-rule-icon-wrapper" :style="{ backgroundColor: rule.active ? getTypeConfig(rule.type).background : '#F1F5F9' }">
+                  <i :class="`pi ${getTypeConfig(rule.type).icon}`" :style="{ color: rule.active ? getTypeConfig(rule.type).color : '#94A3B8', fontSize: '1rem' }" />
+                </div>
+                <div>
+                  <p class="alerts-rule-name">{{ t(rule.nameKey) }}</p>
+                  <p class="alerts-rule-desc">{{ t(rule.descKey) }}</p>
+                </div>
+              </div>
+              <button class="alerts-rule-toggle" :style="{ backgroundColor: rule.active ? '#0E7490' : '#CBD5E1' }" @click="toggleAlertRule(rule.id)">
+                <span class="alerts-rule-toggle-thumb" :style="{ left: rule.active ? '22px' : '2px' }" />
+              </button>
+            </div>
+            <div v-if="rule.type !== 'OUT_OF_STOCK' && rule.type !== 'EXPIRED'" class="alerts-rule-threshold">
+              <span class="alerts-rule-threshold-label">{{ t('alerts.rule-threshold-label') }}:</span>
+              <template v-if="editingRuleId === rule.id">
+                <input
+                    v-model="editingThreshold"
+                    type="number"
+                    class="alerts-rule-threshold-input"
+                    :style="{ borderColor: getTypeConfig(rule.type).color }"
+                    @keydown.enter="saveRuleThreshold(rule.id)"
+                    @keydown.escape="editingRuleId = null"
+                />
+                <span class="alerts-rule-threshold-unit">{{ t(rule.unitKey) }}</span>
+                <button class="alerts-rule-threshold-save" @click="saveRuleThreshold(rule.id)">{{ t('alerts.rule-save') }}</button>
+                <button class="alerts-rule-threshold-cancel" @click="editingRuleId = null">{{ t('alerts.rule-cancel') }}</button>
+              </template>
+              <template v-else>
+                                <span class="alerts-rule-threshold-value" :style="{ color: getTypeConfig(rule.type).color }">
+                                    {{ rule.threshold }} {{ t(rule.unitKey) }}
+                                </span>
+                <button v-if="rule.active" class="alerts-rule-threshold-edit-btn" @click="startEditRule(rule)">
+                  {{ t('alerts.rule-edit-threshold') }}
+                </button>
+              </template>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Errors ─────────────────────────────────────────────────── -->
+      <div v-if="errors.length > 0" class="alerts-errors">
+        {{ t('errors.occurred') }}: {{ errors.map(error => error.message).join(', ') }}
+      </div>
+
+    </div>
+
+    <!-- ═════════════════════════════ Modal: Detail ══════════════════════ -->
+    <div v-if="selectedAlert" class="alerts-modal-overlay" @click.self="selectedAlert = null">
+      <div class="alerts-modal">
+        <div class="alerts-modal-header">
+          <div class="alerts-modal-header-left">
+            <span class="alerts-modal-id">#{{ selectedAlert.id }}</span>
+            <span class="alerts-status-badge" :style="{ backgroundColor: getStatusConfig(selectedAlert.status).background, color: getStatusConfig(selectedAlert.status).color }">
+                            <i :class="`pi ${getStatusConfig(selectedAlert.status).icon}`" style="font-size: 0.6rem;" />
+                            {{ t(getStatusConfig(selectedAlert.status).labelKey) }}
+                        </span>
+          </div>
+          <button class="alerts-modal-close" @click="selectedAlert = null">
+            <i class="pi pi-times" />
+          </button>
+        </div>
+        <div class="alerts-modal-body">
+          <!-- Type banner -->
+          <div class="alerts-modal-type-banner" :style="{ backgroundColor: getTypeConfig(selectedAlert.type).background, borderColor: getTypeConfig(selectedAlert.type).border }">
+            <div class="alerts-modal-type-icon">
+              <i :class="`pi ${getTypeConfig(selectedAlert.type).icon}`" :style="{ color: getTypeConfig(selectedAlert.type).color, fontSize: '1.1rem' }" />
+            </div>
+            <div>
+              <p class="alerts-modal-type-label" :style="{ color: getTypeConfig(selectedAlert.type).color }">
+                {{ t(getTypeConfig(selectedAlert.type).labelKey) }}
+              </p>
+              <p class="alerts-modal-product-name">{{ selectedAlert.productName || `#${selectedAlert.productId}` }}</p>
+              <p class="alerts-modal-detail-text">{{ selectedAlert.message }}</p>
+            </div>
+          </div>
+          <!-- Info grid -->
+          <div class="alerts-modal-info-grid">
+            <div class="alerts-modal-info-cell">
+              <p class="alerts-modal-info-label">{{ t('alerts.field-severity') }}</p>
+              <span class="alerts-severity-badge" :style="{ backgroundColor: getSeverityConfig(selectedAlert.severity).background, color: getSeverityConfig(selectedAlert.severity).color }">
+                                {{ t(getSeverityConfig(selectedAlert.severity).labelKey) }}
+                            </span>
+            </div>
+            <div class="alerts-modal-info-cell">
+              <p class="alerts-modal-info-label">{{ t('alerts.field-date') }}</p>
+              <p class="alerts-modal-info-value">{{ formatDateTime(selectedAlert.date) }}</p>
+            </div>
+            <div class="alerts-modal-info-cell">
+              <p class="alerts-modal-info-label">{{ t('alerts.field-notified') }}</p>
+              <p class="alerts-modal-info-value">
+                {{ selectedAlert.notified
+                  ? `${t('alerts.field-notified-yes')} · ${formatDateTime(selectedAlert.notifiedAt)}`
+                  : t('alerts.field-notified-no') }}
+              </p>
+            </div>
+            <div v-if="selectedAlert.currentStock !== null" class="alerts-modal-info-cell">
+              <p class="alerts-modal-info-label">{{ t('alerts.field-current-stock') }}</p>
+              <p class="alerts-modal-info-value">{{ selectedAlert.currentStock }} {{ t('alerts.field-units') }}</p>
+            </div>
+            <div v-if="selectedAlert.minStock !== null" class="alerts-modal-info-cell">
+              <p class="alerts-modal-info-label">{{ t('alerts.field-min-stock') }}</p>
+              <p class="alerts-modal-info-value">{{ selectedAlert.minStock }} {{ t('alerts.field-units') }}</p>
+            </div>
+            <div v-if="selectedAlert.daysToExpiry !== null" class="alerts-modal-info-cell">
+              <p class="alerts-modal-info-label">{{ t('alerts.field-days-to-expiry') }}</p>
+              <p class="alerts-modal-info-value">
+                {{ selectedAlert.daysToExpiry < 0
+                  ? t('alerts.field-expired-days-ago', { days: Math.abs(selectedAlert.daysToExpiry) })
+                  : `${selectedAlert.daysToExpiry} ${t('alerts.field-days')}` }}
+              </p>
+            </div>
+            <div v-if="selectedAlert.resolvedAt" class="alerts-modal-info-cell">
+              <p class="alerts-modal-info-label">{{ t('alerts.field-resolved-at') }}</p>
+              <p class="alerts-modal-info-value">{{ formatDateTime(selectedAlert.resolvedAt) }}</p>
+            </div>
+          </div>
+          <!-- Actions -->
+          <div v-if="selectedAlert.status !== 'RESOLVED'" class="alerts-modal-actions">
+            <button v-if="selectedAlert.status === 'ACTIVE'" class="alerts-modal-btn-acknowledge" @click="handleAcknowledge">
+              <i class="pi pi-eye" /> {{ t('alerts.btn-acknowledge') }}
+            </button>
+            <button class="alerts-modal-btn-resolve" @click="handleResolve">
+              <i class="pi pi-check" /> {{ t('alerts.btn-resolve') }}
+            </button>
+          </div>
+          <button class="alerts-modal-btn-close" @click="selectedAlert = null">{{ t('alerts.modal-close') }}</button>
+        </div>
       </div>
     </div>
+
   </div>
 </template>
 
 <style scoped>
-.border-left-alert {
-  border-left-width: 4px;
-  border-left-style: solid;
+.alerts-page { background-color: #F8FAFC; min-height: 100%; }
+
+.alerts-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1rem; }
+.alerts-title { font-size: 1.3rem; font-weight: 700; color: #0B3558; margin: 0; line-height: 1.2; }
+.alerts-subtitle { font-size: 0.78rem; color: #64748B; margin: 0.2rem 0 0; }
+.alerts-active-badge { display: flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0.65rem; background-color: #FEE2E2; border-radius: 0.75rem; color: #EF4444; font-size: 0.78rem; font-weight: 700; flex-shrink: 0; }
+
+.alerts-loading { display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 3rem; color: #94A3B8; font-size: 0.88rem; }
+.alerts-spinner { font-size: 1.2rem; color: #0E7490; }
+
+.alerts-stats-bar { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; margin-bottom: 1rem; }
+.alerts-stat-card { border-radius: 0.75rem; padding: 0.6rem 0.75rem; }
+.alerts-stat-label { font-size: 0.68rem; opacity: 0.8; margin: 0; }
+.alerts-stat-value { font-size: 1.1rem; font-weight: 800; margin: 0; }
+
+.alerts-critical-banner { display: flex; align-items: center; gap: 0.75rem; padding: 0.65rem 0.85rem; background-color: #FEF2F2; border: 1.5px solid #FECACA; border-radius: 0.75rem; margin-bottom: 0.75rem; }
+.alerts-pulse-wrapper { position: relative; width: 0.75rem; height: 0.75rem; flex-shrink: 0; }
+.alerts-pulse-dot { display: block; width: 0.75rem; height: 0.75rem; border-radius: 50%; background-color: #EF4444; }
+.alerts-pulse-ring { position: absolute; inset: 0; border-radius: 50%; background-color: #EF4444; opacity: 0.4; animation: pulse 1.5s infinite; }
+@keyframes pulse { 0% { transform: scale(1); opacity: 0.4; } 70% { transform: scale(2); opacity: 0; } 100% { transform: scale(2); opacity: 0; } }
+.alerts-critical-text { font-size: 0.82rem; color: #991B1B; font-weight: 600; margin: 0; }
+
+.alerts-tabs { display: flex; gap: 0.25rem; margin-bottom: 0.75rem; }
+.alerts-tab-btn { display: flex; align-items: center; gap: 0.4rem; padding: 0.5rem 1rem; border: none; border-radius: 0.5rem; font-size: 0.85rem; font-weight: 500; cursor: pointer; color: #64748B; background: transparent; transition: all 0.15s; position: relative; }
+.alerts-tab-btn:hover { background-color: #F1F5F9; }
+.alerts-tab-btn-active { background-color: #0B3558; color: #fff; font-weight: 700; }
+.alerts-tab-badge { position: absolute; top: -0.25rem; right: -0.25rem; width: 1rem; height: 1rem; border-radius: 50%; background-color: #EF4444; color: #fff; font-size: 0.6rem; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+
+.alerts-filters { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; padding: 0.75rem; background: #fff; border-radius: 0.75rem; border: 1px solid #E2E8F0; }
+.alerts-search-wrapper { position: relative; }
+.alerts-search-icon { position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); color: #94A3B8; font-size: 0.85rem; }
+.alerts-search-input { width: 100%; padding: 0.5rem 0.75rem 0.5rem 2.25rem; border: 1px solid #E2E8F0; border-radius: 0.5rem; font-size: 0.85rem; background-color: #F8FAFC; color: #1E293B; outline: none; transition: border-color 0.15s; }
+.alerts-search-input:focus { border-color: #0E7490; }
+.alerts-filter-pills { display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; }
+.alerts-pill { padding: 0.3rem 0.65rem; border-radius: 999px; border: 1.5px solid transparent; font-size: 0.72rem; font-weight: 600; background: #F1F5F9; color: #64748B; cursor: pointer; white-space: nowrap; transition: all 0.15s; }
+.alerts-pill-active-default { background-color: #0B3558; color: #fff; }
+.alerts-pill-type { background: #F8FAFC; color: #94A3B8; }
+.alerts-pill-type-all-active { background-color: #64748B; color: #fff; }
+.alerts-filter-divider { width: 1px; height: 1.25rem; background-color: #E2E8F0; flex-shrink: 0; }
+
+.alerts-table-wrapper { background: #fff; border-radius: 0.75rem; border: 1px solid #E2E8F0; overflow: hidden; }
+.alerts-table { width: 100%; border-collapse: collapse; }
+.alerts-thead-row { background-color: #F8FAFC; border-bottom: 1px solid #E2E8F0; }
+.alerts-th { padding: 0.65rem 1rem; text-align: left; font-size: 0.72rem; font-weight: 600; color: #94A3B8; }
+.alerts-tr { border-bottom: 1px solid #F1F5F9; transition: opacity 0.1s; }
+.alerts-tr:hover { opacity: 0.85; }
+.alerts-td { padding: 0.65rem 1rem; font-size: 0.82rem; color: #1E293B; vertical-align: middle; }
+.alerts-td-product { font-weight: 600; color: #0B3558; }
+.alerts-td-message { color: #64748B; font-size: 0.75rem; max-width: 220px; }
+.alerts-td-muted { color: #94A3B8; font-size: 0.72rem; }
+
+.alerts-type-badge { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.15rem 0.5rem; border-radius: 0.35rem; border: 1px solid transparent; font-size: 0.68rem; font-weight: 600; white-space: nowrap; }
+.alerts-severity-badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 0.35rem; font-size: 0.68rem; font-weight: 700; }
+.alerts-status-badge { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.15rem 0.5rem; border-radius: 0.35rem; font-size: 0.68rem; font-weight: 600; white-space: nowrap; }
+
+.alerts-btn-view { display: flex; align-items: center; gap: 0.3rem; padding: 0.3rem 0.6rem; background-color: #E0F2FE; color: #0E7490; border: none; border-radius: 0.4rem; font-size: 0.72rem; font-weight: 600; cursor: pointer; transition: background-color 0.15s; }
+.alerts-btn-view:hover { background-color: #BAE6FD; }
+
+.alerts-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3rem; gap: 0.35rem; }
+.alerts-empty-icon { font-size: 2.5rem; color: #CBD5E1; }
+.alerts-empty-text { font-size: 0.88rem; color: #94A3B8; margin: 0; }
+.alerts-empty-sub { font-size: 0.75rem; color: #CBD5E1; margin: 0; }
+
+.alerts-mobile-cards { display: none; flex-direction: column; gap: 0.75rem; }
+.alerts-mobile-card { width: 100%; text-align: left; border-radius: 0.75rem; padding: 1rem; border: 1.5px solid transparent; background: none; cursor: pointer; transition: all 0.15s; }
+.alerts-mobile-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.5rem; }
+.alerts-mobile-card-left { display: flex; gap: 0.75rem; flex: 1; min-width: 0; }
+.alerts-mobile-icon-wrapper { width: 2.25rem; height: 2.25rem; border-radius: 0.6rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background-color: rgba(255,255,255,0.7); }
+.alerts-mobile-card-info { flex: 1; min-width: 0; }
+.alerts-mobile-card-badges { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-bottom: 0.25rem; }
+.alerts-mobile-card-product { font-size: 0.85rem; font-weight: 600; color: #0B3558; margin: 0; }
+.alerts-mobile-card-message { font-size: 0.73rem; color: #64748B; margin: 0.1rem 0 0; }
+.alerts-mobile-card-footer { display: flex; align-items: center; justify-content: space-between; padding-top: 0.5rem; margin-top: 0.5rem; border-top: 1px solid transparent; }
+.alerts-mobile-date { font-size: 0.68rem; color: #94A3B8; }
+.alerts-mobile-notified { display: flex; align-items: center; gap: 0.25rem; font-size: 0.68rem; color: #0E7490; }
+
+.alerts-rules-container { display: flex; flex-direction: column; gap: 0.75rem; }
+.alerts-rules-info-banner { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.65rem 0.85rem; background-color: #E0F2FE; border: 1px solid #BAE6FD; border-radius: 0.75rem; }
+.alerts-rules-info-text { font-size: 0.78rem; color: #0C4A6E; margin: 0; line-height: 1.5; }
+.alerts-rules-list { display: flex; flex-direction: column; gap: 0.75rem; }
+.alerts-rule-card { background-color: #fff; border-radius: 0.75rem; border: 1.5px solid transparent; padding: 1rem; transition: opacity 0.2s; }
+.alerts-rule-card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.75rem; }
+.alerts-rule-card-left { display: flex; gap: 0.75rem; flex: 1; min-width: 0; }
+.alerts-rule-icon-wrapper { width: 2.5rem; height: 2.5rem; border-radius: 0.6rem; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background-color 0.2s; }
+.alerts-rule-name { font-size: 0.88rem; font-weight: 700; color: #0B3558; margin: 0 0 0.2rem; }
+.alerts-rule-desc { font-size: 0.72rem; color: #64748B; margin: 0; line-height: 1.4; }
+.alerts-rule-toggle { position: relative; width: 2.5rem; height: 1.25rem; border-radius: 999px; border: none; cursor: pointer; flex-shrink: 0; transition: background-color 0.2s; }
+.alerts-rule-toggle-thumb { position: absolute; top: 0.125rem; width: 1rem; height: 1rem; border-radius: 50%; background-color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.2); transition: left 0.2s; }
+.alerts-rule-threshold { display: flex; align-items: center; gap: 0.5rem; padding-top: 0.65rem; border-top: 1px solid #F1F5F9; flex-wrap: wrap; }
+.alerts-rule-threshold-label { font-size: 0.72rem; color: #94A3B8; }
+.alerts-rule-threshold-value { font-size: 0.88rem; font-weight: 700; }
+.alerts-rule-threshold-input { width: 4rem; padding: 0.25rem 0.4rem; border-radius: 0.4rem; border: 1.5px solid transparent; font-size: 0.88rem; font-weight: 700; color: #0B3558; text-align: center; outline: none; }
+.alerts-rule-threshold-unit { font-size: 0.72rem; color: #64748B; }
+.alerts-rule-threshold-save { margin-left: auto; padding: 0.25rem 0.6rem; background-color: #DCFCE7; color: #16A34A; border: none; border-radius: 0.4rem; font-size: 0.72rem; font-weight: 600; cursor: pointer; }
+.alerts-rule-threshold-cancel { padding: 0.25rem 0.6rem; background-color: #F1F5F9; color: #64748B; border: none; border-radius: 0.4rem; font-size: 0.72rem; font-weight: 600; cursor: pointer; }
+.alerts-rule-threshold-edit-btn { margin-left: auto; padding: 0.25rem 0.6rem; background-color: #F1F5F9; color: #64748B; border: none; border-radius: 0.4rem; font-size: 0.72rem; font-weight: 600; cursor: pointer; transition: background-color 0.15s; }
+.alerts-rule-threshold-edit-btn:hover { background-color: #E2E8F0; }
+
+.alerts-errors { margin-top: 0.75rem; padding: 0.75rem; color: #EF4444; font-size: 0.8rem; background: #FEF2F2; border: 1px solid #FECACA; border-radius: 0.75rem; }
+
+.alerts-modal-overlay { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center; background-color: rgba(0,0,0,0.5); }
+.alerts-modal { width: 100%; background-color: #fff; border-radius: 1.25rem 1.25rem 0 0; border: 1px solid #E2E8F0; box-shadow: 0 25px 50px rgba(0,0,0,0.15); max-height: 90dvh; overflow-y: auto; }
+.alerts-modal-header { display: flex; align-items: center; justify-content: space-between; padding: 1.1rem 1.25rem 0.75rem; border-bottom: 1px solid #F1F5F9; position: sticky; top: 0; background-color: #fff; }
+.alerts-modal-header-left { display: flex; align-items: center; gap: 0.5rem; }
+.alerts-modal-id { font-size: 0.82rem; font-weight: 700; color: #64748B; }
+.alerts-modal-close { background: none; border: none; cursor: pointer; color: #94A3B8; font-size: 1rem; padding: 0.25rem; }
+.alerts-modal-body { padding: 1rem 1.25rem 1.25rem; display: flex; flex-direction: column; gap: 0.85rem; }
+.alerts-modal-type-banner { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.85rem; border-radius: 0.75rem; border: 1px solid transparent; }
+.alerts-modal-type-icon { width: 2.5rem; height: 2.5rem; border-radius: 0.6rem; background-color: rgba(255,255,255,0.7); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.alerts-modal-type-label { font-size: 0.78rem; font-weight: 700; margin: 0 0 0.15rem; }
+.alerts-modal-product-name { font-size: 1rem; font-weight: 700; color: #0B3558; margin: 0 0 0.1rem; }
+.alerts-modal-detail-text { font-size: 0.78rem; color: #64748B; margin: 0; }
+.alerts-modal-info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+.alerts-modal-info-cell { background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 0.6rem; padding: 0.5rem 0.65rem; }
+.alerts-modal-info-label { font-size: 0.65rem; color: #94A3B8; margin: 0 0 0.15rem; }
+.alerts-modal-info-value { font-size: 0.82rem; font-weight: 600; color: #1E293B; margin: 0; }
+.alerts-modal-actions { display: flex; flex-direction: column; gap: 0.5rem; }
+.alerts-modal-btn-acknowledge { width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.65rem; background-color: #FEF3C7; color: #D97706; border: none; border-radius: 0.75rem; font-size: 0.88rem; font-weight: 600; cursor: pointer; transition: background-color 0.15s; }
+.alerts-modal-btn-acknowledge:hover { background-color: #FDE68A; }
+.alerts-modal-btn-resolve { width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem; padding: 0.65rem; background-color: #DCFCE7; color: #16A34A; border: none; border-radius: 0.75rem; font-size: 0.88rem; font-weight: 600; cursor: pointer; transition: background-color 0.15s; }
+.alerts-modal-btn-resolve:hover { background-color: #BBF7D0; }
+.alerts-modal-btn-close { width: 100%; padding: 0.65rem; background-color: #0B3558; color: #fff; border: none; border-radius: 0.75rem; font-size: 0.88rem; font-weight: 600; cursor: pointer; transition: background-color 0.15s; }
+.alerts-modal-btn-close:hover { background-color: #0d3f6b; }
+
+@media (max-width: 767px) {
+  .alerts-table-wrapper { display: none; }
+  .alerts-mobile-cards { display: flex; }
+}
+@media (min-width: 768px) {
+  .alerts-stats-bar { grid-template-columns: repeat(4, 1fr); }
+  .alerts-modal-overlay { align-items: center; }
+  .alerts-modal { width: 440px; border-radius: 1.25rem; }
 }
 </style>
