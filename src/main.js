@@ -69,6 +69,6 @@ createApp(App)
     .component('pv-toast', Toast)
     .component('pv-toolbar', Toolbar)
     .directive('tooltip', Tooltip)
-    .use(router)
     .use(pinia)
+    .use(router)
     .mount('#app');
