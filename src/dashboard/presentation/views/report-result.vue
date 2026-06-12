@@ -150,8 +150,8 @@ function formatDate(isoDate) {
               striped-rows
               table-style="min-width: 30rem"
           >
-            <pv-column field="metric" header="Metric" />
-            <pv-column field="value"  header="Value"  />
+            <pv-column field="metric" :header="t('reports.col-metric')" />
+            <pv-column field="value"  :header="t('reports.col-value')"  />
           </pv-data-table>
         </template>
       </pv-card>
