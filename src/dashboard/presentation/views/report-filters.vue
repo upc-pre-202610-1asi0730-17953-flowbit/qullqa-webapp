@@ -13,25 +13,21 @@ const iamStore       = useIamStore();
 
 const { errors, generateReport } = dashboardStore;
 
-/**
- * Local validation error message displayed below the form.
- * @type {import('vue').Ref<string>}
- */
+/** @type {import('vue').Ref<string>} */
 const validationError = ref('');
 
 /**
- * Reactive form state bound to the report generation inputs.
- * businessId is read from the IAM store so it is never hardcoded.
+ * Reactive form state. businessId is read from the IAM store — never hardcoded.
  */
 const form = ref({
-  type:       ReportType.SALES,
-  startDate:  '',
-  endDate:    '',
-  category:   ''
+  type:      ReportType.SALES,
+  startDate: '',
+  endDate:   '',
+  category:  ''
 });
 
 /**
- * Available report types mapped to their i18n keys for the dropdown.
+ * Available report types for the dropdown, mapped to their i18n labels.
  * @type {Array<{label: string, value: string}>}
  */
 const reportTypeOptions = [
@@ -41,13 +37,17 @@ const reportTypeOptions = [
   { label: t('reports.type-replenishment'), value: ReportType.REPLENISHMENT }
 ];
 
+/** @type {Record<string, string>} Icon per report type value */
+const reportTypeIcons = {
+  [ReportType.INVENTORY]:     'pi pi-box',
+  [ReportType.SALES]:         'pi pi-shopping-cart',
+  [ReportType.LOW_STOCK]:     'pi pi-exclamation-triangle',
+  [ReportType.REPLENISHMENT]: 'pi pi-refresh'
+};
+
 /**
- * Validates the form inputs, delegates report generation to the store,
- * and navigates to the result view on success.
- *
- * Business rules enforced here (presentation guard, mirrors store rules):
- * - Both startDate and endDate are required.
- * - startDate must not be after endDate.
+ * Validates inputs, delegates to the store, and navigates to the result view on success.
+ * Rules: both dates required; startDate must not be after endDate.
  */
 function applyFilters() {
   validationError.value = '';
@@ -77,108 +77,287 @@ function applyFilters() {
   router.push({ name: 'dashboard-report-result' });
 }
 
-/**
- * Navigates back to the main dashboard view.
- */
+/** Navigates back to the main dashboard. */
 function navigateBack() {
   router.push({ name: 'dashboard' });
 }
 </script>
 
 <template>
-  <div class="p-4" style="max-width: 600px;">
-    <div class="flex align-items-center gap-3 mb-4">
-      <pv-button icon="pi pi-arrow-left" text rounded @click="navigateBack"/>
+  <div class="filters-wrapper">
+
+    <!-- ── Page header ───────────────────────────────────────────────────────── -->
+    <div class="filters-header">
+      <button class="back-btn" @click="navigateBack">
+        <i class="pi pi-arrow-left"/>
+      </button>
       <div>
-        <h1 class="m-0" style="color: #0B3558;">{{ t('reports.title') }}</h1>
-        <p class="m-0 mt-1" style="color: #64748B;">{{ t('reports.subtitle') }}</p>
+        <h1 class="filters-header__title">{{ t('reports.title') }}</h1>
+        <p class="filters-header__subtitle">{{ t('reports.subtitle') }}</p>
       </div>
     </div>
 
-    <pv-card class="shadow-1">
-      <template #content>
-        <!-- Report Type -->
-        <div class="field mb-4">
-          <label for="report-type" class="block mb-2" style="color: #0B3558; font-weight: 500;">
-            {{ t('reports.type') }}
-          </label>
-          <pv-select
-              id="report-type"
-              v-model="form.type"
-              :options="reportTypeOptions"
-              option-label="label"
-              option-value="value"
-              class="w-full"
-          />
-        </div>
+    <!-- ── Form card ─────────────────────────────────────────────────────────── -->
+    <div class="form-card">
 
-        <!-- Start Date -->
-        <div class="field mb-4">
-          <label for="start-date" class="block mb-2" style="color: #0B3558; font-weight: 500;">
+      <!-- Report type -->
+      <div class="form-field">
+        <label for="report-type" class="form-label">
+          <i :class="reportTypeIcons[form.type]" class="form-label__icon"/>
+          {{ t('reports.type') }}
+        </label>
+        <pv-select
+            id="report-type"
+            v-model="form.type"
+            :options="reportTypeOptions"
+            option-label="label"
+            option-value="value"
+            class="w-full"
+        />
+      </div>
+
+      <!-- Date range -->
+      <div class="date-range">
+        <div class="form-field">
+          <label for="start-date" class="form-label">
+            <i class="pi pi-calendar form-label__icon"/>
             {{ t('reports.start-date') }}
           </label>
-          <pv-input-text
+          <input
               id="start-date"
               v-model="form.startDate"
               type="date"
-              class="w-full"
+              class="date-input"
+              :class="{ 'date-input--error': validationError }"
           />
         </div>
 
-        <!-- End Date -->
-        <div class="field mb-4">
-          <label for="end-date" class="block mb-2" style="color: #0B3558; font-weight: 500;">
+        <div class="date-range__separator">
+          <span>—</span>
+        </div>
+
+        <div class="form-field">
+          <label for="end-date" class="form-label">
+            <i class="pi pi-calendar form-label__icon"/>
             {{ t('reports.end-date') }}
           </label>
-          <pv-input-text
+          <input
               id="end-date"
               v-model="form.endDate"
               type="date"
-              class="w-full"
+              class="date-input"
+              :class="{ 'date-input--error': validationError }"
           />
         </div>
+      </div>
 
-        <!-- Category (optional) -->
-        <div class="field mb-4">
-          <label for="category" class="block mb-2" style="color: #0B3558; font-weight: 500;">
-            {{ t('reports.category') }}
-          </label>
-          <pv-input-text
-              id="category"
-              v-model="form.category"
-              :placeholder="t('reports.category-placeholder')"
-              class="w-full"
-          />
-        </div>
+      <!-- Category (optional) -->
+      <div class="form-field">
+        <label for="category" class="form-label">
+          <i class="pi pi-tag form-label__icon"/>
+          {{ t('reports.category') }}
+        </label>
+        <pv-input-text
+            id="category"
+            v-model="form.category"
+            :placeholder="t('reports.category-placeholder')"
+            class="w-full"
+        />
+      </div>
 
-        <!-- Validation error -->
-        <p v-if="validationError" class="mt-2 mb-3" style="color: #EF4444;">
-          {{ validationError }}
-        </p>
+      <!-- Validation error -->
+      <div v-if="validationError" class="validation-error">
+        <i class="pi pi-exclamation-circle"/>
+        {{ validationError }}
+      </div>
 
-        <!-- Actions -->
-        <div class="flex gap-2 justify-content-end">
-          <pv-button
-              :label="t('reports.cancel')"
-              severity="secondary"
-              outlined
-              @click="navigateBack"
-          />
-          <pv-button
-              :label="t('reports.apply')"
-              icon="pi pi-check"
-              @click="applyFilters"
-          />
-        </div>
+      <!-- Actions -->
+      <div class="form-actions">
+        <button class="btn-secondary" @click="navigateBack">
+          {{ t('reports.cancel') }}
+        </button>
+        <button class="btn-primary" @click="applyFilters">
+          <i class="pi pi-chart-bar"/>
+          {{ t('reports.apply') }}
+        </button>
+      </div>
 
-        <!-- Store errors -->
-        <div v-if="errors.length" class="mt-3">
-          <p style="color: #EF4444;">{{ t('errors.occurred') }}: {{ errors.map(error => error.message).join(', ') }}</p>
-        </div>
-      </template>
-    </pv-card>
+      <!-- Store-level errors -->
+      <div v-if="errors.length" class="store-errors">
+        <i class="pi pi-exclamation-triangle"/>
+        {{ t('errors.occurred') }}: {{ errors.map(error => error.message).join(', ') }}
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
+.filters-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 560px;
+  padding: 1.5rem;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────── */
+.filters-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.filters-header__title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #0B3558;
+}
+.filters-header__subtitle {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+  color: #64748B;
+}
+.back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid #E2E8F0;
+  border-radius: 50%;
+  background: #fff;
+  color: #64748B;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.back-btn:hover { background-color: #F1F5F9; color: #0B3558; }
+
+/* ── Form card ───────────────────────────────────────────────────────── */
+.form-card {
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 0.875rem;
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* ── Fields ──────────────────────────────────────────────────────────── */
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.form-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.035em;
+}
+.form-label__icon {
+  font-size: 0.75rem;
+  color: #0E7490;
+}
+
+/* ── Date range layout ───────────────────────────────────────────────── */
+.date-range {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+.date-range > .form-field { flex: 1; }
+.date-range__separator {
+  padding-bottom: 0.6rem;
+  font-size: 1rem;
+  color: #94A3B8;
+  flex-shrink: 0;
+}
+
+/* ── Date native input ───────────────────────────────────────────────── */
+.date-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #CBD5E1;
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+  color: #1E293B;
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+}
+.date-input:focus {
+  border-color: #0E7490;
+  box-shadow: 0 0 0 3px rgba(14, 116, 144, 0.12);
+}
+.date-input--error {
+  border-color: #EF4444;
+}
+
+/* ── Validation error ────────────────────────────────────────────────── */
+.validation-error {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 0.9rem;
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-radius: 0.5rem;
+  color: #DC2626;
+  font-size: 0.83rem;
+  font-weight: 500;
+}
+
+/* ── Actions ─────────────────────────────────────────────────────────── */
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+.btn-primary,
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1.25rem;
+  border-radius: 0.5rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.1s;
+  border: none;
+}
+.btn-primary {
+  background: #0E7490;
+  color: #fff;
+}
+.btn-primary:hover  { filter: brightness(1.1); }
+.btn-primary:active { transform: scale(0.98); }
+.btn-secondary {
+  background: #F1F5F9;
+  color: #475569;
+  border: 1px solid #E2E8F0;
+}
+.btn-secondary:hover { background: #E2E8F0; }
+
+/* ── Store errors ────────────────────────────────────────────────────── */
+.store-errors {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 0.9rem;
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-radius: 0.5rem;
+  color: #DC2626;
+  font-size: 0.82rem;
+}
 </style>

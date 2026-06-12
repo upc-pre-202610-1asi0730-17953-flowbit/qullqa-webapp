@@ -3,7 +3,7 @@ import { onMounted, ref, toRefs } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useConfirm } from 'primevue';
 import useIamStore from '../../application/iam.store.js';
-import LanguageSwitcher from '../../../../src/shared/presentation/components/language-switcher.vue';
+import LanguageSwitcher from '../../../shared/presentation/components/language-switcher.vue';
 
 const { t }    = useI18n();
 const confirm  = useConfirm();
