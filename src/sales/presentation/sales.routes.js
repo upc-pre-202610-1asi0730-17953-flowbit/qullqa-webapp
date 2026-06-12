@@ -1,47 +1,51 @@
-// Lazy-loaded views
-const posScreen    = () => import('./views/pos-screen.vue');
-const customerList = () => import('./views/customer-list.vue');
-const customerForm = () => import('./views/customer-form.vue');
+const salesLayout   = () => import('./views/sales-layout.vue');
+const posScreen     = () => import('./views/pos-screen.vue');
+const salesHistory  = () => import('./views/sales-history.vue');
+const customerList  = () => import('./views/customer-list.vue');
 
 /**
  * Route definitions for the Sales & POS Management bounded context.
  * These are child routes of the authenticated /app layout wrapper.
  *
- * The sidebar "Venta POS" entry navigates directly to sales-list,
- * which redirects to pos-screen (the main POS view).
- * Customer management is accessible internally from within the bounded context.
+ * Structure:
+ * /app/sales              → redirect to /app/sales/pos
+ * /app/sales/pos          → POS screen (product grid + cart)
+ * /app/sales/history      → Sales history table
+ * /app/sales/customers    → Customer list
+ *
+ * The parent route renders sales-layout.vue which contains the header,
+ * stats bar, and tab navigation. The child routes render inside its <router-view>.
  *
  * @type {import('vue-router').RouteRecordRaw[]}
  */
 const salesRoutes = [
     {
         path:      'sales',
-        name:      'sales-list',
-        redirect:  { name: 'pos-screen' }
-    },
-    {
-        path:      'sales/pos',
-        name:      'pos-screen',
-        component: posScreen,
-        meta:      { title: 'Point of Sale' }
-    },
-    {
-        path:      'sales/customers',
-        name:      'customer-list',
-        component: customerList,
-        meta:      { title: 'Customers' }
-    },
-    {
-        path:      'sales/customers/new',
-        name:      'customer-new',
-        component: customerForm,
-        meta:      { title: 'New Customer' }
-    },
-    {
-        path:      'sales/customers/:id/edit',
-        name:      'customer-edit',
-        component: customerForm,
-        meta:      { title: 'Edit Customer' }
+        component: salesLayout,
+        children:  [
+            {
+                path:     '',
+                redirect: { name: 'pos-screen' }
+            },
+            {
+                path:      'pos',
+                name:      'pos-screen',
+                component: posScreen,
+                meta:      { title: 'Point of Sale' }
+            },
+            {
+                path:      'history',
+                name:      'sales-history',
+                component: salesHistory,
+                meta:      { title: 'Sales History' }
+            },
+            {
+                path:      'customers',
+                name:      'customer-list',
+                component: customerList,
+                meta:      { title: 'Customers' }
+            }
+        ]
     }
 ];
 
