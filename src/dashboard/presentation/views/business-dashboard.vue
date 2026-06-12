@@ -160,6 +160,39 @@ function alertSeverityKey(severity) {
 const gridLines = [0, 25, 50, 75];
 
 /**
+ * Current date formatted in Spanish long format (e.g. "Viernes, 12 de junio de 2026").
+ * Capitalized because toLocaleDateString returns lowercase weekday in es-PE.
+ * @type {import('vue').ComputedRef<string>}
+ */
+const currentDateLabel = computed(() => {
+  const formatted = new Date().toLocaleDateString('es-PE', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+  });
+  return formatted.charAt(0).toUpperCase() + formatted.slice(1);
+});
+
+/**
+ * i18n key for the time-of-day greeting.
+ * 0–11 → morning, 12–19 → afternoon, 20–23 → evening.
+ * @type {import('vue').ComputedRef<string>}
+ */
+const greetingKey = computed(() => {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'dashboard.greeting-morning';
+  if (hour < 20) return 'dashboard.greeting-afternoon';
+  return 'dashboard.greeting-evening';
+});
+
+/**
+ * First word of the authenticated user's full name, used in the greeting headline.
+ * @type {import('vue').ComputedRef<string>}
+ */
+const currentUserFirstName = computed(() => {
+  const full = iamStore.currentUser?.fullName ?? '';
+  return full.split(' ')[0];
+});
+
+/**
  * Top 3 products sorted descending by stock quantity for the "Mayor stock" panel.
  * stockPercent is relative to the highest-quantity item (max badge = +12%).
  * @type {import('vue').ComputedRef<Array>}
@@ -235,26 +268,28 @@ const quickActions = computed(() => [
   <div class="dashboard-wrapper">
 
     <!-- ── Page header ─────────────────────────────────────────────────────── -->
-    <div class="flex align-items-start justify-content-between flex-wrap gap-3 mb-4">
+    <div class="flex align-items-start justify-content-between gap-3 mb-4">
       <div>
-        <h1 class="m-0" style="color: #0B3558; font-size: 1.5rem; font-weight: 700;">
-          {{ t('dashboard.title') }}
+        <p class="m-0 mb-1 header-date">{{ currentDateLabel }}</p>
+        <h1 class="m-0 header-greeting">
+          {{ t(greetingKey) }}, {{ currentUserFirstName }}
         </h1>
-        <p class="m-0 mt-1" style="color: #64748B; font-size: 0.9rem;">
-          {{ t('dashboard.subtitle') }}
-        </p>
-        <p v-if="metricsLoaded && metrics" class="m-0 mt-1" style="color: #94A3B8; font-size: 0.78rem;">
-          {{ t('dashboard.generated-at') }}: {{ formatDateTime(metrics.generatedAt) }}
-        </p>
       </div>
-      <button
-          class="refresh-btn"
-          :title="t('dashboard.refresh')"
-          @click="refreshMetrics"
-      >
-        <i class="pi pi-refresh"/>
-        {{ t('dashboard.refresh') }}
-      </button>
+      <div class="flex align-items-center gap-2">
+        <button
+            class="refresh-btn"
+            :title="t('dashboard.refresh')"
+            @click="refreshMetrics"
+        >
+          <i class="pi pi-refresh"/>
+        </button>
+        <button class="alert-icon-btn" @click="navigateToAlerts">
+          <i class="pi pi-bell"/>
+          <span v-if="activeAlerts.length > 0" class="alert-icon-btn__badge">
+            {{ activeAlerts.length > 9 ? '9+' : activeAlerts.length }}
+          </span>
+        </button>
+      </div>
     </div>
 
     <!-- ── 6 KPI Cards ─────────────────────────────────────────────────────── -->
@@ -452,25 +487,77 @@ const quickActions = computed(() => [
   gap: 1.25rem;
 }
 
-/* ── Refresh button ─────────────────────────────────────────────────── */
+/* ── Header date + greeting ─────────────────────────────────────────── */
+.header-date {
+  color: #94A3B8;
+  font-size: 0.82rem;
+}
+.header-greeting {
+  color: #0B3558;
+  font-size: 1.65rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+/* ── Refresh button (icon-only) ─────────────────────────────────────── */
 .refresh-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.45rem 1rem;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
   border: 1px solid #E2E8F0;
-  border-radius: 0.5rem;
+  border-radius: 50%;
   background: #fff;
   color: #64748B;
-  font-size: 0.82rem;
-  font-weight: 500;
+  font-size: 0.9rem;
   cursor: pointer;
   transition: background-color 0.15s, color 0.15s;
-  white-space: nowrap;
+  flex-shrink: 0;
 }
 .refresh-btn:hover {
   background-color: #F1F5F9;
   color: #0B3558;
+}
+
+/* ── Alert icon button ──────────────────────────────────────────────── */
+.alert-icon-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid #E2E8F0;
+  border-radius: 50%;
+  background: #fff;
+  color: #64748B;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+.alert-icon-btn:hover {
+  background-color: #FFF7ED;
+  color: #F97316;
+  border-color: #FED7AA;
+}
+.alert-icon-btn__badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #EF4444;
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
 }
 
 /* ── KPI cards ──────────────────────────────────────────────────────── */
