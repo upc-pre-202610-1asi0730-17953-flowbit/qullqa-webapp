@@ -1,118 +1,162 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { useI18n }     from 'vue-i18n';
-import { useRouter }   from 'vue-router';
-import { useToast }    from 'primevue/usetoast';
-import useSalesStore   from '../../application/sales.store.js';
-import useProductStore from '../../../product/application/product.store.js';
-import useIamStore     from '../../../iam/application/iam.store.js';
-import { PaymentMethod } from '../../domain/model/sale.entity.js';
+import { useI18n }        from 'vue-i18n';
+import CartPanel          from '../components/cart-panel.vue';
+import PaymentModal       from '../components/payment-modal.vue';
+import SaleSuccessModal   from '../components/sale-success-modal.vue';
+import useSalesStore      from '../../application/sales.store.js';
+import useProductStore    from '../../../product/application/product.store.js';
+import useIamStore        from '../../../iam/application/iam.store.js';
+import { PaymentMethod }  from '../../domain/model/sale.entity.js';
+import { ProductCategory } from '../../../product/domain/model/product.entity.js';
+
+/**
+ * POS screen view for the Sales & POS Management bounded context.
+ *
+ * Layout:
+ * - Left / full: product grid with search bar and category filter pills.
+ * - Right (desktop only): CartPanel sidebar.
+ * - Bottom bar (mobile only): cart toggle button when cart is not empty.
+ * - Modals: PaymentModal, SaleSuccessModal.
+ *
+ * Business rules:
+ * - Only ACTIVE products with currentStock > 0 are shown in the grid.
+ * - Adding an out-of-stock product shows a toast-style error.
+ * - Quantity increments are capped at availableStock per product.
+ * - Confirming a sale persists it, deducts stock, then shows SaleSuccessModal.
+ *
+ * @view PosScreen
+ */
 
 const { t }        = useI18n();
-const router       = useRouter();
-const toast        = useToast();
 const salesStore   = useSalesStore();
 const productStore = useProductStore();
 const iamStore     = useIamStore();
 
-// ─── State ─────────────────────────────────────────────────────────────────
+// ─── UI state ──────────────────────────────────────────────────────────────
 
-/** @type {import('vue').Ref<number|null>} The id of the product selected in the dropdown */
-const selectedProductId = ref(null);
+/** @type {import('vue').Ref<string>} Text typed in the search bar. */
+const searchQuery = ref('');
 
-/** @type {import('vue').Ref<string>} The chosen payment method value */
-const paymentMethod = ref('');
+/** @type {import('vue').Ref<string>} Currently active category filter ('ALL' or a ProductCategory value). */
+const activeCategory = ref('ALL');
 
-/** @type {import('vue').Ref<string>} Inline error message shown in the red banner */
-const errorMessage = ref('');
+/** @type {import('vue').Ref<boolean>} Whether the mobile cart drawer is open. */
+const showMobileCart = ref(false);
 
-/** @type {import('vue').Ref<boolean>} Whether the sale was registered successfully */
-const success = ref(false);
+/** @type {import('vue').Ref<boolean>} Whether the PaymentModal is visible. */
+const showPaymentModal = ref(false);
 
-/** @type {import('vue').Ref<boolean>} Whether the confirm call is in progress */
+/** @type {import('vue').Ref<import('../../domain/model/sale.entity.js').Sale|null>} The last completed sale for the success modal. */
+const completedSale = ref(null);
+
+/** @type {import('vue').Ref<string|null>} Inline stock error message shown briefly under the grid. */
+const stockErrorMessage = ref(null);
+
+/** @type {import('vue').Ref<boolean>} Whether the confirm call is in progress. */
 const isSubmitting = ref(false);
 
-// ─── Computed ──────────────────────────────────────────────────────────────
+// ─── Category filter config ─────────────────────────────────────────────────
 
 /**
- * Products available for selection in the dropdown.
- * Only ACTIVE products with stock > 0 are included.
- * Label mirrors prototype: "nombre - S/ precio (Stock: N)"
+ * Category filter pills: the first entry is "All", followed by each ProductCategory value.
+ * @type {import('vue').ComputedRef<Array<{value: string, labelKey: string}>>}
  */
-const availableProducts = computed(() => {
-  return productStore.products
-      .filter(product => product.isActive)
-      .map(product => {
-        const inventoryItem  = productStore.inventory.find(item => item.productId === product.id);
-        const availableStock = inventoryItem ? inventoryItem.currentStock : 0;
-        return {
-          id:             product.id,
-          name:           product.name,
-          basePrice:      product.basePrice,
-          availableStock: availableStock,
-          label:          `${product.name} - S/ ${product.basePrice.toFixed(2)} (${t('pos.stock-label')}: ${availableStock})`
-        };
-      })
-      .filter(product => product.availableStock > 0);
+const categoryFilters = computed(() => [
+  { value: 'ALL', labelKey: 'pos.category-all' },
+  ...Object.values(ProductCategory).map(category => ({
+    value:    category,
+    labelKey: `pos.category-${category.toLowerCase()}`
+  }))
+]);
+
+// ─── Product grid ───────────────────────────────────────────────────────────
+
+/**
+ * Products enriched with their current stock from the inventory.
+ * Only ACTIVE products are included.
+ * @type {import('vue').ComputedRef<Array>}
+ */
+const enrichedProducts = computed(() =>
+    productStore.products
+        .filter(product => product.isActive)
+        .map(product => {
+          const inventoryItem  = productStore.inventory.find(item => item.productId === product.id);
+          const availableStock = inventoryItem ? inventoryItem.currentStock : 0;
+          return {
+            id:             product.id,
+            name:           product.name,
+            category:       product.category,
+            basePrice:      product.basePrice,
+            availableStock: availableStock,
+            isOutOfStock:   availableStock === 0,
+            isLowStock:     availableStock > 0 && inventoryItem && availableStock <= inventoryItem.minimumStock
+          };
+        })
+);
+
+/**
+ * Products filtered by the active category and the search query.
+ * Search matches against the product name (case-insensitive).
+ * @type {import('vue').ComputedRef<Array>}
+ */
+const filteredProducts = computed(() =>
+    enrichedProducts.value.filter(product => {
+      const matchesCategory = activeCategory.value === 'ALL' || product.category === activeCategory.value;
+      const matchesSearch   = product.name.toLowerCase().includes(searchQuery.value.toLowerCase().trim());
+      return matchesCategory && matchesSearch;
+    })
+);
+
+// ─── Cart ────────────────────────────────────────────────────────────────────
+
+/**
+ * Cart items enriched with productName and availableStock for display.
+ * @type {import('vue').ComputedRef<Array>}
+ */
+const cartItems = computed(() => {
+  if (!salesStore.currentSale) return [];
+  return salesStore.currentSale.details.map(detail => {
+    const enriched = enrichedProducts.value.find(product => product.id === detail.productId);
+    return {
+      productId:      detail.productId,
+      quantity:       detail.quantity,
+      unitPrice:      detail.unitPrice,
+      lineTotal:      detail.lineTotal,
+      productName:    enriched ? enriched.name       : t('pos.unknown-product'),
+      availableStock: enriched ? enriched.availableStock : 0
+    };
+  });
 });
 
-/** The detail lines of the current in-progress sale (the cart) */
-const cartDetails = computed(() => salesStore.currentSale ? salesStore.currentSale.details : []);
-
-/** Subtotal from the Sale entity: sum of all lineTotal values */
-const subtotal = computed(() => salesStore.currentSale ? salesStore.currentSale.subtotal : 0);
-
-/** IGV (18%) from the Sale entity */
-const igvAmount = computed(() => salesStore.currentSale ? salesStore.currentSale.igvAmount : 0);
-
-/** Grand total including IGV from the Sale entity */
-const grandTotal = computed(() => salesStore.currentSale ? salesStore.currentSale.grandTotal : 0);
-
-/** Payment method options — mirrors prototype exactly */
-const paymentMethodOptions = [
-  { value: PaymentMethod.CASH, label: t('pos.payment-cash') },
-  { value: PaymentMethod.CARD, label: t('pos.payment-card') },
-  { value: 'YAPE_PLIN',        label: t('pos.payment-yape-plin') }
-];
-
-// ─── Helpers ───────────────────────────────────────────────────────────────
+/**
+ * Grand total of the current sale (sum of all lineTotals).
+ * @type {import('vue').ComputedRef<number>}
+ */
+const cartTotal = computed(() =>
+    salesStore.currentSale ? salesStore.currentSale.subtotal : 0
+);
 
 /**
- * Returns the product name for a given productId, used inside the cart rows.
- * @param {number} productId
- * @returns {string}
+ * Total number of units in the cart, shown on the mobile cart toggle button.
+ * @type {import('vue').ComputedRef<number>}
  */
-function getProductName(productId) {
-  const product = productStore.products.find(p => p.id === productId);
-  return product ? product.name : t('pos.unknown-product');
-}
+const cartUnitCount = computed(() =>
+    cartItems.value.reduce((sum, item) => sum + item.quantity, 0)
+);
+
+// ─── Actions ─────────────────────────────────────────────────────────────────
 
 /**
- * Returns the available stock for a given productId.
- * @param {number} productId
- * @returns {number}
+ * Adds a product to the cart (quantity 1).
+ * Shows a brief stock error if the product is out of stock.
+ * @param {Object} product - Enriched product object from filteredProducts.
  */
-function getAvailableStock(productId) {
-  const enriched = availableProducts.value.find(p => p.id === productId);
-  if (enriched) return enriched.availableStock;
-  // Product might have been sold below threshold mid-session — fall back to inventory
-  const inventoryItem = productStore.inventory.find(item => item.productId === productId);
-  return inventoryItem ? inventoryItem.currentStock : 0;
-}
-
-// ─── Actions ───────────────────────────────────────────────────────────────
-
-/**
- * Adds the selected product to the cart with quantity 1.
- * Mirrors prototype: no quantity field on the "Agregar Productos" card —
- * the user adjusts quantity from the cart row after adding.
- */
-function addProductToCart() {
-  errorMessage.value = '';
-  if (!selectedProductId.value) return;
-
-  const product = availableProducts.value.find(p => p.id === selectedProductId.value);
-  if (!product) return;
+function addProductToCart(product) {
+  if (product.isOutOfStock) {
+    showStockError(t('pos.error-out-of-stock', { name: product.name }));
+    return;
+  }
 
   const result = salesStore.addDetailToCurrentSale({
     productId:      product.id,
@@ -122,82 +166,76 @@ function addProductToCart() {
   });
 
   if (!result.success) {
-    errorMessage.value = result.errorMessage;
-    return;
+    showStockError(t('pos.error-insufficient-stock-for', { name: product.name, stock: product.availableStock }));
   }
-  selectedProductId.value = null;
 }
 
 /**
- * Updates the quantity of a cart line item when the user changes the number input.
- * If the new value exceeds available stock or is < 1, shows an inline error.
- * Mirrors prototype: actualizarCantidad logic.
- *
- * @param {number} productId
- * @param {number} newQuantity - Raw value from the input (may be 0 or NaN)
+ * Handles the +/- quantity change events emitted by CartPanel.
+ * @param {{ productId: number, delta: number }} payload
  */
-function updateCartItemQuantity(productId, newQuantity) {
-  errorMessage.value = '';
-  const quantity    = parseInt(newQuantity) || 0;
-  const productName = getProductName(productId);
-  const result      = salesStore.updateDetailQuantity({
+function handleQuantityChange({ productId, delta }) {
+  const item = cartItems.value.find(cartItem => cartItem.productId === productId);
+  if (!item) return;
+
+  const newQuantity = item.quantity + delta;
+
+  if (newQuantity < 1) {
+    salesStore.removeDetailFromCurrentSale(productId);
+    return;
+  }
+
+  const result = salesStore.updateDetailQuantity({
     productId:      productId,
-    newQuantity:    quantity,
-    availableStock: getAvailableStock(productId),
-    productName:    productName
+    newQuantity:    newQuantity,
+    availableStock: item.availableStock
   });
+
   if (!result.success) {
-    errorMessage.value = result.errorMessage;
+    showStockError(t('pos.error-max-stock', { stock: item.availableStock }));
   }
 }
 
 /**
- * Removes a product line from the cart.
+ * Handles the remove-item event emitted by CartPanel.
  * @param {number} productId
  */
-function removeCartItem(productId) {
+function handleRemoveItem(productId) {
   salesStore.removeDetailFromCurrentSale(productId);
-  errorMessage.value = '';
 }
 
 /**
- * Validates and submits the sale.
- * Mirrors prototype handleSubmit:
- * 1. Cart must not be empty.
- * 2. Payment method must be selected.
- * 3. Stock re-validation per item.
- * On success shows green banner, then navigates to dashboard after 2 s.
+ * Shows a stock error message that disappears after 3 seconds.
+ * @param {string} message
  */
-async function handleSubmit() {
-  errorMessage.value = '';
-  success.value      = false;
+function showStockError(message) {
+  stockErrorMessage.value = message;
+  setTimeout(() => { stockErrorMessage.value = null; }, 3000);
+}
 
-  if (cartDetails.value.length === 0) {
-    errorMessage.value = t('pos.error-empty-cart');
+/**
+ * Opens the PaymentModal if the cart has at least one item.
+ */
+function openPaymentModal() {
+  if (cartItems.value.length === 0) {
+    showStockError(t('pos.error-empty-cart'));
     return;
   }
-  if (!paymentMethod.value) {
-    errorMessage.value = t('pos.error-no-payment-method');
-    return;
-  }
+  showMobileCart.value  = false;
+  showPaymentModal.value = true;
+}
 
-  // Per-item stock re-validation (mirrors prototype for-loop)
-  for (const detail of cartDetails.value) {
-    const available = getAvailableStock(detail.productId);
-    if (detail.quantity > available) {
-      const name = getProductName(detail.productId);
-      errorMessage.value = `${t('pos.error-stock-prefix')} ${name}. ${t('pos.error-stock-available')}: ${available}, ${t('pos.error-stock-requested')}: ${detail.quantity}`;
-      return;
-    }
-  }
-
-  isSubmitting.value = true;
-
-  // Map YAPE_PLIN to YAPE for the API (the prototype shows them together)
-  const apiPaymentMethod = paymentMethod.value === 'YAPE_PLIN' ? PaymentMethod.YAPE : paymentMethod.value;
+/**
+ * Handles the confirm event from PaymentModal.
+ * Persists the sale and shows the success modal on success.
+ * @param {{ paymentMethod: string, cashGiven: number }} payload
+ */
+async function handlePaymentConfirm({ paymentMethod }) {
+  isSubmitting.value    = true;
+  showPaymentModal.value = false;
 
   const result = await salesStore.confirmSale({
-    paymentMethod: apiPaymentMethod,
+    paymentMethod: paymentMethod,
     customerId:    null,
     description:   ''
   });
@@ -205,19 +243,58 @@ async function handleSubmit() {
   isSubmitting.value = false;
 
   if (result.success) {
-    success.value = true;
-    setTimeout(() => {
-      router.push({ name: 'dashboard' });
-    }, 2000);
+    const lastSale = salesStore.sales[salesStore.sales.length - 1];
+    completedSale.value = lastSale || null;
   } else {
-    errorMessage.value = result.errorMessage;
+    showStockError(t('pos.error-confirm-failed'));
   }
 }
 
-// ─── Lifecycle ─────────────────────────────────────────────────────────────
+/**
+ * Handles the new-sale event from SaleSuccessModal.
+ * Resets the completed sale and starts a fresh POS session.
+ */
+function handleNewSale() {
+  completedSale.value = null;
+  const businessId    = iamStore.currentUser?.businessId;
+  salesStore.startNewSale(businessId);
+}
+
+/**
+ * Returns whether a product is currently in the cart (any quantity).
+ * @param {number} productId
+ * @returns {boolean}
+ */
+function isProductInCart(productId) {
+  return cartItems.value.some(item => item.productId === productId);
+}
+
+/**
+ * Returns the quantity of a product currently in the cart, or 0 if not present.
+ * @param {number} productId
+ * @returns {number}
+ */
+function cartQuantityFor(productId) {
+  const item = cartItems.value.find(cartItem => cartItem.productId === productId);
+  return item ? item.quantity : 0;
+}
+
+/**
+ * Formats a number as a currency string with S/ prefix.
+ * @param {number} amount
+ * @returns {string}
+ */
+function formatCurrency(amount) {
+  return `S/ ${amount.toFixed(2)}`;
+}
+
+// ─── Lifecycle ───────────────────────────────────────────────────────────────
 
 onMounted(() => {
   const businessId = iamStore.currentUser?.businessId;
+  // Without a businessId the queries would resolve to an empty set yet still
+  // flip productsLoaded/inventoryLoaded to true, blocking every later fetch.
+  if (!businessId) return;
   if (!productStore.productsLoaded)  productStore.fetchProducts(businessId);
   if (!productStore.inventoryLoaded) productStore.fetchInventory(businessId);
   if (!salesStore.currentSale)       salesStore.startNewSale(businessId);
@@ -225,205 +302,237 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-column gap-4 p-3 md:p-0">
+  <div class="flex flex-column lg:flex-row h-full overflow-hidden">
 
-    <!-- Header -->
-    <div class="flex align-items-center gap-3">
-      <pv-button
-          icon="pi pi-arrow-left"
-          class="p-button-text p-button-plain"
-          @click="router.push({ name: 'dashboard' })"
-      />
-      <div>
-        <h2 class="m-0" style="color: #0B3558;">{{ t('pos.title') }}</h2>
-        <p class="m-0 text-sm" style="color: #64748B;">{{ t('pos.subtitle') }}</p>
+    <!-- ── Left: product grid area ── -->
+    <div class="flex-1 flex flex-column overflow-hidden">
+
+      <!-- Search + category filters -->
+      <div
+          class="px-4 pt-3 pb-3"
+          style="border-bottom: 1px solid #E2E8F0; display: flex; flex-direction: column; gap: 8px;"
+      >
+        <!-- Search bar -->
+        <div style="position: relative;">
+          <i
+              class="pi pi-search"
+              style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94A3B8; font-size: 0.85rem;"
+          />
+          <input
+              v-model="searchQuery"
+              type="text"
+              :placeholder="t('pos.search-placeholder')"
+              class="w-full border-round-lg"
+              style="padding: 8px 12px 8px 36px; border: 1px solid #E2E8F0; font-size: 0.85rem; color: #1E293B; background-color: #F8FAFC; outline: none;"
+              @focus="(e) => e.target.style.borderColor = '#0E7490'"
+              @blur="(e) => e.target.style.borderColor = '#E2E8F0'"
+          />
+        </div>
+
+        <!-- Category pills -->
+        <div
+            class="flex gap-2 pb-1"
+            style="overflow-x: auto; scrollbar-width: none;"
+        >
+          <button
+              v-for="filter in categoryFilters"
+              :key="filter.value"
+              class="border-round-3xl px-3 py-1 shrink-0"
+              style="white-space: nowrap; font-size: 0.72rem; font-weight: 600; border: none; cursor: pointer;"
+              :style="{
+                            backgroundColor: activeCategory === filter.value ? '#0B3558' : '#F1F5F9',
+                            color:           activeCategory === filter.value ? '#fff'    : '#64748B'
+                        }"
+              @click="activeCategory = filter.value"
+          >
+            {{ t(filter.labelKey) }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Stock error toast -->
+      <div
+          v-if="stockErrorMessage"
+          class="mx-4 mt-2 flex align-items-center gap-2 border-round-xl px-3 py-2"
+          style="background-color: #FEE2E2; border: 1px solid #FCA5A5;"
+      >
+        <i class="pi pi-exclamation-triangle" style="color: #EF4444; font-size: 0.85rem; flex-shrink: 0;" />
+        <p class="m-0" style="font-size: 0.78rem; color: #DC2626;">{{ stockErrorMessage }}</p>
+      </div>
+
+      <!-- Products grid -->
+      <div class="flex-1 overflow-y-auto p-4">
+        <div
+            class="grid"
+            style="gap: 10px;"
+        >
+          <div
+              v-for="product in filteredProducts"
+              :key="product.id"
+              class="col-6 md:col-4 xl:col-3"
+          >
+            <button
+                class="w-full border-round-xl p-3 text-left flex flex-column justify-content-between"
+                :disabled="product.isOutOfStock"
+                :style="{
+                                border:          `2px solid ${isProductInCart(product.id) ? '#0E7490' : '#E2E8F0'}`,
+                                backgroundColor: product.isOutOfStock ? '#F8FAFC' : isProductInCart(product.id) ? '#F0FDFA' : '#fff',
+                                cursor:          product.isOutOfStock ? 'not-allowed' : 'pointer',
+                                opacity:         product.isOutOfStock ? 0.6 : 1,
+                                minHeight:       '90px'
+                            }"
+                @click="addProductToCart(product)"
+            >
+              <!-- Product name -->
+              <div>
+                <p
+                    class="m-0 mb-1"
+                    style="font-size: 0.78rem; font-weight: 600; line-height: 1.3;"
+                    :style="{ color: product.isOutOfStock ? '#94A3B8' : '#1E293B' }"
+                >
+                  {{ product.name }}
+                </p>
+              </div>
+
+              <!-- Price + stock -->
+              <div class="flex align-items-end justify-content-between gap-1 mt-2">
+                <p
+                    class="m-0"
+                    style="font-size: 0.95rem; font-weight: 800;"
+                    :style="{ color: isProductInCart(product.id) ? '#0E7490' : '#0B3558' }"
+                >
+                  {{ formatCurrency(product.basePrice) }}
+                </p>
+                <div class="flex align-items-center gap-1">
+                  <i
+                      v-if="product.isLowStock"
+                      class="pi pi-exclamation-triangle"
+                      style="color: #D97706; font-size: 0.6rem;"
+                  />
+                  <span
+                      style="font-size: 0.65rem;"
+                      :style="{
+                                            color:      product.isOutOfStock ? '#94A3B8' : product.isLowStock ? '#D97706' : '#94A3B8',
+                                            fontWeight: product.isLowStock ? 600 : 400
+                                        }"
+                  >
+                                        {{ product.isOutOfStock ? t('pos.out-of-stock') : `${product.availableStock} ${t('pos.units')}` }}
+                                    </span>
+                </div>
+              </div>
+
+              <!-- In-cart badge -->
+              <div v-if="isProductInCart(product.id)" class="mt-2">
+                                <span
+                                    class="border-round-md px-2 py-1"
+                                    style="background-color: #0E7490; color: #fff; font-size: 0.65rem; font-weight: 700;"
+                                >
+                                    {{ t('pos.in-cart') }}: {{ cartQuantityFor(product.id) }}
+                                </span>
+              </div>
+            </button>
+          </div>
+
+          <!-- Empty state -->
+          <div
+              v-if="filteredProducts.length === 0"
+              class="col-12 flex flex-column align-items-center justify-content-center py-6 text-center"
+          >
+            <i class="pi pi-box mb-2" style="font-size: 2.25rem; color: #CBD5E1;" />
+            <p class="m-0" style="color: #94A3B8; font-size: 0.88rem;">
+              {{ t('pos.no-products-found') }}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mobile: cart toggle button -->
+      <div
+          v-if="cartItems.length > 0"
+          class="lg:hidden px-4 pb-4 pt-2"
+          style="border-top: 1px solid #E2E8F0;"
+      >
+        <button
+            class="w-full flex align-items-center justify-content-between border-round-xl px-4 py-3"
+            style="background-color: #0B3558; color: #fff; border: none; cursor: pointer;"
+            @click="showMobileCart = true"
+        >
+          <div class="flex align-items-center gap-2">
+            <i class="pi pi-shopping-cart" style="font-size: 1.05rem;" />
+            <span style="font-size: 0.88rem; font-weight: 600;">
+                            {{ cartUnitCount }} {{ t('pos.cart-units-label') }}
+                        </span>
+          </div>
+          <span style="font-size: 0.95rem; font-weight: 800;">
+                        {{ formatCurrency(cartTotal) }}
+                    </span>
+        </button>
       </div>
     </div>
 
-    <!-- Error banner -->
-    <pv-card
-        v-if="errorMessage"
-        class="border-1"
-        style="background-color: #FEE2E2; border-color: #EF4444;"
+    <!-- ── Desktop: cart sidebar ── -->
+    <div
+        class="hidden lg:flex flex-column"
+        style="width: 300px; flex-shrink: 0; background-color: #fff; border-left: 1px solid #E2E8F0;"
     >
-      <template #content>
-        <p class="m-0" style="color: #EF4444;">{{ errorMessage }}</p>
-      </template>
-    </pv-card>
+      <cart-panel
+          :cart-items="cartItems"
+          :total="cartTotal"
+          @update-quantity="handleQuantityChange"
+          @remove-item="handleRemoveItem"
+          @pay="openPaymentModal"
+      />
+    </div>
 
-    <!-- Success banner -->
-    <pv-card
-        v-if="success"
-        class="border-1"
-        style="background-color: #DCFCE7; border-color: #22C55E;"
+    <!-- ── Mobile: cart drawer ── -->
+    <div
+        v-if="showMobileCart"
+        class="lg:hidden fixed inset-0 z-40 flex align-items-end"
+        style="background-color: rgba(0,0,0,0.45);"
+        @click.self="showMobileCart = false"
     >
-      <template #content>
-        <p class="m-0" style="color: #22C55E;">{{ t('pos.success-message') }}</p>
-      </template>
-    </pv-card>
-
-    <!-- Main grid: 2 cols left + 1 col right -->
-    <div class="grid">
-
-      <!-- Left column (col-span-2): product selector + cart -->
-      <div class="col-12 lg:col-8 flex flex-column gap-4">
-
-        <!-- Agregar Productos card -->
-        <pv-card>
-          <template #content>
-            <h3 class="mt-0 mb-3" style="color: #0B3558;">{{ t('pos.section-add-product') }}</h3>
-            <div class="flex gap-3">
-              <pv-select
-                  v-model="selectedProductId"
-                  :options="availableProducts"
-                  option-label="label"
-                  option-value="id"
-                  :placeholder="t('pos.product-placeholder')"
-                  class="flex-1"
-                  filter
-              />
-              <pv-button
-                  :label="t('pos.add-to-cart')"
-                  icon="pi pi-plus"
-                  @click="addProductToCart"
-              />
-            </div>
-          </template>
-        </pv-card>
-
-        <!-- Carrito card -->
-        <pv-card>
-          <template #content>
-            <h3 class="mt-0 mb-3" style="color: #0B3558;">
-              {{ t('pos.cart-title') }} ({{ cartDetails.length }})
-            </h3>
-
-            <!-- Empty state -->
-            <div v-if="cartDetails.length === 0" class="text-center py-6">
-              <i class="pi pi-shopping-cart" style="font-size: 3rem; color: #E2E8F0;"/>
-              <p class="mt-3 mb-0" style="color: #64748B;">{{ t('pos.empty-cart') }}</p>
-            </div>
-
-            <!-- Cart items -->
-            <div v-else class="flex flex-column gap-3">
-              <div
-                  v-for="detail in cartDetails"
-                  :key="detail.productId"
-                  class="flex flex-column md:flex-row md:align-items-center gap-3 p-3 border-round border-1"
-                  style="border-color: #E2E8F0;"
-              >
-                <!-- Product info -->
-                <div class="flex-1 min-w-0">
-                  <p class="m-0 text-sm md:text-base" style="color: #1E293B;">
-                    {{ getProductName(detail.productId) }}
-                  </p>
-                  <p class="m-0 text-xs md:text-sm" style="color: #64748B;">
-                    S/ {{ detail.unitPrice.toFixed(2) }} {{ t('pos.per-unit') }}
-                  </p>
-                  <!-- Stock badge — orange if < 10, blue otherwise -->
-                  <span
-                      class="mt-1 inline-block px-2 py-1 border-round text-xs font-medium"
-                      :style="{
-                                            backgroundColor: getAvailableStock(detail.productId) < 10 ? '#FFEDD5' : '#E0F2FE',
-                                            color:           getAvailableStock(detail.productId) < 10 ? '#F97316' : '#0E7490'
-                                        }"
-                  >
-                                        {{ t('pos.stock-label') }}: {{ getAvailableStock(detail.productId) }}
-                                    </span>
-                </div>
-
-                <!-- Controls row -->
-                <div class="flex align-items-center gap-2 md:gap-3">
-                  <!-- Quantity: plain number input, mirrors prototype <Input type="number"> -->
-                  <pv-input-text
-                      :value="String(detail.quantity)"
-                      type="number"
-                      :min="1"
-                      :max="getAvailableStock(detail.productId)"
-                      class="w-4rem md:w-5rem text-sm"
-                      @change="updateCartItemQuantity(detail.productId, $event.target.value)"
-                  />
-
-                  <!-- Line total -->
-                  <p
-                      class="m-0 text-sm md:text-base font-medium"
-                      style="color: #0B3558; min-width: 5rem;"
-                  >
-                    S/ {{ detail.lineTotal.toFixed(2) }}
-                  </p>
-
-                  <!-- Remove -->
-                  <pv-button
-                      icon="pi pi-trash"
-                      class="p-button-text p-button-danger"
-                      @click="removeCartItem(detail.productId)"
-                  />
-                </div>
-              </div>
-            </div>
-          </template>
-        </pv-card>
-      </div>
-
-      <!-- Right column: summary + payment + submit -->
-      <div class="col-12 lg:col-4 flex flex-column gap-4">
-
-        <!-- Resumen de Venta card -->
-        <pv-card>
-          <template #content>
-            <h3 class="mt-0 mb-3" style="color: #0B3558;">{{ t('pos.summary-title') }}</h3>
-            <div class="flex flex-column gap-3">
-              <div
-                  class="flex justify-content-between pb-3 border-bottom-1"
-                  style="border-color: #E2E8F0;"
-              >
-                <span style="color: #64748B;">{{ t('pos.subtotal') }}</span>
-                <span style="color: #1E293B;">S/ {{ subtotal.toFixed(2) }}</span>
-              </div>
-              <div
-                  class="flex justify-content-between pb-3 border-bottom-1"
-                  style="border-color: #E2E8F0;"
-              >
-                <span style="color: #64748B;">{{ t('pos.igv') }}</span>
-                <span style="color: #1E293B;">S/ {{ igvAmount.toFixed(2) }}</span>
-              </div>
-              <div class="flex justify-content-between pt-2">
-                <span style="color: #0B3558;">{{ t('pos.grand-total') }}</span>
-                <h3 class="m-0" style="color: #0B3558;">S/ {{ grandTotal.toFixed(2) }}</h3>
-              </div>
-            </div>
-          </template>
-        </pv-card>
-
-        <!-- Método de Pago card -->
-        <pv-card>
-          <template #content>
-            <h3 class="mt-0 mb-3" style="color: #0B3558;">{{ t('pos.payment-method-title') }}</h3>
-            <pv-select
-                v-model="paymentMethod"
-                :options="paymentMethodOptions"
-                option-label="label"
-                option-value="value"
-                :placeholder="t('pos.payment-placeholder')"
-                class="w-full"
-            />
-          </template>
-        </pv-card>
-
-        <!-- Submit button -->
-        <pv-button
-            :label="t('pos.submit')"
-            icon="pi pi-dollar"
-            class="w-full"
-            style="background-color: #0B3558; border-color: #0B3558; color: #FAFAF7;"
-            :loading="isSubmitting"
-            :disabled="success"
-            @click="handleSubmit"
+      <div
+          class="w-full bg-white border-round-top-2xl shadow-8 flex flex-column"
+          style="max-height: 80dvh;"
+      >
+        <div
+            class="flex align-items-center justify-content-between px-4 pt-4 pb-3"
+            style="border-bottom: 1px solid #E2E8F0;"
+        >
+          <p class="m-0" style="font-size: 1rem; font-weight: 700; color: #0B3558;">
+            {{ t('pos.cart-title') }}
+          </p>
+          <button
+              style="background: none; border: none; cursor: pointer; padding: 4px;"
+              @click="showMobileCart = false"
+          >
+            <i class="pi pi-times" style="color: #94A3B8; font-size: 1.1rem;" />
+          </button>
+        </div>
+        <cart-panel
+            :cart-items="cartItems"
+            :total="cartTotal"
+            @update-quantity="handleQuantityChange"
+            @remove-item="handleRemoveItem"
+            @pay="openPaymentModal"
         />
       </div>
     </div>
+
+    <!-- ── Payment modal ── -->
+    <payment-modal
+        v-if="showPaymentModal"
+        :total="cartTotal"
+        @confirm="handlePaymentConfirm"
+        @cancel="showPaymentModal = false"
+    />
+
+    <!-- ── Sale success modal ── -->
+    <sale-success-modal
+        v-if="completedSale"
+        :sale="completedSale"
+        :sale-items="cartItems"
+        @new-sale="handleNewSale"
+    />
   </div>
 </template>
-
-<style scoped>
-</style>

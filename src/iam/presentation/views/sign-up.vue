@@ -62,7 +62,7 @@ function selectBusinessType(typeValue) {
 </script>
 
 <template>
-  <div class="flex min-h-screen" style="background-color: #FAFAF7;">
+  <div class="auth-screen flex min-h-screen" style="background-color: #FAFAF7;">
 
     <!-- ── Left panel (desktop only) ──────────────────────────────── -->
     <div
@@ -120,7 +120,7 @@ function selectBusinessType(typeValue) {
     </div>
 
     <!-- ── Right panel ─────────────────────────────────────────────── -->
-    <div class="flex-1 flex flex-column align-items-center justify-content-center px-5 sm:px-8 py-10 overflow-y-auto">
+    <div class="flex-1 flex flex-column align-items-center justify-content-center px-4 sm:px-8 py-8 sm:py-10 overflow-y-auto">
 
       <!-- Mobile logo -->
       <div class="flex lg:hidden align-items-center gap-3 mb-6">
@@ -174,7 +174,7 @@ function selectBusinessType(typeValue) {
           <!-- Business type -->
           <div class="auth-field">
             <label class="auth-label">{{ t('sign-up.business-type') }}</label>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+            <div class="business-type-grid">
               <button
                   v-for="typeOption in businessTypeOptions"
                   :key="typeOption.value"
@@ -295,6 +295,17 @@ function selectBusinessType(typeValue) {
 </template>
 
 <style scoped>
+/* Use dynamic viewport height so mobile browser chrome doesn't clip the layout. */
+.auth-screen { min-height: 100vh; min-height: 100dvh; }
+
+/* Desktop: lock the screen to the viewport so the left brand panel stays static
+   and only the right form panel scrolls (the right panel has overflow-y-auto). */
+@media (min-width: 1024px) {
+  .auth-screen { height: 100vh; height: 100dvh; overflow: hidden; }
+}
+
+.business-type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .spin-ring {
@@ -340,4 +351,13 @@ function selectBusinessType(typeValue) {
   cursor: pointer; padding: 0; transition: color 0.15s;
 }
 .auth-link:hover { color: #0B3558; }
+
+/* Mobile tweaks: 16px inputs prevent iOS focus-zoom; stack type cards on narrow screens. */
+@media (max-width: 640px) {
+  .auth-input { font-size: 16px; }
+  .auth-screen h2 { font-size: 1.4rem; }
+}
+@media (max-width: 380px) {
+  .business-type-grid { grid-template-columns: 1fr; }
+}
 </style>
