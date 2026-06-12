@@ -13,13 +13,6 @@
  */
 export class UserAccount {
     /**
-     * @private
-     * Sensitive identifier not exposed directly as a plain property.
-     * @type {string}
-     */
-    #email;
-
-    /**
      * @param {Object} params - Entity attributes.
      * @param {?number} [params.id=null] - User identifier.
      * @param {string} [params.email=''] - User email address (used for authentication).
@@ -39,21 +32,12 @@ export class UserAccount {
                     roleId = null
                 }) {
         this.id = id;
-        this.#email = email;
+        this.email = email;
         this.firstName = firstName;
         this.lastName = lastName;
         this.businessId = businessId;
         this.status = status;
         this.roleId = roleId;
-    }
-
-    /**
-     * Returns the user email address.
-     * Exposed as a getter to allow controlled read access.
-     * @returns {string}
-     */
-    get email() {
-        return this.#email;
     }
 
     /**
@@ -88,7 +72,7 @@ export class UserAccount {
      * @returns {boolean}
      */
     get isEmailValid() {
-        const parts = this.#email.split('@');
+        const parts = this.email.split('@');
         return parts.length === 2 && parts[0].length > 0 && parts[1].length > 0;
     }
 }
