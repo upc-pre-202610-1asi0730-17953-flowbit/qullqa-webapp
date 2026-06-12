@@ -56,6 +56,66 @@ const useIamStore = defineStore('iam', () => {
     const errors = ref([]);
 
     /**
+     * LocalStorage key under which the active session is persisted so the
+     * authenticated user (and its businessId) survives a page reload.
+     * @type {string}
+     */
+    const SESSION_STORAGE_KEY = 'qullqa.session';
+
+    /**
+     * Serialises a UserAccount entity into a plain resource (password excluded)
+     * suitable for persisting in localStorage and re-feeding to the assembler.
+     * @param {UserAccount} user
+     * @returns {Object}
+     */
+    function toPersistableResource(user) {
+        return {
+            id:         user.id,
+            email:      user.email,
+            name:       user.firstName,
+            lastName:   user.lastName,
+            businessId: user.businessId,
+            status:     user.status,
+            roleId:     user.roleId
+        };
+    }
+
+    /**
+     * Persists the current session so it survives a page reload.
+     * @param {UserAccount} user
+     * @returns {void}
+     */
+    function persistSession(user) {
+        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(toPersistableResource(user)));
+    }
+
+    /**
+     * Removes any persisted session from localStorage.
+     * @returns {void}
+     */
+    function clearSession() {
+        localStorage.removeItem(SESSION_STORAGE_KEY);
+    }
+
+    /**
+     * Rehydrates the session from localStorage on store initialisation so a
+     * page reload keeps the user authenticated and the businessId available.
+     * @returns {void}
+     */
+    function restoreSession() {
+        const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+        if (!raw) return;
+        try {
+            currentUser.value     = UserAccountAssembler.toEntityFromResource(JSON.parse(raw));
+            isAuthenticated.value = true;
+        } catch (error) {
+            clearSession();
+        }
+    }
+
+    restoreSession();
+
+    /**
      * Number of loaded user accounts.
      * @type {import('vue').ComputedRef<number>}
      */
@@ -94,6 +154,7 @@ const useIamStore = defineStore('iam', () => {
 
             currentUser.value = UserAccountAssembler.toEntityFromResource(matched);
             isAuthenticated.value = true;
+            persistSession(currentUser.value);
         }).catch(error => {
             errors.value.push(error.message);
         });
@@ -128,6 +189,7 @@ const useIamStore = defineStore('iam', () => {
             const createdUser = UserAccountAssembler.toEntityFromResource(response.data);
             currentUser.value  = createdUser;
             isAuthenticated.value = true;
+            persistSession(currentUser.value);
         }).catch(error => {
             errors.value.push(error.message);
         });
@@ -141,6 +203,7 @@ const useIamStore = defineStore('iam', () => {
         currentUser.value     = null;
         isAuthenticated.value = false;
         errors.value          = [];
+        clearSession();
     }
 
     /**
