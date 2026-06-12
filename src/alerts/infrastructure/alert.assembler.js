@@ -13,7 +13,24 @@ export class AlertAssembler {
      * @returns {Alert} The corresponding domain entity.
      */
     static toEntityFromResource(resource) {
-        return new Alert({ ...resource });
+        return new Alert({
+            id:           resource.id           ?? null,
+            businessId:   resource.businessId   ?? null,
+            productId:    resource.productId    ?? null,
+            batchId:      resource.batchId      ?? null,
+            productName:  resource.productName  ?? '',
+            type:         resource.type         ?? 'LOW_STOCK',
+            severity:     resource.severity     ?? 'LOW',
+            message:      resource.message      ?? '',
+            status:       resource.status       ?? 'ACTIVE',
+            date:         resource.date         ?? '',
+            currentStock: resource.currentStock ?? null,
+            minStock:     resource.minStock     ?? null,
+            daysToExpiry: resource.daysToExpiry ?? null,
+            notified:     resource.notified     ?? false,
+            notifiedAt:   resource.notifiedAt   ?? '',
+            resolvedAt:   resource.resolvedAt   ?? ''
+        });
     }
 
     /**
