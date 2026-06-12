@@ -800,7 +800,10 @@
       "phone": "014000000",
       "address": "Av. Argentina 4793, Callao",
       "status": "ACTIVE",
-      "businessId": 1
+      "businessId": 1,
+      "contactPerson": "Miguel Torres",
+      "category": "GROCERIES",
+      "since": "2023-01-15"
     },
     {
       "id": 2,
@@ -811,7 +814,10 @@
       "phone": "016190000",
       "address": "Av. Paseo de la República 3220, Lima",
       "status": "ACTIVE",
-      "businessId": 2
+      "businessId": 2,
+      "contactPerson": "Mauricio Tucto",
+      "category": "GROCERIES",
+      "since": "2023-01-15"
     },
     {
       "id": 3,
@@ -822,7 +828,10 @@
       "phone": "016257000",
       "address": "Av. Nicolás Ayllón 3986, Lima",
       "status": "INACTIVE",
-      "businessId": 1
+      "businessId": 1,
+      "contactPerson": "Miguel Torres",
+      "category": "GROCERIES",
+      "since": "2023-01-15"
     },
     {
       "id": 4,
@@ -833,7 +842,10 @@
       "phone": "013490000",
       "address": "Av. Argentina 1155, Lima",
       "status": "ACTIVE",
-      "businessId": 1
+      "businessId": 1,
+      "contactPerson": "Miguel Torres",
+      "category": "GROCERIES",
+      "since": "2023-01-15"
     },
     {
       "id": 5,
@@ -844,8 +856,12 @@
       "phone": "012345678",
       "address": "Jr. Las Dalias 234, Los Olivos",
       "status": "ACTIVE",
-      "businessId": 1
+      "businessId": 1,
+      "contactPerson": "Miguel Torres",
+      "category": "GROCERIES",
+      "since": "2023-01-15"
     }
+
   ],
   "purchases": [
     {
@@ -988,91 +1004,147 @@
   "alerts": [
     {
       "id": 1,
-      "type": "LOW_STOCK",
+      "type": "OUT_OF_STOCK",
       "severity": "HIGH",
-      "message": "Stock de Amoxicilina 500mg por debajo del mínimo (30 unidades)",
-      "date": "2026-05-11T07:00:00Z",
+      "message": "Amoxicilina 500mg sin stock — 0 unidades disponibles",
+      "date": "2026-06-04T09:15:00Z",
       "status": "ACTIVE",
       "productId": 6,
+      "productName": "Amoxicilina 500mg",
       "batchId": 6,
-      "businessId": 2
+      "businessId": 1,
+      "currentStock": 0,
+      "minStock": 30,
+      "daysToExpiry": null,
+      "notified": true,
+      "notifiedAt": "2026-06-04T09:15:00Z",
+      "resolvedAt": ""
     },
     {
       "id": 2,
-      "type": "EXPIRATION",
-      "severity": "MEDIUM",
-      "message": "Lote de Gaseosa Inca Kola vence en 12 días",
-      "date": "2026-05-11T07:00:00Z",
+      "type": "EXPIRED",
+      "severity": "HIGH",
+      "message": "Lote de Gaseosa Inca Kola vencido desde 2026-06-03",
+      "date": "2026-06-04T08:00:00Z",
       "status": "ACTIVE",
       "productId": 4,
+      "productName": "Gaseosa Inca Kola 1.5L",
       "batchId": 4,
-      "businessId": 1
+      "businessId": 1,
+      "currentStock": null,
+      "minStock": null,
+      "daysToExpiry": -1,
+      "notified": true,
+      "notifiedAt": "2026-06-04T08:00:00Z",
+      "resolvedAt": ""
     },
     {
       "id": 3,
       "type": "LOW_STOCK",
-      "severity": "LOW",
-      "message": "Paracetamol 500mg con stock bajo (45 unidades)",
-      "date": "2026-05-10T07:00:00Z",
-      "status": "RESOLVED",
-      "productId": 5,
-      "batchId": 5,
-      "businessId": 2
+      "severity": "HIGH",
+      "message": "Stock de Amoxicilina 500mg por debajo del mínimo (8 unidades)",
+      "date": "2026-06-03T14:30:00Z",
+      "status": "ACTIVE",
+      "productId": 6,
+      "productName": "Amoxicilina 500mg",
+      "batchId": 6,
+      "businessId": 1,
+      "currentStock": 8,
+      "minStock": 30,
+      "daysToExpiry": null,
+      "notified": true,
+      "notifiedAt": "2026-06-03T14:30:00Z",
+      "resolvedAt": ""
     },
     {
       "id": 4,
       "type": "EXPIRATION",
       "severity": "HIGH",
-      "message": "Lote de Amoxicilina vence en 9 días",
-      "date": "2026-05-09T07:00:00Z",
-      "status": "SENT",
+      "message": "Lote de Amoxicilina 500mg vence en 2 días (2026-06-06)",
+      "date": "2026-06-03T10:00:00Z",
+      "status": "ACTIVE",
       "productId": 6,
+      "productName": "Amoxicilina 500mg",
       "batchId": 6,
-      "businessId": 2
+      "businessId": 1,
+      "currentStock": null,
+      "minStock": null,
+      "daysToExpiry": 2,
+      "notified": true,
+      "notifiedAt": "2026-06-03T10:00:00Z",
+      "resolvedAt": ""
     },
     {
       "id": 5,
-      "businessId": 1,
-      "productId": 4,
-      "batchId": 4,
-      "type": "LOW_STOCK",
+      "type": "EXPIRATION",
       "severity": "HIGH",
-      "message": "Stock de Gaseosa Inca Kola crítico (12 unidades)",
-      "status": "RESOLVED",
-      "date": "2026-05-12T06:00:00Z"
+      "message": "Lote de Paracetamol 500mg vence en 4 días (2026-06-08)",
+      "date": "2026-06-02T16:20:00Z",
+      "status": "ACKNOWLEDGED",
+      "productId": 5,
+      "productName": "Paracetamol 500mg",
+      "batchId": 5,
+      "businessId": 1,
+      "currentStock": null,
+      "minStock": null,
+      "daysToExpiry": 4,
+      "notified": true,
+      "notifiedAt": "2026-06-02T16:20:00Z",
+      "resolvedAt": ""
     },
     {
       "id": 6,
-      "type": "EXPIRATION",
-      "severity": "HIGH",
-      "message": "Lote de Amoxicilina 500mg vence en 8 días",
-      "date": "2026-05-12T06:00:00Z",
-      "status": "ACTIVE",
-      "productId": 6,
-      "batchId": 6,
-      "businessId": 2
+      "type": "LOW_STOCK",
+      "severity": "MEDIUM",
+      "message": "Stock de Arroz Costeño bajo (20 unidades, mínimo: 24)",
+      "date": "2026-06-02T11:45:00Z",
+      "status": "ACKNOWLEDGED",
+      "productId": 2,
+      "productName": "Arroz Costeño 1kg",
+      "batchId": 2,
+      "businessId": 1,
+      "currentStock": 20,
+      "minStock": 24,
+      "daysToExpiry": null,
+      "notified": false,
+      "notifiedAt": "",
+      "resolvedAt": ""
     },
     {
       "id": 7,
-      "type": "LOW_STOCK",
+      "type": "EXPIRATION",
       "severity": "MEDIUM",
-      "message": "Stock de Arroz Costeño bajo (80 unidades), reposición recomendada",
-      "date": "2026-05-11T08:00:00Z",
-      "status": "ACTIVE",
-      "productId": 2,
-      "batchId": 2,
-      "businessId": 1
+      "message": "Lote de Aceite Primor 1L vence en 5 días — retirado de venta",
+      "date": "2026-05-31T09:00:00Z",
+      "status": "RESOLVED",
+      "productId": 3,
+      "productName": "Aceite Primor 1L",
+      "batchId": 3,
+      "businessId": 1,
+      "currentStock": null,
+      "minStock": null,
+      "daysToExpiry": 5,
+      "notified": true,
+      "notifiedAt": "2026-05-31T09:00:00Z",
+      "resolvedAt": "2026-06-01T14:00:00Z"
     },
     {
       "id": 8,
-      "type": "EXPIRATION",
-      "severity": "MEDIUM",
-      "message": "Lote de Arroz Costeño vence en 49 días",
-      "date": "2026-05-10T07:00:00Z",
+      "type": "LOW_STOCK",
+      "severity": "HIGH",
+      "message": "Stock de Gaseosa Inca Kola bajo (5 unidades) — reposición recibida",
+      "date": "2026-05-29T08:30:00Z",
       "status": "RESOLVED",
-      "productId": 2,
-      "batchId": 2,
-      "businessId": 1
+      "productId": 4,
+      "productName": "Gaseosa Inca Kola 1.5L",
+      "batchId": 4,
+      "businessId": 1,
+      "currentStock": 80,
+      "minStock": 20,
+      "daysToExpiry": null,
+      "notified": true,
+      "notifiedAt": "2026-05-29T08:30:00Z",
+      "resolvedAt": "2026-06-02T10:00:00Z"
     }
   ],
   "metrics": [

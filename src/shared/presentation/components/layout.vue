@@ -239,9 +239,9 @@ function handleSignOut() {
     <!-- ── Main content ───────────────────────────────────────────────── -->
     <main
         class="flex-1 min-w-0"
-        style="margin-left: 0; transition: margin-left 0.3s ease; padding-top: 56px;"
+        style="margin-left: 0; transition: margin-left 0.3s ease; padding-top: 56px; display: flex; justify-content: center;"
     >
-      <div class="px-4 sm:px-6 lg:px-8 py-6">
+      <div class="px-4 py-6" style="width: 100%; max-width: 1200px;">
         <router-view/>
       </div>
     </main>
