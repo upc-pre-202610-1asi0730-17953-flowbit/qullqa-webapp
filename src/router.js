@@ -7,6 +7,7 @@ import Home from './shared/presentation/views/home.vue';
 import productRoutes from './product/presentation/product.routes.js';
 import alertsRoutes from './alerts/presentation/alerts.routes.js';
 import salesRoutes from './sales/presentation/sales.routes.js';
+import { authenticationGuard } from './iam/infrastructure/authentication.guard.js';
 import suppliersRoutes from './suppliers/presentation/supplier.routes.js';
 import deliveryRoutes from './delivery/presentation/delivery.routes.js';
 
@@ -66,10 +67,9 @@ const router = createRouter({
  * @returns {void}
  */
 router.beforeEach((to, from, next) => {
-    console.log(`Navigating from ${from.name} to ${to.name}`);
-    const baseTitle    = 'Qullqa';
-    document.title     = `${baseTitle} - ${to.meta['title'] ?? ''}`;
-    return next();
+    const baseTitle = 'Qullqa';
+    document.title  = `${baseTitle} - ${to.meta['title'] ?? ''}`;
+    return authenticationGuard(to, from, next);
 });
 
 export default router;

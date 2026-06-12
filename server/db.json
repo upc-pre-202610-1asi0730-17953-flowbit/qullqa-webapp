@@ -466,6 +466,28 @@
       "description": "Venta mar hoy",
       "customerId": 5,
       "businessId": 1
+    },
+    {
+      "businessId": 1,
+      "customerId": null,
+      "status": "PAID",
+      "totalAmount": 0,
+      "paymentMethod": "YAPE",
+      "date": "2026-06-10T03:53:14.791Z",
+      "description": "",
+      "currency": "PEN",
+      "id": 18
+    },
+    {
+      "businessId": 1,
+      "customerId": null,
+      "status": "PAID",
+      "totalAmount": 0,
+      "paymentMethod": "CASH",
+      "date": "2026-06-10T03:53:47.941Z",
+      "description": "",
+      "currency": "PEN",
+      "id": 19
     }
   ],
   "saleDetails": [
@@ -700,6 +722,22 @@
       "discount": 0,
       "productId": 3,
       "saleId": 17
+    },
+    {
+      "saleId": 18,
+      "productId": 1,
+      "quantity": 4,
+      "unitPrice": 0,
+      "discount": 0,
+      "id": 30
+    },
+    {
+      "saleId": 19,
+      "productId": 2,
+      "quantity": 6,
+      "unitPrice": 0,
+      "discount": 0,
+      "id": 31
     }
   ],
   "customers": [

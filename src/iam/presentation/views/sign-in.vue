@@ -45,7 +45,7 @@ function navigateToForgotPassword() { router.push({ name: 'forgot-password' }); 
 </script>
 
 <template>
-  <div class="flex min-h-screen" style="background-color: #FAFAF7;">
+  <div class="auth-screen flex min-h-screen" style="background-color: #FAFAF7;">
 
     <!-- ── Left panel (desktop only) ──────────────────────────────── -->
     <div
@@ -118,7 +118,7 @@ function navigateToForgotPassword() { router.push({ name: 'forgot-password' }); 
     </div>
 
     <!-- ── Right panel ─────────────────────────────────────────────── -->
-    <div class="flex-1 flex flex-column align-items-center justify-content-center px-5 sm:px-8 py-10 overflow-y-auto">
+    <div class="flex-1 flex flex-column align-items-center justify-content-center px-4 sm:px-8 py-8 sm:py-10 overflow-y-auto">
 
       <!-- Mobile logo -->
       <div class="flex lg:hidden align-items-center gap-3 mb-8">
@@ -255,6 +255,9 @@ function navigateToForgotPassword() { router.push({ name: 'forgot-password' }); 
 </template>
 
 <style scoped>
+/* Use dynamic viewport height so mobile browser chrome doesn't clip the layout. */
+.auth-screen { min-height: 100vh; min-height: 100dvh; }
+
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .spin-ring {
@@ -297,4 +300,12 @@ function navigateToForgotPassword() { router.push({ name: 'forgot-password' }); 
 
 .mb-7 { margin-bottom: 1.75rem; }
 .mb-8 { margin-bottom: 2rem; }
+
+/* Mobile tweaks: 16px inputs prevent iOS focus-zoom; trim oversized title/spacing. */
+@media (max-width: 640px) {
+  .auth-input { font-size: 16px; }
+  .auth-screen h2 { font-size: 1.4rem; }
+  .mb-7 { margin-bottom: 1.25rem; }
+  .mb-8 { margin-bottom: 1.5rem; }
+}
 </style>
