@@ -8,6 +8,8 @@ import productRoutes from './product/presentation/product.routes.js';
 import alertsRoutes from './alerts/presentation/alerts.routes.js';
 import salesRoutes from './sales/presentation/sales.routes.js';
 import suppliersRoutes from './suppliers/presentation/supplier.routes.js';
+import deliveryRoutes from './delivery/presentation/delivery.routes.js';
+
 
 const pageNotFound = () => import('./shared/presentation/views/page-not-found.vue');
 
@@ -39,6 +41,7 @@ const routes = [
             ...productRoutes,
             ...alertsRoutes,
             ...salesRoutes,
+            ...deliveryRoutes,
             ...iamAuthenticatedRoutes,
             ...suppliersRoutes,
         ]

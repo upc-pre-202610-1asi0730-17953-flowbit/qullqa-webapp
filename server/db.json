@@ -46,9 +46,18 @@
     }
   ],
   "roles": [
-    { "id": 1, "position": "ADMIN" },
-    { "id": 2, "position": "CASHIER" },
-    { "id": 3, "position": "WAREHOUSE" }
+    {
+      "id": 1,
+      "position": "ADMIN"
+    },
+    {
+      "id": 2,
+      "position": "CASHIER"
+    },
+    {
+      "id": 3,
+      "position": "WAREHOUSE"
+    }
   ],
   "businesses": [
     {
@@ -75,31 +84,49 @@
       "id": 1,
       "name": "Plan Básico",
       "description": "Ideal para pequeñas bodegas y farmacias",
-      "price": 19.90,
+      "price": 19.9,
       "currency": "PEN",
       "timeLength": "MONTHLY",
       "status": "ACTIVE",
-      "features": ["Inventario básico", "Ventas POS", "1 almacén", "Hasta 100 productos"]
+      "features": [
+        "Inventario básico",
+        "Ventas POS",
+        "1 almacén",
+        "Hasta 100 productos"
+      ]
     },
     {
       "id": 2,
       "name": "Plan Pro",
       "description": "Para negocios en crecimiento",
-      "price": 49.90,
+      "price": 49.9,
       "currency": "PEN",
       "timeLength": "MONTHLY",
       "status": "ACTIVE",
-      "features": ["Todo el Plan Básico", "Alertas inteligentes", "3 almacenes", "Proveedores ilimitados", "Reportes avanzados", "Tracking IoT"]
+      "features": [
+        "Todo el Plan Básico",
+        "Alertas inteligentes",
+        "3 almacenes",
+        "Proveedores ilimitados",
+        "Reportes avanzados",
+        "Tracking IoT"
+      ]
     },
     {
       "id": 3,
       "name": "Plan Enterprise",
       "description": "Para cadenas de tiendas y farmacias",
-      "price": 99.90,
+      "price": 99.9,
       "currency": "PEN",
       "timeLength": "MONTHLY",
       "status": "ACTIVE",
-      "features": ["Todo el Plan Pro", "Almacenes ilimitados", "Soporte prioritario", "API dedicada", "Multi-negocio"]
+      "features": [
+        "Todo el Plan Pro",
+        "Almacenes ilimitados",
+        "Soporte prioritario",
+        "API dedicada",
+        "Multi-negocio"
+      ]
     }
   ],
   "warehouses": [
@@ -179,7 +206,7 @@
     {
       "id": 1,
       "expiration": "2026-12-31",
-      "purchasePrice": 2.50,
+      "purchasePrice": 2.5,
       "status": "ACTIVE",
       "productId": 1,
       "inventoryId": 1
@@ -187,7 +214,7 @@
     {
       "id": 2,
       "expiration": "2026-06-30",
-      "purchasePrice": 12.00,
+      "purchasePrice": 12,
       "status": "ACTIVE",
       "productId": 2,
       "inventoryId": 2
@@ -195,7 +222,7 @@
     {
       "id": 3,
       "expiration": "2026-08-15",
-      "purchasePrice": 5.80,
+      "purchasePrice": 5.8,
       "status": "ACTIVE",
       "productId": 3,
       "inventoryId": 3
@@ -203,7 +230,7 @@
     {
       "id": 4,
       "expiration": "2026-05-24",
-      "purchasePrice": 3.20,
+      "purchasePrice": 3.2,
       "status": "ACTIVE",
       "productId": 4,
       "inventoryId": 4
@@ -211,7 +238,7 @@
     {
       "id": 5,
       "expiration": "2026-09-15",
-      "purchasePrice": 8.50,
+      "purchasePrice": 8.5,
       "status": "ACTIVE",
       "productId": 5,
       "inventoryId": 5
@@ -219,7 +246,7 @@
     {
       "id": 6,
       "expiration": "2026-05-20",
-      "purchasePrice": 15.00,
+      "purchasePrice": 15,
       "status": "ACTIVE",
       "productId": 6,
       "inventoryId": 6
@@ -445,7 +472,7 @@
     {
       "id": 1,
       "quantity": 5,
-      "unitPrice": 3.80,
+      "unitPrice": 3.8,
       "discount": 0,
       "productId": 1,
       "saleId": 1
@@ -453,15 +480,15 @@
     {
       "id": 2,
       "quantity": 2,
-      "unitPrice": 15.50,
-      "discount": 0.50,
+      "unitPrice": 15.5,
+      "discount": 0.5,
       "productId": 2,
       "saleId": 1
     },
     {
       "id": 3,
       "quantity": 3,
-      "unitPrice": 8.00,
+      "unitPrice": 8,
       "discount": 0,
       "productId": 3,
       "saleId": 2
@@ -469,7 +496,7 @@
     {
       "id": 4,
       "quantity": 10,
-      "unitPrice": 3.80,
+      "unitPrice": 3.8,
       "discount": 0,
       "productId": 1,
       "saleId": 3
@@ -477,7 +504,7 @@
     {
       "id": 5,
       "quantity": 10,
-      "unitPrice": 3.80,
+      "unitPrice": 3.8,
       "discount": 0,
       "productId": 1,
       "saleId": 5
@@ -485,7 +512,7 @@
     {
       "id": 6,
       "quantity": 4,
-      "unitPrice": 4.50,
+      "unitPrice": 4.5,
       "discount": 0,
       "productId": 4,
       "saleId": 5
@@ -493,7 +520,7 @@
     {
       "id": 7,
       "quantity": 3,
-      "unitPrice": 8.00,
+      "unitPrice": 8,
       "discount": 0,
       "productId": 3,
       "saleId": 5
@@ -501,15 +528,15 @@
     {
       "id": 8,
       "quantity": 2,
-      "unitPrice": 15.50,
-      "discount": 0.50,
+      "unitPrice": 15.5,
+      "discount": 0.5,
       "productId": 2,
       "saleId": 6
     },
     {
       "id": 9,
       "quantity": 8,
-      "unitPrice": 3.80,
+      "unitPrice": 3.8,
       "discount": 0,
       "productId": 1,
       "saleId": 7
@@ -517,7 +544,7 @@
     {
       "id": 10,
       "quantity": 3,
-      "unitPrice": 15.50,
+      "unitPrice": 15.5,
       "discount": 0,
       "productId": 2,
       "saleId": 7
@@ -525,7 +552,7 @@
     {
       "id": 11,
       "quantity": 5,
-      "unitPrice": 8.00,
+      "unitPrice": 8,
       "discount": 0,
       "productId": 3,
       "saleId": 7
@@ -533,7 +560,7 @@
     {
       "id": 12,
       "quantity": 5,
-      "unitPrice": 4.50,
+      "unitPrice": 4.5,
       "discount": 0,
       "productId": 4,
       "saleId": 8
@@ -541,7 +568,7 @@
     {
       "id": 13,
       "quantity": 15,
-      "unitPrice": 3.80,
+      "unitPrice": 3.8,
       "discount": 0,
       "productId": 1,
       "saleId": 9
@@ -549,7 +576,7 @@
     {
       "id": 14,
       "quantity": 4,
-      "unitPrice": 15.50,
+      "unitPrice": 15.5,
       "discount": 0,
       "productId": 2,
       "saleId": 9
@@ -557,7 +584,7 @@
     {
       "id": 15,
       "quantity": 7,
-      "unitPrice": 8.00,
+      "unitPrice": 8,
       "discount": 0,
       "productId": 3,
       "saleId": 10
@@ -565,7 +592,7 @@
     {
       "id": 16,
       "quantity": 8,
-      "unitPrice": 4.50,
+      "unitPrice": 4.5,
       "discount": 0,
       "productId": 4,
       "saleId": 10
@@ -573,7 +600,7 @@
     {
       "id": 17,
       "quantity": 4,
-      "unitPrice": 3.80,
+      "unitPrice": 3.8,
       "discount": 0,
       "productId": 1,
       "saleId": 11
@@ -581,7 +608,7 @@
     {
       "id": 18,
       "quantity": 12,
-      "unitPrice": 3.80,
+      "unitPrice": 3.8,
       "discount": 0,
       "productId": 1,
       "saleId": 12
@@ -589,7 +616,7 @@
     {
       "id": 19,
       "quantity": 3,
-      "unitPrice": 15.50,
+      "unitPrice": 15.5,
       "discount": 0,
       "productId": 2,
       "saleId": 12
@@ -597,7 +624,7 @@
     {
       "id": 20,
       "quantity": 6,
-      "unitPrice": 8.00,
+      "unitPrice": 8,
       "discount": 0,
       "productId": 3,
       "saleId": 13
@@ -605,7 +632,7 @@
     {
       "id": 21,
       "quantity": 10,
-      "unitPrice": 4.50,
+      "unitPrice": 4.5,
       "discount": 0,
       "productId": 4,
       "saleId": 13
@@ -613,15 +640,15 @@
     {
       "id": 22,
       "quantity": 3,
-      "unitPrice": 15.50,
-      "discount": 0.60,
+      "unitPrice": 15.5,
+      "discount": 0.6,
       "productId": 2,
       "saleId": 14
     },
     {
       "id": 23,
       "quantity": 8,
-      "unitPrice": 3.80,
+      "unitPrice": 3.8,
       "discount": 0,
       "productId": 1,
       "saleId": 15
@@ -629,7 +656,7 @@
     {
       "id": 24,
       "quantity": 2,
-      "unitPrice": 15.50,
+      "unitPrice": 15.5,
       "discount": 0,
       "productId": 2,
       "saleId": 15
@@ -637,7 +664,7 @@
     {
       "id": 25,
       "quantity": 4,
-      "unitPrice": 8.00,
+      "unitPrice": 8,
       "discount": 0,
       "productId": 3,
       "saleId": 15
@@ -645,7 +672,7 @@
     {
       "id": 26,
       "quantity": 6,
-      "unitPrice": 4.50,
+      "unitPrice": 4.5,
       "discount": 0,
       "productId": 4,
       "saleId": 16
@@ -653,7 +680,7 @@
     {
       "id": 27,
       "quantity": 5,
-      "unitPrice": 3.80,
+      "unitPrice": 3.8,
       "discount": 0,
       "productId": 1,
       "saleId": 17
@@ -661,7 +688,7 @@
     {
       "id": 28,
       "quantity": 1,
-      "unitPrice": 15.50,
+      "unitPrice": 15.5,
       "discount": 0,
       "productId": 2,
       "saleId": 17
@@ -669,7 +696,7 @@
     {
       "id": 29,
       "quantity": 2,
-      "unitPrice": 8.00,
+      "unitPrice": 8,
       "discount": 0,
       "productId": 3,
       "saleId": 17
@@ -796,7 +823,6 @@
       "category": "GROCERIES",
       "since": "2023-01-15"
     }
-
   ],
   "purchases": [
     {
@@ -858,7 +884,7 @@
     {
       "id": 1,
       "quantity": 200,
-      "unitPrice": 2.50,
+      "unitPrice": 2.5,
       "discount": 0,
       "deliveryStatus": "DELIVERED",
       "deliveryTrackingNum": "TRK-2026-0001",
@@ -868,8 +894,8 @@
     {
       "id": 2,
       "quantity": 100,
-      "unitPrice": 12.00,
-      "discount": 0.10,
+      "unitPrice": 12,
+      "discount": 0.1,
       "deliveryStatus": "DELIVERED",
       "deliveryTrackingNum": "TRK-2026-0002",
       "productId": 2,
@@ -878,7 +904,7 @@
     {
       "id": 3,
       "quantity": 150,
-      "unitPrice": 8.50,
+      "unitPrice": 8.5,
       "discount": 0,
       "deliveryStatus": "DELIVERED",
       "deliveryTrackingNum": "TRK-2026-0003",
@@ -888,7 +914,7 @@
     {
       "id": 4,
       "quantity": 150,
-      "unitPrice": 2.50,
+      "unitPrice": 2.5,
       "discount": 0,
       "deliveryStatus": "PENDING",
       "deliveryTrackingNum": "TRK-2026-0004",
@@ -898,7 +924,7 @@
     {
       "id": 5,
       "quantity": 80,
-      "unitPrice": 15.00,
+      "unitPrice": 15,
       "discount": 0.05,
       "deliveryStatus": "DELAYED",
       "deliveryTrackingNum": "TRK-2026-0005",
@@ -908,7 +934,7 @@
     {
       "id": 6,
       "quantity": 120,
-      "unitPrice": 2.50,
+      "unitPrice": 2.5,
       "discount": 0,
       "deliveryStatus": "DELIVERED",
       "deliveryTrackingNum": "TRK-2026-0006",
@@ -918,7 +944,7 @@
     {
       "id": 7,
       "quantity": 50,
-      "unitPrice": 5.80,
+      "unitPrice": 5.8,
       "discount": 0,
       "deliveryStatus": "DELIVERED",
       "deliveryTrackingNum": "TRK-2026-0007",
@@ -928,8 +954,8 @@
     {
       "id": 8,
       "quantity": 200,
-      "unitPrice": 3.20,
-      "discount": 0.10,
+      "unitPrice": 3.2,
+      "discount": 0.1,
       "deliveryStatus": "DELIVERED",
       "deliveryTrackingNum": "TRK-2026-0008",
       "productId": 4,
@@ -1088,8 +1114,8 @@
       "businessId": 1,
       "totalProducts": 4,
       "lowStockProducts": 2,
-      "inventoryValue": 4320.50,
-      "totalSales": 1850.00,
+      "inventoryValue": 4320.5,
+      "totalSales": 1850,
       "salesCount": 13,
       "generatedAt": "2026-05-12T06:00:00Z"
     },
@@ -1098,7 +1124,7 @@
       "businessId": 2,
       "totalProducts": 2,
       "lowStockProducts": 2,
-      "inventoryValue": 870.00,
+      "inventoryValue": 870,
       "totalSales": 0,
       "salesCount": 0,
       "generatedAt": "2026-05-12T06:00:00Z"
@@ -1107,58 +1133,401 @@
   "deliveries": [
     {
       "id": 1,
-      "purchaseDetailId": 4,
       "trackingNumber": "TRK-2026-0004",
-      "currentLatitude": -12.0464,
-      "currentLongitude": -77.0428,
+      "orderId": "OC-0018",
+      "supplierName": "Distribuidora Norte SRL",
+      "origin": "Jr. Las Dalias 234, Los Olivos",
+      "destination": "Av. Universitaria 2341, Los Olivos",
+      "driverName": "Carlos Mamani",
+      "driverPhone": "987-321-654",
+      "vehicle": "Camión Mercedes",
+      "licensePlate": "ABC-123",
       "status": "IN_TRANSIT",
       "registeredAt": "2026-05-08T08:00:00Z",
+      "estimatedArrival": "2026-05-08T12:00:00Z",
       "completedAt": null,
-      "businessId": 1
+      "currentLabel": "Av. Universitaria, tramo norte",
+      "currentLatitude": -12.03,
+      "currentLongitude": -77.05,
+      "products": [
+        "Leche Gloria Entera 1L ×200"
+      ],
+      "totalWeight": "220 kg",
+      "businessId": 1,
+      "purchaseDetailId": 4
     },
     {
       "id": 2,
-      "purchaseDetailId": 5,
       "trackingNumber": "TRK-2026-0005",
-      "currentLatitude": -12.1000,
-      "currentLongitude": -77.0500,
-      "status": "DELAYED",
+      "orderId": "OC-0017",
+      "supplierName": "InkaFarma Distribuciones",
+      "origin": "Av. Paseo de la República 3220, Lima",
+      "destination": "Calle Las Flores 567, San Borja",
+      "driverName": "Pedro Quispe",
+      "driverPhone": "965-432-876",
+      "vehicle": "Furgoneta Hyundai",
+      "licensePlate": "XYZ-789",
+      "status": "IN_TRANSIT",
       "registeredAt": "2026-05-10T10:00:00Z",
+      "estimatedArrival": "2026-05-10T14:00:00Z",
       "completedAt": null,
-      "businessId": 2
+      "currentLabel": "Av. Javier Prado, San Isidro",
+      "currentLatitude": -12.1,
+      "currentLongitude": -77.05,
+      "products": [
+        "Amoxicilina 500mg ×80"
+      ],
+      "totalWeight": "12 kg",
+      "businessId": 2,
+      "purchaseDetailId": 5
     },
     {
       "id": 3,
-      "purchaseDetailId": 1,
       "trackingNumber": "TRK-2026-0001",
-      "currentLatitude": -12.0464,
-      "currentLongitude": -77.0428,
+      "orderId": "OC-0014",
+      "supplierName": "Alicorp SAA",
+      "origin": "Av. Argentina 4793, Callao",
+      "destination": "Av. Universitaria 2341, Los Olivos",
+      "driverName": "Roberto Torres",
+      "driverPhone": "978-654-321",
+      "vehicle": "Camión Volvo",
+      "licensePlate": "DEF-456",
       "status": "COMPLETED",
       "registeredAt": "2026-04-20T08:00:00Z",
+      "estimatedArrival": "2026-04-20T12:00:00Z",
       "completedAt": "2026-04-20T14:30:00Z",
-      "businessId": 1
+      "currentLabel": "Destino alcanzado",
+      "currentLatitude": -12.0464,
+      "currentLongitude": -77.0428,
+      "products": [
+        "Leche Gloria Entera 1L ×200",
+        "Arroz Costeño 5kg ×100"
+      ],
+      "totalWeight": "720 kg",
+      "businessId": 1,
+      "purchaseDetailId": 1
     },
     {
       "id": 4,
-      "purchaseDetailId": 6,
       "trackingNumber": "TRK-2026-0006",
-      "currentLatitude": -11.9800,
-      "currentLongitude": -77.0600,
+      "orderId": "OC-0015",
+      "supplierName": "Laive SA",
+      "origin": "Av. Argentina 1155, Lima",
+      "destination": "Av. Universitaria 2341, Los Olivos",
+      "driverName": "Miguel Vargas",
+      "driverPhone": "955-111-333",
+      "vehicle": "Camión Refrigerado",
+      "licensePlate": "GHI-789",
       "status": "COMPLETED",
       "registeredAt": "2026-05-02T08:00:00Z",
+      "estimatedArrival": "2026-05-02T11:00:00Z",
       "completedAt": "2026-05-02T16:00:00Z",
-      "businessId": 1
+      "currentLabel": "Destino alcanzado",
+      "currentLatitude": -11.98,
+      "currentLongitude": -77.06,
+      "products": [
+        "Leche Gloria Entera 1L ×120"
+      ],
+      "totalWeight": "132 kg",
+      "businessId": 1,
+      "purchaseDetailId": 6
     },
     {
       "id": 5,
-      "purchaseDetailId": 8,
       "trackingNumber": "TRK-2026-0008",
-      "currentLatitude": -12.0300,
-      "currentLongitude": -77.0350,
+      "orderId": "OC-0016",
+      "supplierName": "Distribuidora Norte SRL",
+      "origin": "Jr. Las Dalias 234, Los Olivos",
+      "destination": "Av. Universitaria 2341, Los Olivos",
+      "driverName": "Carlos Mamani",
+      "driverPhone": "987-321-654",
+      "vehicle": "Camión Mercedes",
+      "licensePlate": "ABC-123",
       "status": "COMPLETED",
       "registeredAt": "2026-05-05T09:00:00Z",
+      "estimatedArrival": "2026-05-05T12:00:00Z",
       "completedAt": "2026-05-05T15:30:00Z",
-      "businessId": 1
+      "currentLabel": "Destino alcanzado",
+      "currentLatitude": -12.03,
+      "currentLongitude": -77.035,
+      "products": [
+        "Gaseosa Inca Kola 1.5L ×200"
+      ],
+      "totalWeight": "300 kg",
+      "businessId": 1,
+      "purchaseDetailId": 8
+    },
+    {
+      "trackingNumber": "TRK-2026-9512",
+      "orderId": "CO-0023",
+      "supplierName": "Alicoprt",
+      "origin": "Av, Alfonso",
+      "destination": "La molina",
+      "driverName": "Juan",
+      "driverPhone": "987654321",
+      "vehicle": "Toyota",
+      "licensePlate": "CEH123",
+      "status": "REGISTERED",
+      "registeredAt": "2026-06-12T02:18:59.512Z",
+      "estimatedArrival": "2026-06-18",
+      "completedAt": null,
+      "currentLabel": "Av, Alfonso",
+      "currentLatitude": -12.0453,
+      "currentLongitude": -77.0311,
+      "products": [
+        "Cocal cola x64"
+      ],
+      "totalWeight": "90kg",
+      "businessId": null,
+      "purchaseDetailId": null,
+      "id": 6
+    },
+    {
+      "id": 7,
+      "trackingNumber": "TRK-2026-1154",
+      "orderId": "TRA-004",
+      "supplierName": "Alicopr",
+      "origin": "Av. Alfonos Ugarte",
+      "destination": "Av Alamos",
+      "driverName": "Juan Perez",
+      "driverPhone": "987654321",
+      "vehicle": "Toyota 4x4",
+      "licensePlate": "CEH123",
+      "status": "IN_TRANSIT",
+      "registeredAt": "2026-06-12T03:35:11.154Z",
+      "estimatedArrival": "2026-06-15",
+      "completedAt": null,
+      "currentLabel": "Av. Alfonos Ugarte",
+      "currentLatitude": -12.0453,
+      "currentLongitude": -77.0311,
+      "products": [
+        "Coca cola x64"
+      ],
+      "totalWeight": "90kg",
+      "businessId": null,
+      "purchaseDetailId": null
+    }
+  ],
+  "waypoints": [
+    {
+      "id": 1,
+      "deliveryId": 1,
+      "label": "Salida almacén — Jr. Las Dalias 234",
+      "district": "Los Olivos",
+      "latitude": -12.011,
+      "longitude": -77.058,
+      "timestamp": "2026-05-08T08:00:00Z",
+      "reached": true,
+      "sequenceOrder": 1
+    },
+    {
+      "id": 2,
+      "deliveryId": 1,
+      "label": "Av. Universitaria, tramo norte",
+      "district": "Los Olivos",
+      "latitude": -12.03,
+      "longitude": -77.05,
+      "timestamp": "2026-05-08T09:30:00Z",
+      "reached": true,
+      "sequenceOrder": 2
+    },
+    {
+      "id": 3,
+      "deliveryId": 1,
+      "label": "Destino — Av. Universitaria 2341",
+      "district": "Los Olivos",
+      "latitude": -12.0464,
+      "longitude": -77.0428,
+      "timestamp": null,
+      "reached": false,
+      "sequenceOrder": 3
+    },
+    {
+      "id": 4,
+      "deliveryId": 2,
+      "label": "Salida — Av. Paseo de la República 3220",
+      "district": "Miraflores",
+      "latitude": -12.1189,
+      "longitude": -77.034,
+      "timestamp": "2026-05-10T10:00:00Z",
+      "reached": true,
+      "sequenceOrder": 1
+    },
+    {
+      "id": 5,
+      "deliveryId": 2,
+      "label": "Av. Javier Prado, San Isidro",
+      "district": "San Isidro",
+      "latitude": -12.1,
+      "longitude": -77.05,
+      "timestamp": "2026-05-10T11:00:00Z",
+      "reached": true,
+      "sequenceOrder": 2
+    },
+    {
+      "id": 6,
+      "deliveryId": 2,
+      "label": "Destino — Calle Las Flores 567",
+      "district": "San Borja",
+      "latitude": -12.0892,
+      "longitude": -76.98,
+      "timestamp": null,
+      "reached": false,
+      "sequenceOrder": 3
+    },
+    {
+      "id": 7,
+      "deliveryId": 3,
+      "label": "Salida — Callao",
+      "district": "Callao",
+      "latitude": -12.0621,
+      "longitude": -77.1186,
+      "timestamp": "2026-04-20T08:00:00Z",
+      "reached": true,
+      "sequenceOrder": 1
+    },
+    {
+      "id": 8,
+      "deliveryId": 3,
+      "label": "Av. Faucett",
+      "district": "Callao",
+      "latitude": -12.0529,
+      "longitude": -77.0958,
+      "timestamp": "2026-04-20T09:00:00Z",
+      "reached": true,
+      "sequenceOrder": 2
+    },
+    {
+      "id": 9,
+      "deliveryId": 3,
+      "label": "Av. Túpac Amaru",
+      "district": "Independencia",
+      "latitude": -12.0018,
+      "longitude": -77.0521,
+      "timestamp": "2026-04-20T11:00:00Z",
+      "reached": true,
+      "sequenceOrder": 3
+    },
+    {
+      "id": 10,
+      "deliveryId": 3,
+      "label": "Destino — Av. Universitaria 2341",
+      "district": "Los Olivos",
+      "latitude": -12.0464,
+      "longitude": -77.0428,
+      "timestamp": "2026-04-20T14:30:00Z",
+      "reached": true,
+      "sequenceOrder": 4
+    },
+    {
+      "id": 11,
+      "deliveryId": 4,
+      "label": "Salida — Av. Argentina 1155",
+      "district": "Lima Cercado",
+      "latitude": -12.0453,
+      "longitude": -77.07,
+      "timestamp": "2026-05-02T08:00:00Z",
+      "reached": true,
+      "sequenceOrder": 1
+    },
+    {
+      "id": 12,
+      "deliveryId": 4,
+      "label": "Destino — Av. Universitaria 2341",
+      "district": "Los Olivos",
+      "latitude": -11.98,
+      "longitude": -77.06,
+      "timestamp": "2026-05-02T16:00:00Z",
+      "reached": true,
+      "sequenceOrder": 2
+    },
+    {
+      "id": 13,
+      "deliveryId": 5,
+      "label": "Salida — Jr. Las Dalias 234",
+      "district": "Los Olivos",
+      "latitude": -12.011,
+      "longitude": -77.058,
+      "timestamp": "2026-05-05T09:00:00Z",
+      "reached": true,
+      "sequenceOrder": 1
+    },
+    {
+      "id": 14,
+      "deliveryId": 5,
+      "label": "Destino — Av. Universitaria 2341",
+      "district": "Los Olivos",
+      "latitude": -12.03,
+      "longitude": -77.035,
+      "timestamp": "2026-05-05T15:30:00Z",
+      "reached": true,
+      "sequenceOrder": 2
+    },
+    {
+      "deliveryId": 6,
+      "label": "Salida — Av, Alfonso",
+      "district": "Alfonso",
+      "latitude": -12.0453,
+      "longitude": -77.0311,
+      "timestamp": "2026-06-12T02:18:59.512Z",
+      "reached": true,
+      "sequenceOrder": 1,
+      "id": 15
+    },
+    {
+      "deliveryId": 6,
+      "label": "En ruta",
+      "district": "—",
+      "latitude": -12.07,
+      "longitude": -77.02,
+      "timestamp": null,
+      "reached": false,
+      "sequenceOrder": 2,
+      "id": 16
+    },
+    {
+      "deliveryId": 6,
+      "label": "Destino — La molina",
+      "district": "Lima",
+      "latitude": -11.9944,
+      "longitude": -77.003,
+      "timestamp": null,
+      "reached": false,
+      "sequenceOrder": 3,
+      "id": 17
+    },
+    {
+      "deliveryId": 7,
+      "label": "Salida — Av. Alfonos Ugarte",
+      "district": "Lima",
+      "latitude": -12.0453,
+      "longitude": -77.0311,
+      "timestamp": "2026-06-12T03:35:11.154Z",
+      "reached": true,
+      "sequenceOrder": 1,
+      "id": 18
+    },
+    {
+      "deliveryId": 7,
+      "label": "En ruta",
+      "district": "—",
+      "latitude": -12.07,
+      "longitude": -77.02,
+      "timestamp": null,
+      "reached": false,
+      "sequenceOrder": 2,
+      "id": 19
+    },
+    {
+      "deliveryId": 7,
+      "label": "Destino — Av Alamos",
+      "district": "Lima",
+      "latitude": -11.9944,
+      "longitude": -77.003,
+      "timestamp": null,
+      "reached": false,
+      "sequenceOrder": 3,
+      "id": 20
     }
   ]
 }
