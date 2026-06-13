@@ -293,23 +293,21 @@ const quickActions = computed(() => [
     </div>
 
     <!-- ── 6 KPI Cards ─────────────────────────────────────────────────────── -->
-    <div class="grid mb-2">
+    <div class="kpi-grid mb-2">
       <div
           v-for="card in kpiCards"
           :key="card.labelKey"
-          class="col-12 md:col-6 lg:col-4"
+          class="kpi-card"
       >
-        <div class="kpi-card">
-          <div class="kpi-card__body">
-            <p class="kpi-card__label">{{ t(card.labelKey) }}</p>
-            <p v-if="card.value !== null" class="kpi-card__value" :style="{ color: card.valueColor }">
-              {{ card.value }}
-            </p>
-            <div v-else class="kpi-card__skeleton"/>
-          </div>
-          <div class="kpi-card__icon" :style="{ backgroundColor: card.iconBg }">
-            <i :class="card.icon" :style="{ color: card.iconColor }"/>
-          </div>
+        <div class="kpi-card__body">
+          <p class="kpi-card__label">{{ t(card.labelKey) }}</p>
+          <p v-if="card.value !== null" class="kpi-card__value" :style="{ color: card.valueColor }">
+            {{ card.value }}
+          </p>
+          <div v-else class="kpi-card__skeleton"/>
+        </div>
+        <div class="kpi-card__icon" :style="{ backgroundColor: card.iconBg }">
+          <i :class="card.icon" :style="{ color: card.iconColor }"/>
         </div>
       </div>
     </div>
@@ -490,13 +488,19 @@ const quickActions = computed(() => [
 /* ── Header date + greeting ─────────────────────────────────────────── */
 .header-date {
   color: #94A3B8;
-  font-size: 0.82rem;
+  font-size: 0.75rem;
+}
+@media (min-width: 640px) {
+  .header-date { font-size: 0.82rem; }
 }
 .header-greeting {
   color: #0B3558;
-  font-size: 1.65rem;
+  font-size: 1.3rem;
   font-weight: 700;
   line-height: 1.2;
+}
+@media (min-width: 640px) {
+  .header-greeting { font-size: 1.65rem; }
 }
 
 /* ── Refresh button (icon-only) ─────────────────────────────────────── */
@@ -561,15 +565,29 @@ const quickActions = computed(() => [
 }
 
 /* ── KPI cards ──────────────────────────────────────────────────────── */
+/* 2-col on mobile → 3-col on desktop, matching the product stat-grid standard. */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+}
+@media (min-width: 1024px) {
+  .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
 .kpi-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1.25rem 1.25rem;
+  gap: 0.75rem;
+  padding: 1rem;
   background: #fff;
   border: 1px solid #E2E8F0;
   border-radius: 0.875rem;
   transition: box-shadow 0.2s, transform 0.2s;
+}
+@media (min-width: 640px) {
+  .kpi-card { padding: 1.25rem; }
 }
 .kpi-card:hover {
   box-shadow: 0 4px 16px rgba(11, 53, 88, 0.09);
@@ -582,17 +600,25 @@ const quickActions = computed(() => [
 }
 .kpi-card__label {
   margin: 0;
-  font-size: 0.78rem;
+  font-size: 0.7rem;
   font-weight: 600;
   color: #64748B;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  line-height: 1.2;
+}
+@media (min-width: 640px) {
+  .kpi-card__label { font-size: 0.78rem; }
 }
 .kpi-card__value {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   font-weight: 700;
   line-height: 1.1;
+  white-space: nowrap;
+}
+@media (min-width: 640px) {
+  .kpi-card__value { font-size: 1.5rem; }
 }
 .kpi-card__skeleton {
   width: 80px;
@@ -606,13 +632,19 @@ const quickActions = computed(() => [
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 52px;
-  height: 52px;
+  width: 42px;
+  height: 42px;
   border-radius: 0.75rem;
   flex-shrink: 0;
 }
+@media (min-width: 640px) {
+  .kpi-card__icon { width: 52px; height: 52px; }
+}
 .kpi-card__icon i {
-  font-size: 1.4rem;
+  font-size: 1.15rem;
+}
+@media (min-width: 640px) {
+  .kpi-card__icon i { font-size: 1.4rem; }
 }
 
 /* ── Panels ─────────────────────────────────────────────────────────── */
@@ -679,10 +711,13 @@ const quickActions = computed(() => [
 .chart-bars {
   display: flex;
   align-items: flex-end;
-  gap: 10px;
+  gap: 6px;
   height: 200px;
-  padding: 1rem 2rem 0;
+  padding: 1rem 0.5rem 0;
   position: relative;
+}
+@media (min-width: 640px) {
+  .chart-bars { gap: 10px; padding: 1rem 2rem 0; }
 }
 .chart-bar-col {
   flex: 1;
@@ -692,7 +727,7 @@ const quickActions = computed(() => [
   gap: 5px;
 }
 .chart-bar-col__amount {
-  font-size: 0.65rem;
+  font-size: 0.55rem;
   color: #64748B;
   text-align: center;
   min-height: 1rem;
@@ -700,6 +735,9 @@ const quickActions = computed(() => [
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
+}
+@media (min-width: 640px) {
+  .chart-bar-col__amount { font-size: 0.65rem; }
 }
 .chart-bar-col__bar {
   width: 100%;
@@ -716,7 +754,10 @@ const quickActions = computed(() => [
 .chart-axis {
   height: 1px;
   background: #E2E8F0;
-  margin: 0 2rem;
+  margin: 0 0.5rem;
+}
+@media (min-width: 640px) {
+  .chart-axis { margin: 0 2rem; }
 }
 
 /* ── Alert cards ────────────────────────────────────────────────────── */
@@ -768,8 +809,11 @@ const quickActions = computed(() => [
 /* ── Quick-action card grid ─────────────────────────────────────────── */
 .action-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 0.75rem;
+}
+@media (min-width: 640px) {
+  .action-grid { grid-template-columns: repeat(3, 1fr); }
 }
 .action-card {
   display: flex;

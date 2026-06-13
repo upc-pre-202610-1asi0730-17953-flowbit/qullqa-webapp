@@ -1327,7 +1327,7 @@ const warehouseSummary = [
   background: linear-gradient(135deg, #0E7490, #0B3558);
   color: #fff;
   box-shadow: 0 4px 18px rgba(14, 116, 144, 0.5);
-  z-index: 40;
+  z-index: 20;
   transition: transform 0.18s;
 }
 .fab:hover { transform: scale(1.1); }

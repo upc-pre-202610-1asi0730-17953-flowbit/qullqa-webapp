@@ -250,9 +250,14 @@ function handleSignOut() {
 </template>
 
 <style scoped>
+aside {
+  padding-top: 56px;
+}
+
 @media (min-width: 1024px) {
   aside {
     transform: translateX(0) !important;
+    padding-top: 0 !important;
   }
 
   main {
