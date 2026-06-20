@@ -12,25 +12,19 @@ const router       = useRouter();
 const productStore = useProductStore();
 const iamStore     = useIamStore();
 
-/** Whether this form is in edit mode. */
 const isEdit = computed(() => !!route.params.id);
 
-/**
- * Reactive form state matching exactly the fields in the prototype:
- * nombre, categoría, código, precio, stockActual, stockMínimo, fechaVencimiento, descripción.
- */
 const form = ref({
-  name:            '',
-  category:        '',
-  code:            '',
-  basePrice:       '',
-  currentStock:    '',
-  minimumStock:    '',
-  expirationDate:  '',
-  description:     ''
+  name:           '',
+  category:       '',
+  code:           '',
+  basePrice:      '',
+  currentStock:   '',
+  minimumStock:   '',
+  expirationDate: '',
+  description:    ''
 });
 
-/** Per-field validation error messages. */
 const fieldErrors = ref({
   name:         '',
   category:     '',
@@ -39,10 +33,8 @@ const fieldErrors = ref({
   minimumStock: ''
 });
 
-/** Triggers the success banner and redirect. */
 const submitSuccess = ref(false);
 
-/** Category options for the dropdown. */
 const categoryOptions = Object.values(ProductCategory).map(value => ({
   label: t(`products.category-${value}`),
   value
@@ -67,17 +59,6 @@ onMounted(() => {
   }
 });
 
-/**
- * Validates all required fields.
- * Business rules:
- * - name: non-empty.
- * - category: must be selected.
- * - basePrice: number > 0.
- * - currentStock: integer >= 0.
- * - minimumStock: integer >= 0.
- *
- * @returns {boolean}
- */
 function validateForm() {
   fieldErrors.value = { name: '', category: '', basePrice: '', currentStock: '', minimumStock: '' };
   let isValid = true;
@@ -107,10 +88,6 @@ function validateForm() {
   return isValid;
 }
 
-/**
- * Saves the product entity.
- * On creation also registers the initial stock via registerStockIntake.
- */
 function saveProduct() {
   if (!validateForm()) return;
 
@@ -131,17 +108,15 @@ function saveProduct() {
   } else {
     productStore.addProduct(productEntity);
 
-    // Register initial stock after product creation
     const initialStock = parseInt(form.value.currentStock);
     if (initialStock > 0) {
-      // Delayed to allow the product to be created first
       setTimeout(() => {
         const newProduct = productStore.products[productStore.products.length - 1];
         if (newProduct) {
           productStore.registerStockIntake({
-            productId:   newProduct.id,
-            businessId:  businessId,
-            quantity:    initialStock
+            productId:  newProduct.id,
+            businessId: businessId,
+            quantity:   initialStock
           });
         }
       }, 500);
@@ -152,176 +127,220 @@ function saveProduct() {
   setTimeout(() => router.push({ name: 'products' }), 1500);
 }
 
-/** Navigates back to the product list without saving. */
 function navigateBack() {
   router.push({ name: 'products' });
 }
 </script>
 
 <template>
-  <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+  <div class="page-wrapper">
 
-    <!-- Header -->
+    <!-- ── Header ─────────────────────────────────────────────────── -->
     <div class="flex align-items-center gap-3">
       <button
-          class="flex align-items-center justify-content-center border-round-lg border-none cursor-pointer"
-          style="width: 36px; height: 36px; background: none;"
+          class="flex align-items-center justify-content-center border-round-lg border-none cursor-pointer flex-shrink-0 btn-back"
           @click="navigateBack"
-          @mouseenter="$event.currentTarget.style.backgroundColor = '#F1F5F9'"
-          @mouseleave="$event.currentTarget.style.backgroundColor = 'transparent'"
       >
-        <i class="pi pi-arrow-left" style="color: #0B3558; font-size: 1.1rem;"/>
+        <i class="pi pi-arrow-left" style="font-size: 1rem;"/>
       </button>
-      <div>
-        <h1 class="m-0" style="color: #0B3558; font-size: 2rem; font-weight: 700;">
-          {{ isEdit ? t('product-form.edit-title') : t('product-form.new-title') }}
-        </h1>
-        <p class="m-0 mt-1" style="color: #64748B;">
-          {{ isEdit ? t('product-form.edit-subtitle') : t('product-form.new-subtitle') }}
-        </p>
+      <div class="flex align-items-center gap-3">
+        <div class="flex align-items-center justify-content-center border-round-xl flex-shrink-0 form-icon-wrap">
+          <i :class="isEdit ? 'pi pi-pencil' : 'pi pi-plus'" style="color: #0E7490; font-size: 1rem;"/>
+        </div>
+        <div>
+          <h1 class="m-0 page-title">
+            {{ isEdit ? t('product-form.edit-title') : t('product-form.new-title') }}
+          </h1>
+          <p class="m-0 mt-1 page-subtitle">
+            {{ isEdit ? t('product-form.edit-subtitle') : t('product-form.new-subtitle') }}
+          </p>
+        </div>
       </div>
     </div>
 
-    <!-- Success banner -->
-    <div v-if="submitSuccess" class="p-3 border-round-lg" style="background-color: #DCFCE7; border: 1px solid #22C55E;">
-      <p class="m-0" style="color: #22C55E;">
+    <!-- ── Success banner ─────────────────────────────────────────── -->
+    <div v-if="submitSuccess" class="flex align-items-center gap-3 p-4 border-round-xl success-banner">
+      <div class="flex align-items-center justify-content-center border-round-lg flex-shrink-0 success-icon-wrap">
+        <i class="pi pi-check-circle" style="color: #16A34A; font-size: 1rem;"/>
+      </div>
+      <p class="success-text">
         {{ isEdit ? t('product-form.success-update') : t('product-form.success-create') }}
       </p>
     </div>
 
-    <!-- Form card -->
-    <div class="p-5 border-round-xl shadow-1" style="background-color: #ffffff;">
-      <div class="grid m-0" style="gap: 1.25rem;">
+    <!-- ── Form card ──────────────────────────────────────────────── -->
+    <div class="border-round-xl overflow-hidden card">
 
-        <!-- Nombre -->
-        <div class="col-12 md:col-6 p-0">
-          <label class="block mb-2" style="color: #1E293B; font-size: 0.9rem;">
-            {{ t('product-form.name') }}
-          </label>
-          <input
-              v-model="form.name"
-              :placeholder="t('product-form.name-placeholder')"
-              style="width: 100%; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; font-size: 0.95rem; outline: none; color: #1E293B; box-sizing: border-box;"
-          />
-          <p v-if="fieldErrors.name" class="m-0 mt-1" style="color: #EF4444; font-size: 0.8rem;">{{ fieldErrors.name }}</p>
-        </div>
-
-        <!-- Categoría -->
-        <div class="col-12 md:col-6 p-0">
-          <label class="block mb-2" style="color: #1E293B; font-size: 0.9rem;">
-            {{ t('product-form.category') }}
-          </label>
-          <pv-select
-              v-model="form.category"
-              :options="categoryOptions"
-              option-label="label"
-              option-value="value"
-              :placeholder="t('product-form.category-placeholder')"
-              class="w-full"
-          />
-          <p v-if="fieldErrors.category" class="m-0 mt-1" style="color: #EF4444; font-size: 0.8rem;">{{ fieldErrors.category }}</p>
-        </div>
-
-        <!-- Código -->
-        <div class="col-12 md:col-6 p-0">
-          <label class="block mb-2" style="color: #1E293B; font-size: 0.9rem;">
-            {{ t('product-form.code') }}
-          </label>
-          <input
-              v-model="form.code"
-              :placeholder="t('product-form.code-placeholder')"
-              style="width: 100%; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; font-size: 0.95rem; outline: none; color: #1E293B; box-sizing: border-box;"
-          />
-        </div>
-
-        <!-- Precio -->
-        <div class="col-12 md:col-6 p-0">
-          <label class="block mb-2" style="color: #1E293B; font-size: 0.9rem;">
-            {{ t('product-form.price') }}
-          </label>
-          <input
-              v-model="form.basePrice"
-              type="number"
-              min="0"
-              step="0.01"
-              placeholder="0.00"
-              style="width: 100%; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; font-size: 0.95rem; outline: none; color: #1E293B; box-sizing: border-box;"
-          />
-          <p v-if="fieldErrors.basePrice" class="m-0 mt-1" style="color: #EF4444; font-size: 0.8rem;">{{ fieldErrors.basePrice }}</p>
-        </div>
-
-        <!-- Stock actual (only on create) -->
-        <div v-if="!isEdit" class="col-12 md:col-6 p-0">
-          <label class="block mb-2" style="color: #1E293B; font-size: 0.9rem;">
-            {{ t('product-form.current-stock') }}
-          </label>
-          <input
-              v-model="form.currentStock"
-              type="number"
-              min="0"
-              placeholder="0"
-              style="width: 100%; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; font-size: 0.95rem; outline: none; color: #1E293B; box-sizing: border-box;"
-          />
-          <p v-if="fieldErrors.currentStock" class="m-0 mt-1" style="color: #EF4444; font-size: 0.8rem;">{{ fieldErrors.currentStock }}</p>
-        </div>
-
-        <!-- Stock mínimo (only on create) -->
-        <div v-if="!isEdit" class="col-12 md:col-6 p-0">
-          <label class="block mb-2" style="color: #1E293B; font-size: 0.9rem;">
-            {{ t('product-form.minimum-stock') }}
-          </label>
-          <input
-              v-model="form.minimumStock"
-              type="number"
-              min="0"
-              placeholder="0"
-              style="width: 100%; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; font-size: 0.95rem; outline: none; color: #1E293B; box-sizing: border-box;"
-          />
-          <p v-if="fieldErrors.minimumStock" class="m-0 mt-1" style="color: #EF4444; font-size: 0.8rem;">{{ fieldErrors.minimumStock }}</p>
-        </div>
-
-        <!-- Fecha de vencimiento (full width) -->
-        <div class="col-12 md:col-12 p-0">
-          <label class="block mb-2" style="color: #1E293B; font-size: 0.9rem;">
-            {{ t('product-form.expiration') }}
-          </label>
-          <input
-              v-model="form.expirationDate"
-              type="date"
-              style="width: 100%; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; font-size: 0.95rem; outline: none; color: #1E293B; box-sizing: border-box;"
-          />
-        </div>
-
-        <!-- Descripción (full width) -->
-        <div class="col-12 p-0">
-          <label class="block mb-2" style="color: #1E293B; font-size: 0.9rem;">
-            {{ t('product-form.description') }}
-          </label>
-          <textarea
-              v-model="form.description"
-              :placeholder="t('product-form.description-placeholder')"
-              rows="4"
-              style="width: 100%; border: 1px solid #E2E8F0; border-radius: 8px; padding: 10px 12px; font-size: 0.95rem; outline: none; color: #1E293B; resize: vertical; font-family: inherit; box-sizing: border-box;"
-          />
-        </div>
-
+      <!-- Section header -->
+      <div class="px-5 py-4 flex align-items-center gap-2 section-header">
+        <i class="pi pi-info-circle" style="color: #0E7490; font-size: 0.88rem;"/>
+        <p class="section-header-text">Información del producto</p>
       </div>
 
-      <!-- Actions -->
-      <div class="flex gap-3 justify-content-end mt-5 pt-4" style="border-top: 1px solid #E2E8F0;">
+      <div class="p-5">
+        <div class="form-grid">
+
+          <!-- Nombre -->
+          <div class="form-field-full">
+            <label class="form-label">
+              <i class="pi pi-tag" style="font-size: 0.72rem;"/>
+              {{ t('product-form.name') }}
+              <span class="required">*</span>
+            </label>
+            <input
+                v-model="form.name"
+                :placeholder="t('product-form.name-placeholder')"
+                :class="['form-input', { 'form-input-error': fieldErrors.name }]"
+            />
+            <p v-if="fieldErrors.name" class="form-error-msg">
+              <i class="pi pi-exclamation-circle" style="font-size: 0.72rem;"/>
+              {{ fieldErrors.name }}
+            </p>
+          </div>
+
+          <!-- Categoría -->
+          <div>
+            <label class="form-label">
+              <i class="pi pi-th-large" style="font-size: 0.72rem;"/>
+              {{ t('product-form.category') }}
+              <span class="required">*</span>
+            </label>
+            <pv-select
+                v-model="form.category"
+                :options="categoryOptions"
+                option-label="label"
+                option-value="value"
+                :placeholder="t('product-form.category-placeholder')"
+                class="w-full"
+                :class="{ 'p-invalid': fieldErrors.category }"
+            />
+            <p v-if="fieldErrors.category" class="form-error-msg">
+              <i class="pi pi-exclamation-circle" style="font-size: 0.72rem;"/>
+              {{ fieldErrors.category }}
+            </p>
+          </div>
+
+          <!-- Código -->
+          <div>
+            <label class="form-label">
+              <i class="pi pi-hashtag" style="font-size: 0.72rem;"/>
+              {{ t('product-form.code') }}
+            </label>
+            <input
+                v-model="form.code"
+                :placeholder="t('product-form.code-placeholder')"
+                class="form-input"
+            />
+          </div>
+
+          <!-- Precio -->
+          <div>
+            <label class="form-label">
+              <i class="pi pi-dollar" style="font-size: 0.72rem;"/>
+              {{ t('product-form.price') }}
+              <span class="required">*</span>
+            </label>
+            <div class="relative">
+              <span class="absolute price-prefix">S/</span>
+              <input
+                  v-model="form.basePrice"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  :class="['form-input', 'form-input-price', { 'form-input-error': fieldErrors.basePrice }]"
+              />
+            </div>
+            <p v-if="fieldErrors.basePrice" class="form-error-msg">
+              <i class="pi pi-exclamation-circle" style="font-size: 0.72rem;"/>
+              {{ fieldErrors.basePrice }}
+            </p>
+          </div>
+
+          <!-- Stock actual (solo en creación) -->
+          <div v-if="!isEdit">
+            <label class="form-label">
+              <i class="pi pi-box" style="font-size: 0.72rem;"/>
+              {{ t('product-form.current-stock') }}
+              <span class="required">*</span>
+            </label>
+            <input
+                v-model="form.currentStock"
+                type="number"
+                min="0"
+                placeholder="0"
+                :class="['form-input', { 'form-input-error': fieldErrors.currentStock }]"
+            />
+            <p v-if="fieldErrors.currentStock" class="form-error-msg">
+              <i class="pi pi-exclamation-circle" style="font-size: 0.72rem;"/>
+              {{ fieldErrors.currentStock }}
+            </p>
+          </div>
+
+          <!-- Stock mínimo (solo en creación) -->
+          <div v-if="!isEdit">
+            <label class="form-label">
+              <i class="pi pi-exclamation-triangle" style="font-size: 0.72rem;"/>
+              {{ t('product-form.minimum-stock') }}
+              <span class="required">*</span>
+            </label>
+            <input
+                v-model="form.minimumStock"
+                type="number"
+                min="0"
+                placeholder="0"
+                :class="['form-input', { 'form-input-error': fieldErrors.minimumStock }]"
+            />
+            <p v-if="fieldErrors.minimumStock" class="form-error-msg">
+              <i class="pi pi-exclamation-circle" style="font-size: 0.72rem;"/>
+              {{ fieldErrors.minimumStock }}
+            </p>
+          </div>
+
+          <!-- Fecha de vencimiento -->
+          <div class="form-field-full">
+            <label class="form-label">
+              <i class="pi pi-calendar" style="font-size: 0.72rem;"/>
+              {{ t('product-form.expiration') }}
+            </label>
+            <input
+                v-model="form.expirationDate"
+                type="date"
+                class="form-input"
+            />
+          </div>
+
+          <!-- Descripción -->
+          <div class="form-field-full">
+            <label class="form-label">
+              <i class="pi pi-align-left" style="font-size: 0.72rem;"/>
+              {{ t('product-form.description') }}
+            </label>
+            <textarea
+                v-model="form.description"
+                :placeholder="t('product-form.description-placeholder')"
+                rows="3"
+                class="form-input form-textarea"
+            />
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── Actions footer ─────────────────────────────────────── -->
+      <div class="flex flex-column sm:flex-row gap-3 px-5 py-4 footer-actions">
         <button
-            class="px-4 py-2 border-round-lg cursor-pointer"
-            style="background: none; border: 1px solid #E2E8F0; color: #64748B; font-size: 0.95rem;"
+            class="flex-1 sm:flex-none flex align-items-center justify-content-center gap-2 px-5 py-2 border-round-xl cursor-pointer btn-cancel"
             @click="navigateBack"
         >
+          <i class="pi pi-times" style="font-size: 0.82rem;"/>
           {{ t('product-form.cancel') }}
         </button>
         <button
-            class="flex align-items-center gap-2 px-4 py-2 border-round-lg cursor-pointer border-none"
-            style="background-color: #0B3558; color: #FAFAF7; font-size: 0.95rem; font-weight: 500;"
+            class="flex-1 flex align-items-center justify-content-center gap-2 px-5 py-2 border-round-xl cursor-pointer border-none btn-save"
             @click="saveProduct"
         >
-          <i class="pi pi-save"/>
+          <i class="pi pi-save" style="font-size: 0.85rem;"/>
           {{ t('product-form.save') }}
         </button>
       </div>
@@ -331,4 +350,212 @@ function navigateBack() {
 </template>
 
 <style scoped>
+.page-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* Back button */
+.btn-back {
+  width: 38px;
+  height: 38px;
+  background-color: #F1F5F9;
+  color: #0B3558;
+  transition: all 0.15s;
+}
+.btn-back:hover {
+  background-color: #E2E8F0;
+  transform: translateX(-2px);
+}
+
+/* Header icon wrapper */
+.form-icon-wrap {
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(135deg, #E0F2FE, #DBEAFE);
+}
+
+.page-title {
+  color: #0B3558;
+  font-size: 1.4rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.page-subtitle {
+  color: #64748B;
+  font-size: 0.8rem;
+}
+
+/* Success banner */
+.success-banner {
+  background-color: #F0FDF4;
+  border: 1.5px solid #86EFAC;
+}
+
+.success-icon-wrap {
+  width: 36px;
+  height: 36px;
+  background-color: #DCFCE7;
+}
+
+.success-text {
+  color: #15803D;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* Card container */
+.card {
+  background-color: #ffffff;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.05);
+}
+
+/* Section header bar */
+.section-header {
+  border-bottom: 1px solid #E2E8F0;
+  background-color: #F8FAFC;
+}
+
+.section-header-text {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #0B3558;
+  margin: 0;
+}
+
+/* Required asterisk */
+.required {
+  color: #DC2626;
+}
+
+/* Form layout: 1-col mobile → 2-col desktop */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+}
+@media (min-width: 640px) {
+  .form-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.form-field-full {
+  grid-column: 1 / -1;
+}
+
+/* Label */
+.form-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #374151;
+  letter-spacing: 0.02em;
+}
+
+/* Input base */
+.form-input {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background-color: #F8FAFC;
+  border: 1.5px solid #E2E8F0;
+  color: #0B3558;
+  font-size: 0.9rem;
+  outline: none;
+  box-sizing: border-box;
+  transition: all 0.18s;
+  font-family: inherit;
+}
+.form-input:focus {
+  border-color: #0E7490;
+  box-shadow: 0 0 0 3px rgba(14, 116, 144, 0.12);
+  background-color: #fff;
+}
+.form-input-error {
+  border-color: #FCA5A5 !important;
+  background-color: #FFF5F5;
+}
+.form-input-error:focus {
+  border-color: #EF4444 !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12) !important;
+}
+
+/* Price input left padding for S/ prefix */
+.form-input-price {
+  padding-left: 32px;
+}
+
+/* Currency prefix (S/) inside price field */
+.price-prefix {
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #64748B;
+  font-size: 0.85rem;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+/* Textarea extras */
+.form-textarea {
+  resize: vertical;
+  font-family: inherit;
+  min-height: 80px;
+}
+
+/* Error message */
+.form-error-msg {
+  margin: 4px 0 0 0;
+  font-size: 0.77rem;
+  color: #DC2626;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Footer actions bar */
+.footer-actions {
+  border-top: 1px solid #E2E8F0;
+  background-color: #F8FAFC;
+}
+
+/* Cancel button */
+.btn-cancel {
+  border: 1.5px solid #E2E8F0;
+  color: #64748B;
+  font-size: 0.9rem;
+  font-weight: 500;
+  background: #fff;
+  transition: all 0.15s;
+  order: 2;
+}
+.btn-cancel:hover {
+  background-color: #F8FAFC;
+}
+
+/* Save button */
+.btn-save {
+  background: linear-gradient(135deg, #0E7490, #0B3558);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  box-shadow: 0 2px 10px rgba(14, 116, 144, 0.3);
+  transition: all 0.18s;
+  order: 1;
+}
+.btn-save:hover {
+  box-shadow: 0 4px 16px rgba(14, 116, 144, 0.45);
+  transform: translateY(-1px);
+}
+
+@media (min-width: 640px) {
+  .btn-cancel { order: 2; }
+  .btn-save   { order: 1; }
+}
 </style>

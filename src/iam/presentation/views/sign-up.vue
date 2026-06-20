@@ -4,305 +4,360 @@ import { useRouter } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import useIamStore from '../../application/iam.store.js';
 
-const { t } = useI18n();
-const router = useRouter();
-const store  = useIamStore();
+const { t }    = useI18n();
+const router   = useRouter();
+const iamStore = useIamStore();
 
-/**
- * Reactive form state for all sign-up fields.
- */
-const form = ref({
-  businessName:    '',
-  ruc:             '',
-  fullName:        '',
-  phone:           '',
-  email:           '',
-  password:        '',
-  confirmPassword: ''
-});
+const form = ref({ fullName: '', businessName: '', businessType: '', email: '', password: '' });
 
-/**
- * Field-level validation errors.
- * @type {import('vue').Ref<Object.<string,string>>}
- */
-const fieldErrors = ref({});
+const fieldErrors = ref({ fullName: '', businessName: '', businessType: '', email: '', password: '' });
 
-/**
- * Whether the registration succeeded (shows success message).
- * @type {import('vue').Ref<boolean>}
- */
-const success = ref(false);
+const showPassword = ref(false);
+const isLoading    = ref(false);
 
-/**
- * Validates all form fields according to business rules:
- * - businessName must not be empty.
- * - fullName must not be empty.
- * - email must contain '@'.
- * - password must be at least 6 characters.
- * - confirmPassword must match password.
- *
- * @returns {boolean} True if all validations pass.
- */
+const businessTypeOptions = [
+  { value: 'BODEGA',   icon: 'pi pi-shopping-cart', labelKey: 'sign-up.type-bodega',   descKey: 'sign-up.type-bodega-desc'   },
+  { value: 'FARMACIA', icon: 'pi pi-heart',          labelKey: 'sign-up.type-farmacia', descKey: 'sign-up.type-farmacia-desc' }
+];
+
+function computePasswordStrength(password) {
+  if (!password) return 0;
+  if (password.length < 4)  return 1;
+  if (password.length < 7)  return 2;
+  if (password.length < 10) return 3;
+  return 4;
+}
+
+const strengthLabels = ['', 'Débil', 'Regular', 'Buena', 'Fuerte'];
+const strengthColors = ['', '#EF4444', '#FACC15', '#0E7490', '#16A34A'];
+
+function resolveStrengthBarColor(level) { return strengthColors[level] || '#E2E8F0'; }
+
 function validateForm() {
-  const newErrors = {};
-
-  if (!form.value.businessName.trim()) {
-    newErrors.businessName = t('sign-up.error-business-name');
-  }
-  if (!form.value.fullName.trim()) {
-    newErrors.fullName = t('sign-up.error-full-name');
-  }
-  if (!form.value.email || !form.value.email.includes('@')) {
-    newErrors.email = t('sign-up.error-email');
-  }
-  if (!form.value.password || form.value.password.length < 6) {
-    newErrors.password = t('sign-up.error-password');
-  }
-  if (form.value.password !== form.value.confirmPassword) {
-    newErrors.confirmPassword = t('sign-up.error-confirm');
-  }
-
-  fieldErrors.value = newErrors;
-  return Object.keys(newErrors).length === 0;
+  fieldErrors.value = { fullName: '', businessName: '', businessType: '', email: '', password: '' };
+  let isValid = true;
+  if (!form.value.fullName.trim())    { fieldErrors.value.fullName     = t('sign-up.error-full-name');    isValid = false; }
+  if (!form.value.businessName.trim()) { fieldErrors.value.businessName = t('sign-up.error-business-name'); isValid = false; }
+  if (!form.value.businessType)        { fieldErrors.value.businessType = t('sign-up.error-business-type'); isValid = false; }
+  if (!form.value.email || !form.value.email.includes('@')) { fieldErrors.value.email = t('sign-up.error-email');    isValid = false; }
+  if (!form.value.password || form.value.password.length < 8) { fieldErrors.value.password = t('sign-up.error-password'); isValid = false; }
+  return isValid;
 }
 
-/**
- * Clears the error for a specific field when the user starts editing it.
- * @param {string} fieldName - Name of the field being edited.
- */
-function clearFieldError(fieldName) {
-  if (fieldErrors.value[fieldName]) {
-    delete fieldErrors.value[fieldName];
-  }
-}
-
-/**
- * Submits the sign-up form.
- * On success, shows a confirmation message and navigates to home after a short delay.
- */
 async function submitSignUp() {
   if (!validateForm()) return;
-
-  store.signUp({
-    businessName: form.value.businessName,
-    fullName:     form.value.fullName,
-    email:        form.value.email,
-    password:     form.value.password
-  });
-
-  await new Promise(resolve => setTimeout(resolve, 300));
-
-  if (store.isAuthenticated) {
-    success.value = true;
-    setTimeout(() => {
-      router.push({ name: 'home' });
-    }, 2000);
-  }
+  isLoading.value = true;
+  iamStore.signUp({ fullName: form.value.fullName, businessName: form.value.businessName, email: form.value.email, password: form.value.password });
+  await new Promise(resolve => setTimeout(resolve, 700));
+  isLoading.value = false;
+  if (iamStore.isAuthenticated) router.push({ name: 'dashboard' });
 }
 
-/**
- * Navigates back to the sign-in view.
- */
-function navigateToSignIn() {
-  router.push({ name: 'sign-in' });
+function navigateToSignIn() { router.push({ name: 'sign-in' }); }
+
+function selectBusinessType(typeValue) {
+  form.value.businessType = typeValue;
+  fieldErrors.value.businessType = '';
 }
 </script>
 
 <template>
-  <div
-      class="min-h-screen flex align-items-center justify-content-center p-4"
-      style="background-color: #FAFAF7;"
-  >
-    <pv-card class="w-full" style="max-width: 640px;">
-      <template #content>
+  <div class="auth-screen flex min-h-screen" style="background-color: #FAFAF7;">
 
-        <!-- Header -->
-        <div class="flex align-items-center gap-3 mb-5">
-          <pv-button
-              icon="pi pi-arrow-left"
-              text
-              rounded
-              severity="secondary"
-              @click="navigateToSignIn"
-          />
-          <div>
-            <h1 class="m-0" style="color: #0B3558;">{{ t('sign-up.title') }}</h1>
-            <p class="m-0 mt-1" style="color: #64748B;">{{ t('sign-up.subtitle') }}</p>
+    <!-- ── Left panel (desktop only) ──────────────────────────────── -->
+    <div
+        class="hidden lg:flex flex-column justify-content-between p-8 relative overflow-hidden"
+        style="width: 58%; background: linear-gradient(160deg, #0B3558 0%, #0E4A6B 60%, #0B3558 100%); flex-shrink: 0;"
+    >
+      <div class="absolute" style="top: -144px; right: -144px; width: 440px; height: 440px; border-radius: 50%; background-color: #0E7490; opacity: 0.10;"/>
+      <div class="absolute" style="bottom: -176px; left: -112px; width: 400px; height: 400px; border-radius: 50%; background-color: #0E7490; opacity: 0.07;"/>
+      <div class="absolute" style="top: 35%; left: -60px; width: 200px; height: 200px; border-radius: 50%; background-color: #BAE6FD; opacity: 0.06;"/>
+
+      <!-- Logo -->
+      <div class="relative flex align-items-center gap-3">
+        <img src="../../../assets/qullqa_logo.jpeg" alt="Qullqa" style="width: 48px; height: 48px; object-fit: contain; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);"/>
+        <span style="color: #FAFAF7; font-size: 1.35rem; font-weight: 700; letter-spacing: 0.02em;">Qullqa</span>
+      </div>
+
+      <!-- Center content -->
+      <div class="relative flex flex-column gap-6">
+        <div class="flex flex-column gap-3">
+          <div class="flex align-items-center gap-2" style="width: fit-content; background-color: rgba(14,116,144,0.2); border: 1px solid rgba(14,116,144,0.4); border-radius: 20px; padding: 4px 12px;">
+            <span style="width: 6px; height: 6px; border-radius: 50%; background-color: #0E7490; display: inline-block;"/>
+            <p class="m-0" style="color: #7DD3E8; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;">Únete gratis</p>
           </div>
+          <h1 style="color: #FAFAF7; font-size: 2.2rem; font-weight: 700; line-height: 1.2; margin: 0;">
+            Tu negocio, más<br/><span style="color: #7DD3E8;">inteligente</span> que nunca.
+          </h1>
+          <p style="color: #93B5C9; font-size: 0.97rem; line-height: 1.75; margin: 0; max-width: 400px;">
+            Crea tu cuenta en segundos y empieza a controlar tu inventario con alertas, reportes y ventas en un solo lugar.
+          </p>
         </div>
 
-        <!-- Success banner -->
-        <div
-            v-if="success"
-            class="p-3 border-round mb-4"
-            style="background-color: #DCFCE7; border: 1px solid #22C55E; color: #22C55E;"
+        <div class="flex flex-column gap-3">
+          <div
+              v-for="feature in [
+                { icon: 'pi pi-check-circle', text: 'Registro en menos de 2 minutos',   color: '#6EE7B7', bg: 'rgba(110,231,183,0.15)' },
+                { icon: 'pi pi-credit-card',  text: 'Sin tarjeta de crédito requerida', color: '#7DD3E8', bg: 'rgba(125,211,232,0.15)' },
+                { icon: 'pi pi-lock',          text: 'Datos seguros y encriptados',       color: '#C4B5FD', bg: 'rgba(196,181,253,0.15)' }
+              ]"
+              :key="feature.text"
+              class="flex align-items-center gap-3"
+          >
+            <div
+                class="flex align-items-center justify-content-center border-round-lg flex-shrink-0"
+                style="width: 36px; height: 36px;"
+                :style="{ backgroundColor: feature.bg }"
+            >
+              <i :class="feature.icon" style="font-size: 0.9rem;" :style="{ color: feature.color }"/>
+            </div>
+            <span style="color: #BDD4E1; font-size: 0.9rem;">{{ feature.text }}</span>
+          </div>
+        </div>
+      </div>
+
+      <p class="relative m-0" style="color: rgba(255,255,255,0.25); font-size: 0.74rem;">© 2026 Flowbit · Qullqa</p>
+    </div>
+
+    <!-- ── Right panel ─────────────────────────────────────────────── -->
+    <div class="flex-1 flex flex-column align-items-center justify-content-center px-4 sm:px-8 py-8 sm:py-10 overflow-y-auto">
+
+      <!-- Mobile logo -->
+      <div class="flex lg:hidden align-items-center gap-3 mb-6">
+        <img src="../../../assets/qullqa_logo.jpeg" alt="Qullqa" style="width: 40px; height: 40px; border-radius: 8px;"/>
+        <span style="font-size: 1.2rem; font-weight: 700; color: #0B3558;">Qullqa</span>
+      </div>
+
+      <div style="width: 100%; max-width: 420px;">
+
+        <!-- Back link -->
+        <button
+            type="button"
+            class="flex align-items-center gap-2 mb-5"
+            style="background: none; border: none; color: #64748B; font-size: 0.85rem; font-weight: 500; cursor: pointer; padding: 0; transition: color 0.15s;"
+            @click="navigateToSignIn"
+            @mouseenter="(e) => e.currentTarget.style.color = '#0E7490'"
+            @mouseleave="(e) => e.currentTarget.style.color = '#64748B'"
         >
-          {{ t('sign-up.success') }}
+          <i class="pi pi-arrow-left" style="font-size: 0.85rem;"/>
+          {{ t('sign-up.back-link') }}
+        </button>
+
+        <!-- Title -->
+        <div class="mb-5">
+          <h2 class="m-0" style="font-size: 1.6rem; font-weight: 700; color: #0B3558; letter-spacing: -0.01em;">{{ t('sign-up.title') }}</h2>
+          <p class="m-0 mt-1" style="color: #64748B; font-size: 0.92rem;">{{ t('sign-up.subtitle') }}</p>
         </div>
 
-        <form @submit.prevent="submitSignUp" class="flex flex-column gap-5">
+        <form @submit.prevent="submitSignUp" style="display: flex; flex-direction: column; gap: 1rem;">
 
-          <!-- Section: Business -->
-          <div>
-            <h3 class="mt-0 mb-3" style="color: #0B3558;">
-              {{ t('sign-up.section-business') }}
-            </h3>
-            <div class="grid">
-              <div class="col-12 md:col-6">
-                <div class="flex flex-column gap-1">
-                  <label for="businessName" style="color: #1E293B;">
-                    {{ t('sign-up.business-name') }} *
-                  </label>
-                  <pv-input-text
-                      id="businessName"
-                      v-model="form.businessName"
-                      :placeholder="t('sign-up.business-placeholder')"
-                      class="w-full"
-                      @input="clearFieldError('businessName')"
-                  />
-                  <small v-if="fieldErrors.businessName" style="color: #EF4444;">
-                    {{ fieldErrors.businessName }}
-                  </small>
-                </div>
-              </div>
-              <div class="col-12 md:col-6">
-                <div class="flex flex-column gap-1">
-                  <label for="ruc" style="color: #1E293B;">
-                    {{ t('sign-up.ruc') }}
-                  </label>
-                  <pv-input-text
-                      id="ruc"
-                      v-model="form.ruc"
-                      :placeholder="t('sign-up.ruc-placeholder')"
-                      class="w-full"
-                  />
-                </div>
-              </div>
+          <!-- Full name -->
+          <div class="auth-field">
+            <label class="auth-label">{{ t('sign-up.full-name') }}</label>
+            <div class="relative">
+              <i class="pi pi-user absolute" style="left: 14px; top: 50%; transform: translateY(-50%); color: #94A3B8; font-size: 0.88rem; pointer-events: none;"/>
+              <input v-model="form.fullName" type="text" :placeholder="t('sign-up.full-name-placeholder')" required class="auth-input" style="padding-left: 40px;"/>
             </div>
+            <p v-if="fieldErrors.fullName" class="auth-error"><i class="pi pi-exclamation-circle" style="font-size: 0.72rem;"/> {{ fieldErrors.fullName }}</p>
           </div>
 
-          <!-- Section: Personal -->
-          <div>
-            <h3 class="mt-0 mb-3" style="color: #0B3558;">
-              {{ t('sign-up.section-personal') }}
-            </h3>
-            <div class="grid">
-              <div class="col-12 md:col-6">
-                <div class="flex flex-column gap-1">
-                  <label for="fullName" style="color: #1E293B;">
-                    {{ t('sign-up.full-name') }} *
-                  </label>
-                  <pv-input-text
-                      id="fullName"
-                      v-model="form.fullName"
-                      :placeholder="t('sign-up.full-name-placeholder')"
-                      class="w-full"
-                      @input="clearFieldError('fullName')"
-                  />
-                  <small v-if="fieldErrors.fullName" style="color: #EF4444;">
-                    {{ fieldErrors.fullName }}
-                  </small>
-                </div>
-              </div>
-              <div class="col-12 md:col-6">
-                <div class="flex flex-column gap-1">
-                  <label for="phone" style="color: #1E293B;">
-                    {{ t('sign-up.phone') }}
-                  </label>
-                  <pv-input-text
-                      id="phone"
-                      v-model="form.phone"
-                      :placeholder="t('sign-up.phone-placeholder')"
-                      class="w-full"
-                  />
-                </div>
-              </div>
+          <!-- Business name -->
+          <div class="auth-field">
+            <label class="auth-label">{{ t('sign-up.business-name') }}</label>
+            <div class="relative">
+              <i class="pi pi-building absolute" style="left: 14px; top: 50%; transform: translateY(-50%); color: #94A3B8; font-size: 0.88rem; pointer-events: none;"/>
+              <input v-model="form.businessName" type="text" :placeholder="t('sign-up.business-placeholder')" required class="auth-input" style="padding-left: 40px;"/>
             </div>
+            <p v-if="fieldErrors.businessName" class="auth-error"><i class="pi pi-exclamation-circle" style="font-size: 0.72rem;"/> {{ fieldErrors.businessName }}</p>
           </div>
 
-          <!-- Section: Credentials -->
-          <div>
-            <h3 class="mt-0 mb-3" style="color: #0B3558;">
-              {{ t('sign-up.section-credentials') }}
-            </h3>
-            <div class="flex flex-column gap-3">
-              <div class="flex flex-column gap-1">
-                <label for="signUpEmail" style="color: #1E293B;">
-                  {{ t('sign-up.email') }} *
-                </label>
-                <pv-input-text
-                    id="signUpEmail"
-                    v-model="form.email"
-                    type="email"
-                    :placeholder="t('sign-up.email-placeholder')"
-                    class="w-full"
-                    @input="clearFieldError('email')"
+          <!-- Business type -->
+          <div class="auth-field">
+            <label class="auth-label">{{ t('sign-up.business-type') }}</label>
+            <div class="business-type-grid">
+              <button
+                  v-for="typeOption in businessTypeOptions"
+                  :key="typeOption.value"
+                  type="button"
+                  class="border-round-xl p-3 text-left cursor-pointer"
+                  style="transition: all 0.18s; display: flex; flex-direction: column; gap: 6px;"
+                  :style="{
+                    backgroundColor: form.businessType === typeOption.value ? '#E0F2FE' : '#F1F5F9',
+                    border:          form.businessType === typeOption.value ? '1.5px solid #0E7490' : '1.5px solid #E2E8F0',
+                    boxShadow:       form.businessType === typeOption.value ? '0 0 0 3px rgba(14,116,144,0.12)' : 'none'
+                  }"
+                  @click="selectBusinessType(typeOption.value)"
+              >
+                <div
+                    class="flex align-items-center justify-content-center border-round-lg flex-shrink-0"
+                    style="width: 32px; height: 32px; margin-bottom: 2px;"
+                    :style="{ backgroundColor: form.businessType === typeOption.value ? 'rgba(14,116,144,0.15)' : '#E2E8F0' }"
+                >
+                  <i :class="typeOption.icon" style="font-size: 0.88rem;" :style="{ color: form.businessType === typeOption.value ? '#0E7490' : '#94A3B8' }"/>
+                </div>
+                <p class="m-0" style="font-size: 0.82rem; font-weight: 700;" :style="{ color: form.businessType === typeOption.value ? '#0E7490' : '#1E293B' }">
+                  {{ t(typeOption.labelKey) }}
+                </p>
+                <p class="m-0" style="font-size: 0.74rem; color: #64748B; line-height: 1.4;">{{ t(typeOption.descKey) }}</p>
+              </button>
+            </div>
+            <p v-if="fieldErrors.businessType" class="auth-error"><i class="pi pi-exclamation-circle" style="font-size: 0.72rem;"/> {{ fieldErrors.businessType }}</p>
+          </div>
+
+          <!-- Email -->
+          <div class="auth-field">
+            <label class="auth-label">{{ t('sign-up.email') }}</label>
+            <div class="relative">
+              <i class="pi pi-envelope absolute" style="left: 14px; top: 50%; transform: translateY(-50%); color: #94A3B8; font-size: 0.88rem; pointer-events: none;"/>
+              <input v-model="form.email" type="email" :placeholder="t('sign-up.email-placeholder')" required class="auth-input" style="padding-left: 40px;"/>
+            </div>
+            <p v-if="fieldErrors.email" class="auth-error"><i class="pi pi-exclamation-circle" style="font-size: 0.72rem;"/> {{ fieldErrors.email }}</p>
+          </div>
+
+          <!-- Password + strength -->
+          <div class="auth-field">
+            <label class="auth-label">{{ t('sign-up.password') }}</label>
+            <div class="relative">
+              <i class="pi pi-lock absolute" style="left: 14px; top: 50%; transform: translateY(-50%); color: #94A3B8; font-size: 0.88rem; pointer-events: none;"/>
+              <input
+                  v-model="form.password"
+                  :type="showPassword ? 'text' : 'password'"
+                  :placeholder="t('sign-up.password-placeholder')"
+                  required minlength="8"
+                  class="auth-input"
+                  style="padding-left: 40px; padding-right: 44px;"
+              />
+              <button
+                  type="button"
+                  class="absolute"
+                  style="right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #94A3B8; cursor: pointer; padding: 4px; border-radius: 6px; display: flex; transition: color 0.15s;"
+                  @click="showPassword = !showPassword"
+                  @mouseenter="(e) => e.currentTarget.style.color = '#0E7490'"
+                  @mouseleave="(e) => e.currentTarget.style.color = '#94A3B8'"
+              >
+                <i :class="showPassword ? 'pi pi-eye-slash' : 'pi pi-eye'" style="font-size: 0.95rem;"/>
+              </button>
+            </div>
+            <!-- Strength bar + label -->
+            <div v-if="form.password.length > 0" class="flex align-items-center gap-2 mt-1">
+              <div class="flex gap-1 flex-1">
+                <div
+                    v-for="i in [1, 2, 3, 4]"
+                    :key="i"
+                    class="flex-1 border-round-lg"
+                    style="height: 4px; transition: background-color 0.3s;"
+                    :style="{ backgroundColor: computePasswordStrength(form.password) >= i ? resolveStrengthBarColor(computePasswordStrength(form.password)) : '#E2E8F0' }"
                 />
-                <small v-if="fieldErrors.email" style="color: #EF4444;">
-                  {{ fieldErrors.email }}
-                </small>
               </div>
-
-              <div class="grid">
-                <div class="col-12 md:col-6">
-                  <div class="flex flex-column gap-1">
-                    <label for="signUpPassword" style="color: #1E293B;">
-                      {{ t('sign-up.password') }} *
-                    </label>
-                    <pv-input-text
-                        id="signUpPassword"
-                        v-model="form.password"
-                        type="password"
-                        :placeholder="t('sign-up.password-placeholder')"
-                        class="w-full"
-                        @input="clearFieldError('password')"
-                    />
-                    <small v-if="fieldErrors.password" style="color: #EF4444;">
-                      {{ fieldErrors.password }}
-                    </small>
-                  </div>
-                </div>
-                <div class="col-12 md:col-6">
-                  <div class="flex flex-column gap-1">
-                    <label for="confirmPassword" style="color: #1E293B;">
-                      {{ t('sign-up.confirm-password') }} *
-                    </label>
-                    <pv-input-text
-                        id="confirmPassword"
-                        v-model="form.confirmPassword"
-                        type="password"
-                        :placeholder="t('sign-up.password-placeholder')"
-                        class="w-full"
-                        @input="clearFieldError('confirmPassword')"
-                    />
-                    <small v-if="fieldErrors.confirmPassword" style="color: #EF4444;">
-                      {{ fieldErrors.confirmPassword }}
-                    </small>
-                  </div>
-                </div>
-              </div>
+              <span style="font-size: 0.72rem; font-weight: 600; min-width: 42px; text-align: right;" :style="{ color: resolveStrengthBarColor(computePasswordStrength(form.password)) }">
+                {{ strengthLabels[computePasswordStrength(form.password)] }}
+              </span>
             </div>
+            <p v-if="fieldErrors.password" class="auth-error"><i class="pi pi-exclamation-circle" style="font-size: 0.72rem;"/> {{ fieldErrors.password }}</p>
           </div>
 
           <!-- Submit -->
-          <div class="pt-3" style="border-top: 1px solid #E2E8F0;">
-            <pv-button
-                type="submit"
-                :label="t('sign-up.submit')"
-                class="w-full"
-                style="background-color: #0B3558; border-color: #0B3558; color: #FAFAF7;"
-            />
-            <p class="text-center mt-3 mb-0" style="color: #64748B; font-size: 0.875rem;">
-              {{ t('sign-up.terms') }}
-            </p>
-          </div>
+          <button
+              type="submit"
+              :disabled="isLoading"
+              class="w-full flex align-items-center justify-content-center gap-2 border-round-xl border-none mt-1"
+              style="padding: 14px; font-size: 0.95rem; font-weight: 700; color: #fff; transition: all 0.2s; box-shadow: 0 4px 16px rgba(14,116,144,0.35); background: linear-gradient(135deg, #0E7490, #0B3558);"
+              :style="{ opacity: isLoading ? 0.75 : 1, cursor: isLoading ? 'not-allowed' : 'pointer' }"
+              @mouseenter="(e) => { if (!isLoading) { e.currentTarget.style.boxShadow = '0 6px 24px rgba(14,116,144,0.50)'; e.currentTarget.style.transform = 'translateY(-1px)'; } }"
+              @mouseleave="(e) => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(14,116,144,0.35)'; e.currentTarget.style.transform = 'translateY(0)'; }"
+          >
+            <span v-if="isLoading" class="flex align-items-center gap-2">
+              <span class="spin-ring"/>
+              {{ t('sign-up.loading') }}
+            </span>
+            <span v-else>{{ t('sign-up.submit') }}</span>
+          </button>
 
+          <!-- Terms -->
+          <p class="text-center m-0" style="color: #94A3B8; font-size: 0.78rem; line-height: 1.5;">
+            {{ t('sign-up.terms-pre') }}
+            <span style="color: #0E7490; font-weight: 600; cursor: pointer;">{{ t('sign-up.terms-link') }}</span>
+            {{ t('sign-up.terms-and') }}
+            <span style="color: #0E7490; font-weight: 600; cursor: pointer;">{{ t('sign-up.privacy-link') }}</span>.
+          </p>
         </form>
 
-      </template>
-    </pv-card>
+        <!-- Sign in link -->
+        <p class="text-center mt-4" style="color: #64748B; font-size: 0.875rem;">
+          {{ t('sign-up.has-account') }}
+          <button type="button" class="auth-link" style="font-weight: 700;" @click="navigateToSignIn">
+            {{ t('sign-up.back-to-login') }}
+          </button>
+        </p>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
+/* Use dynamic viewport height so mobile browser chrome doesn't clip the layout. */
+.auth-screen { min-height: 100vh; min-height: 100dvh; }
+
+/* Desktop: lock the screen to the viewport so the left brand panel stays static
+   and only the right form panel scrolls (the right panel has overflow-y-auto). */
+@media (min-width: 1024px) {
+  .auth-screen { height: 100vh; height: 100dvh; overflow: hidden; }
+}
+
+.business-type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.spin-ring {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.4);
+  border-top-color: #fff;
+  animation: spin 0.8s linear infinite;
+  display: inline-block; flex-shrink: 0;
+}
+
+.auth-field { display: flex; flex-direction: column; gap: 6px; }
+
+.auth-label {
+  display: block; margin-bottom: 6px;
+  font-size: 0.875rem; font-weight: 600; color: #1E293B;
+}
+
+.auth-input {
+  width: 100%; border-radius: 12px;
+  padding: 12px 16px;
+  background-color: #F1F5F9;
+  border: 1.5px solid #E2E8F0;
+  color: #0B3558; font-size: 0.92rem;
+  outline: none; transition: all 0.2s;
+  box-sizing: border-box;
+}
+.auth-input:focus {
+  border-color: #0E7490;
+  background-color: #fff;
+  box-shadow: 0 0 0 3px rgba(14,116,144,0.12);
+}
+
+.auth-error {
+  margin: 2px 0 0;
+  font-size: 0.78rem;
+  color: #DC2626;
+  display: flex; align-items: center; gap: 4px;
+}
+
+.auth-link {
+  background: none; border: none;
+  color: #0E7490; font-size: 0.82rem; font-weight: 600;
+  cursor: pointer; padding: 0; transition: color 0.15s;
+}
+.auth-link:hover { color: #0B3558; }
+
+/* Mobile tweaks: 16px inputs prevent iOS focus-zoom; stack type cards on narrow screens. */
+@media (max-width: 640px) {
+  .auth-input { font-size: 16px; }
+  .auth-screen h2 { font-size: 1.4rem; }
+}
+@media (max-width: 380px) {
+  .business-type-grid { grid-template-columns: 1fr; }
+}
 </style>
