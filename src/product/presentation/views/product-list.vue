@@ -1,17 +1,22 @@
 <script setup>
 import { computed, onMounted, ref, toRefs } from 'vue';
 import { useI18n }        from 'vue-i18n';
+import { useToast }       from 'primevue/usetoast';
 import useProductStore    from '../../application/product.store.js';
 import useIamStore        from '../../../iam/application/iam.store.js';
 import { Product, ProductCategory, ProductStatus } from '../../domain/model/product.entity.js';
 
 const { t }        = useI18n();
+const toast        = useToast();
 const productStore = useProductStore();
 const iamStore     = useIamStore();
 
-const { products, productsLoaded, inventory, stockMovements } = toRefs(productStore);
+const { products, productsLoaded, inventory, stockMovements, errors } = toRefs(productStore);
 const { fetchProducts, fetchInventory, fetchStockMovements,
   addProduct, updateProduct, registerStockIntake } = productStore;
+
+const savingProduct = ref(false);
+const savingIntake  = ref(false);
 
 const activeTab            = ref('products');
 const searchQuery          = ref('');
@@ -160,22 +165,27 @@ function saveProductFromModal() {
     status:      ProductStatus.ACTIVE
   });
 
-  if (editingProduct.value) {
-    updateProduct(productEntity);
-  } else {
-    addProduct(productEntity);
-    const initialStock = parseInt(productModalForm.value.currentStock) || 0;
-    if (initialStock > 0) {
-      setTimeout(() => {
-        const newProduct = productStore.products[productStore.products.length - 1];
-        if (newProduct) {
-          registerStockIntake({ productId: newProduct.id, businessId, quantity: initialStock });
+  savingProduct.value = true;
+  const savePromise = editingProduct.value
+      ? updateProduct(productEntity)
+      : addProduct(productEntity).then(createdProduct => {
+        const initialStock = parseInt(productModalForm.value.currentStock) || 0;
+        if (initialStock > 0) {
+          return registerStockIntake({ productId: createdProduct.id, businessId, quantity: initialStock });
         }
-      }, 400);
-    }
-  }
+      });
 
-  showProductModal.value = false;
+  savePromise
+      .then(() => {
+        toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('inventory.toast-save-success'), life: 3500 });
+        showProductModal.value = false;
+      })
+      .catch(() => {
+        toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('inventory.toast-save-error'), life: 4500 });
+      })
+      .finally(() => {
+        savingProduct.value = false;
+      });
 }
 
 // ── Intake modal ───────────────────────────────────────────────────────────────
@@ -198,25 +208,34 @@ function saveIntake() {
   if (!intakeForm.value.productId || !quantity || quantity <= 0) return;
 
   const businessId = iamStore.currentUser?.businessId ?? null;
+
+  savingIntake.value = true;
   registerStockIntake({
     productId:  parseInt(intakeForm.value.productId),
     businessId: businessId,
     quantity:   quantity
-  });
-
-  const productName = products.value.find(p => p.id === parseInt(intakeForm.value.productId))?.name ?? '';
-  stockMovements.value.unshift({
-    id:           Date.now(),
-    productId:    parseInt(intakeForm.value.productId),
-    product:      productName,
-    type:         'INTAKE',
-    quantity:     quantity,
-    supplier:     intakeForm.value.supplier,
-    note:         intakeForm.value.note,
-    registeredAt: new Date().toLocaleDateString('es-PE')
-  });
-
-  showIntakeModal.value = false;
+  })
+      .then(() => {
+        const productName = products.value.find(p => p.id === parseInt(intakeForm.value.productId))?.name ?? '';
+        stockMovements.value.unshift({
+          id:           Date.now(),
+          productId:    parseInt(intakeForm.value.productId),
+          product:      productName,
+          type:         'INTAKE',
+          quantity:     quantity,
+          supplier:     intakeForm.value.supplier,
+          note:         intakeForm.value.note,
+          registeredAt: new Date().toLocaleDateString('es-PE')
+        });
+        toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('inventory.toast-intake-success'), life: 3500 });
+        showIntakeModal.value = false;
+      })
+      .catch(() => {
+        toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('inventory.toast-intake-error'), life: 4500 });
+      })
+      .finally(() => {
+        savingIntake.value = false;
+      });
 }
 
 function formatCurrency(amount) {
@@ -380,6 +399,11 @@ const warehouseSummary = [
       <div v-if="!productsLoaded" class="flex justify-content-center align-items-center gap-3 py-8">
         <i class="pi pi-spin pi-spinner" style="font-size: 1.5rem; color: #0E7490;"/>
         <span class="loading-text">Cargando productos…</span>
+      </div>
+
+      <!-- Load errors -->
+      <div v-if="errors.length > 0" class="product-list-errors">
+        {{ t('errors.occurred') }}: {{ errors.map(error => error.message).join(', ') }}
       </div>
 
       <!-- Desktop table -->
@@ -863,11 +887,12 @@ const warehouseSummary = [
 
           <!-- Modal actions -->
           <div class="flex gap-3 mt-5">
-            <button class="flex-1 py-2 border-round-xl cursor-pointer btn-modal-cancel" @click="showProductModal = false">
+            <button class="flex-1 py-2 border-round-xl cursor-pointer btn-modal-cancel" :disabled="savingProduct" @click="showProductModal = false">
               {{ t('inventory.modal-cancel') }}
             </button>
-            <button class="flex-1 py-2 border-round-xl border-none cursor-pointer btn-modal-primary" @click="saveProductFromModal">
-              {{ editingProduct ? t('inventory.modal-save') : t('inventory.modal-register') }}
+            <button class="flex-1 py-2 border-round-xl border-none cursor-pointer btn-modal-primary" :disabled="savingProduct" @click="saveProductFromModal">
+              <i v-if="savingProduct" class="pi pi-spin pi-spinner" style="margin-right: 0.4rem;"/>
+              {{ savingProduct ? t('inventory.modal-saving') : (editingProduct ? t('inventory.modal-save') : t('inventory.modal-register')) }}
             </button>
           </div>
         </div>
@@ -922,11 +947,12 @@ const warehouseSummary = [
 
           <!-- Actions -->
           <div class="flex gap-3">
-            <button class="flex-1 py-2 border-round-xl cursor-pointer btn-modal-cancel" @click="showIntakeModal = false">
+            <button class="flex-1 py-2 border-round-xl cursor-pointer btn-modal-cancel" :disabled="savingIntake" @click="showIntakeModal = false">
               {{ t('inventory.modal-cancel') }}
             </button>
-            <button class="flex-1 py-2 border-round-xl border-none cursor-pointer btn-intake-confirm" @click="saveIntake">
-              {{ t('inventory.intake-btn') }}
+            <button class="flex-1 py-2 border-round-xl border-none cursor-pointer btn-intake-confirm" :disabled="savingIntake" @click="saveIntake">
+              <i v-if="savingIntake" class="pi pi-spin pi-spinner" style="margin-right: 0.4rem;"/>
+              {{ savingIntake ? t('inventory.modal-saving') : t('inventory.intake-btn') }}
             </button>
           </div>
         </div>
@@ -1117,6 +1143,16 @@ const warehouseSummary = [
 .loading-text {
   color: #64748B;
   font-size: 0.88rem;
+}
+
+.product-list-errors {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  color: #EF4444;
+  font-size: 0.8rem;
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-radius: 0.75rem;
 }
 
 /* ── Table card ──────────────────────────────────────────────── */

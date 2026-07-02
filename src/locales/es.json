@@ -29,6 +29,10 @@
   "errors": {
     "occurred": "Ocurrieron errores"
   },
+  "common": {
+    "toast-success-title": "Listo",
+    "toast-error-title": "Error"
+  },
   "sign-in": {
     "title": "Iniciar sesión",
     "subtitle": "Ingresa tus credenciales para continuar.",
@@ -97,7 +101,8 @@
     "logout": "Cerrar sesión",
     "admin-label": "Administrador",
     "open-menu": "Abrir menú",
-    "close-menu": "Cerrar menú"
+    "close-menu": "Cerrar menú",
+    "language-label": "Idioma"
   },
   "settings": {
     "title": "Configuración",
@@ -325,7 +330,12 @@
     "intake-field-note-placeholder": "Ej: Pedido semanal, factura #001",
     "intake-btn": "Registrar ingreso",
     "und": "und.",
-    "expiry-label": "Vence:"
+    "expiry-label": "Vence:",
+    "toast-save-success": "Producto guardado correctamente",
+    "toast-save-error": "No se pudo guardar el producto. Verifica tu conexión e intenta de nuevo.",
+    "toast-intake-success": "Ingreso de stock registrado correctamente",
+    "toast-intake-error": "No se pudo registrar el ingreso. Verifica tu conexión e intenta de nuevo.",
+    "modal-saving": "Guardando..."
   },
   "alerts": {
     "title": "Alertas",
@@ -360,6 +370,10 @@
     "btn-view":            "Ver",
     "btn-acknowledge":     "Reconocer",
     "modal-close":         "Cerrar",
+    "toast-ack-success":     "Alerta reconocida",
+    "toast-ack-error":       "No se pudo reconocer la alerta. Intenta de nuevo.",
+    "toast-resolve-success": "Alerta resuelta",
+    "toast-resolve-error":   "No se pudo resolver la alerta. Intenta de nuevo.",
     "notified-label":      "Notificado",
     "critical-banner-singular": "alerta crítica requiere atención inmediata",
     "critical-banner-plural":   "alertas críticas requieren atención inmediata",
@@ -518,6 +532,9 @@
     "search-placeholder": "Buscar por nombre, RUC o contacto...",
     "filter-all":         "Todos",
     "btn-register":       "Registrar",
+    "toast-save-success": "Proveedor guardado correctamente",
+    "toast-save-error":   "No se pudo guardar el proveedor. Verifica tu conexión e intenta de nuevo.",
+    "modal-saving":       "Guardando...",
     "btn-view":           "Ver",
     "btn-view-full":      "Ver detalle completo",
     "btn-edit":           "Editar",

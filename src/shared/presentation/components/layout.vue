@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import LanguageSwitcher from './language-switcher.vue';
@@ -11,6 +11,18 @@ const router     = useRouter();
 const route      = useRoute();
 const iamStore   = useIamStore();
 const alertsStore = useAlertsStore();
+
+/**
+ * Loads alerts as soon as the authenticated layout mounts so the sidebar/mobile
+ * badge and critical-alert highlight reflect real data on every page, not only
+ * after the user has visited the Alerts section at least once.
+ */
+onMounted(() => {
+  const businessId = iamStore.currentUser?.businessId ?? null;
+  if (businessId && !alertsStore.alertsLoaded) {
+    alertsStore.fetchAlerts(businessId);
+  }
+});
 
 /**
  * Controls whether the mobile sidebar drawer is visible.

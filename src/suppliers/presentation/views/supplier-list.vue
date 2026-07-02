@@ -1,16 +1,20 @@
 <script setup>
 import { computed, onMounted, ref, toRefs } from 'vue';
 import { useI18n }         from 'vue-i18n';
+import { useToast }        from 'primevue/usetoast';
 import useSupplierStore    from '../../application/supplier.store.js';
 import useIamStore         from '../../../iam/application/iam.store.js';
 import { Supplier, SupplierCategory, SupplierStatus } from '../../domain/model/supplier.entity.js';
 
 const { t }         = useI18n();
+const toast         = useToast();
 const supplierStore = useSupplierStore();
 const iamStore      = useIamStore();
 
 const { suppliers, suppliersLoaded, errors } = toRefs(supplierStore);
 const { fetchSuppliers, addSupplier, updateSupplier, deactivateSupplier } = supplierStore;
+
+const savingSupplier = ref(false);
 
 // ─── Search & filter state ─────────────────────────────────────────────────────
 
@@ -187,13 +191,22 @@ function submitSupplierModal() {
         : new Date().toISOString().slice(0, 10)
   });
 
-  if (editingSupplier.value) {
-    updateSupplier(supplierEntity);
-  } else {
-    addSupplier(supplierEntity);
-  }
+  savingSupplier.value = true;
+  const savePromise = editingSupplier.value
+      ? updateSupplier(supplierEntity)
+      : addSupplier(supplierEntity);
 
-  showSupplierModal.value = false;
+  savePromise
+      .then(() => {
+        toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('suppliers.toast-save-success'), life: 3500 });
+        showSupplierModal.value = false;
+      })
+      .catch(() => {
+        toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('suppliers.toast-save-error'), life: 4500 });
+      })
+      .finally(() => {
+        savingSupplier.value = false;
+      });
 }
 
 // ─── Detail modal ──────────────────────────────────────────────────────────────
@@ -570,11 +583,12 @@ function formatCurrency(amount) {
 
           <!-- Footer buttons -->
           <div class="supplier-modal-footer">
-            <button class="supplier-modal-btn-cancel" @click="showSupplierModal = false">
+            <button class="supplier-modal-btn-cancel" :disabled="savingSupplier" @click="showSupplierModal = false">
               {{ t('suppliers.modal-cancel') }}
             </button>
-            <button class="supplier-modal-btn-save" @click="submitSupplierModal">
-              {{ editingSupplier ? t('suppliers.modal-save') : t('suppliers.modal-register') }}
+            <button class="supplier-modal-btn-save" :disabled="savingSupplier" @click="submitSupplierModal">
+              <i v-if="savingSupplier" class="pi pi-spin pi-spinner" style="margin-right: 0.4rem;"/>
+              {{ savingSupplier ? t('suppliers.modal-saving') : (editingSupplier ? t('suppliers.modal-save') : t('suppliers.modal-register')) }}
             </button>
           </div>
         </div>

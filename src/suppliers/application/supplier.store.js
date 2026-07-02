@@ -157,29 +157,40 @@ const useSupplierStore = defineStore('supplier', () => {
     /**
      * Creates a new supplier and appends it to local state.
      * @param {import('../domain/model/supplier.entity.js').Supplier} supplier
+     * @returns {Promise<import('../domain/model/supplier.entity.js').Supplier>}
      */
     function addSupplier(supplier) {
         const resource = SupplierAssembler.toResourceFromEntity(supplier);
-        supplierApi.createSupplier(resource)
+        return supplierApi.createSupplier(resource)
             .then(response => {
-                suppliers.value.push(SupplierAssembler.toEntityFromResource(response.data));
+                const createdSupplier = SupplierAssembler.toEntityFromResource(response.data);
+                suppliers.value.push(createdSupplier);
+                return createdSupplier;
             })
-            .catch(error => errors.value.push(error));
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
     }
 
     /**
      * Updates an existing supplier and synchronizes local state.
      * @param {import('../domain/model/supplier.entity.js').Supplier} supplier - Must include id.
+     * @returns {Promise<import('../domain/model/supplier.entity.js').Supplier>}
      */
     function updateSupplier(supplier) {
         const resource = SupplierAssembler.toResourceFromEntity(supplier);
-        supplierApi.updateSupplier(supplier.id, resource)
+        return supplierApi.updateSupplier(supplier.id, resource)
             .then(response => {
                 const updatedSupplier = SupplierAssembler.toEntityFromResource(response.data);
                 const index = suppliers.value.findIndex(existingSupplier => existingSupplier.id === updatedSupplier.id);
                 if (index !== -1) suppliers.value[index] = updatedSupplier;
+                return updatedSupplier;
             })
-            .catch(error => errors.value.push(error));
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
     }
 
     /**

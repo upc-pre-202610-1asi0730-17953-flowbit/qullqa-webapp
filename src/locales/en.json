@@ -29,6 +29,10 @@
   "errors": {
     "occurred": "Errors occurred"
   },
+  "common": {
+    "toast-success-title": "Done",
+    "toast-error-title": "Error"
+  },
   "sign-in": {
     "title": "Sign in",
     "subtitle": "Enter your credentials to continue.",
@@ -97,7 +101,8 @@
     "logout": "Sign out",
     "admin-label": "Administrator",
     "open-menu": "Open menu",
-    "close-menu": "Close menu"
+    "close-menu": "Close menu",
+    "language-label": "Language"
   },
   "settings": {
     "title": "Settings",
@@ -325,7 +330,12 @@
     "intake-field-note-placeholder": "e.g. Weekly order, invoice #001",
     "intake-btn": "Register intake",
     "und": "u.",
-    "expiry-label": "Expires:"
+    "expiry-label": "Expires:",
+    "toast-save-success": "Product saved successfully",
+    "toast-save-error": "Could not save the product. Check your connection and try again.",
+    "toast-intake-success": "Stock intake registered successfully",
+    "toast-intake-error": "Could not register the intake. Check your connection and try again.",
+    "modal-saving": "Saving..."
   },
   "alerts": {
     "title": "Alerts",
@@ -360,6 +370,10 @@
     "btn-view":            "View",
     "btn-acknowledge":     "Acknowledge",
     "modal-close":         "Close",
+    "toast-ack-success":     "Alert acknowledged",
+    "toast-ack-error":       "Could not acknowledge the alert. Try again.",
+    "toast-resolve-success": "Alert resolved",
+    "toast-resolve-error":   "Could not resolve the alert. Try again.",
     "notified-label":      "Notified",
     "critical-banner-singular": "critical alert requires immediate attention",
     "critical-banner-plural":   "critical alerts require immediate attention",
@@ -518,6 +532,9 @@
     "search-placeholder": "Search by name, RUC or contact...",
     "filter-all":         "All",
     "btn-register":       "Register",
+    "toast-save-success": "Supplier saved successfully",
+    "toast-save-error":   "Could not save the supplier. Check your connection and try again.",
+    "modal-saving":       "Saving...",
     "btn-view":           "View",
     "btn-view-full":      "View full detail",
     "btn-edit":           "Edit",
