@@ -216,7 +216,7 @@ const useDashboardStore = defineStore('dashboard', () => {
 
                 paidDetails.forEach(detail => {
                     const existing = productAggregation.get(detail.productId) ?? { totalQuantity: 0, totalRevenue: 0 };
-                    const lineRevenue = (detail.quantity * detail.unitPrice) - (detail.discount ?? 0);
+                    const lineRevenue = detail.quantity * detail.unitPrice * (1 - (detail.discount ?? 0));
                     productAggregation.set(detail.productId, {
                         totalQuantity: existing.totalQuantity + detail.quantity,
                         totalRevenue:  Math.round((existing.totalRevenue + lineRevenue) * 100) / 100
