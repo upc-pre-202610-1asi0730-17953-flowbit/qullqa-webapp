@@ -95,7 +95,9 @@
   },
   "sidebar": {
     "logout": "Sign out",
-    "admin-label": "Administrator"
+    "admin-label": "Administrator",
+    "open-menu": "Open menu",
+    "close-menu": "Close menu"
   },
   "settings": {
     "title": "Settings",

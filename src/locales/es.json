@@ -95,7 +95,9 @@
   },
   "sidebar": {
     "logout": "Cerrar sesión",
-    "admin-label": "Administrador"
+    "admin-label": "Administrador",
+    "open-menu": "Abrir menú",
+    "close-menu": "Cerrar menú"
   },
   "settings": {
     "title": "Configuración",

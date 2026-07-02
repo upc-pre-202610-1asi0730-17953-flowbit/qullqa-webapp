@@ -107,6 +107,8 @@ function handleSignOut() {
         <button
             class="flex align-items-center justify-content-center border-round-lg border-none cursor-pointer"
             style="width: 36px; height: 36px; background: none; color: #FAFAF7;"
+            :aria-label="sidebarOpen ? t('sidebar.close-menu') : t('sidebar.open-menu')"
+            :title="sidebarOpen ? t('sidebar.close-menu') : t('sidebar.open-menu')"
             @click="toggleSidebar"
         >
           <i :class="sidebarOpen ? 'pi pi-times' : 'pi pi-bars'" style="font-size: 1.1rem;"/>
