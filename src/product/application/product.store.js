@@ -296,6 +296,44 @@ const useProductStore = defineStore('product', () => {
         }
     }
 
+    /**
+     * Decrements a product's inventory after a confirmed sale.
+     *
+     * Business rules:
+     * - quantity must be a positive integer greater than zero.
+     * - Requires an existing inventory record (a sale cannot happen for a
+     *   product that was never stocked); errors otherwise.
+     * - Resulting stock is clamped at 0 to avoid negative inventory.
+     *
+     * @param {Object} resource
+     * @param {number} resource.productId
+     * @param {number} resource.quantity - Units sold. Must be > 0.
+     */
+    function registerStockSale(resource) {
+        if (!resource.quantity || resource.quantity <= 0) {
+            errors.value.push(new Error('Sale stock deduction quantity must be a positive integer greater than zero.'));
+            return;
+        }
+
+        const existingItem = inventory.value.find(item => item.productId === parseInt(resource.productId));
+        if (!existingItem) {
+            errors.value.push(new Error(`Cannot deduct stock for product #${resource.productId}: no inventory record found.`));
+            return;
+        }
+
+        const updatedResource = {
+            ...existingItem,
+            stockUnit: Math.max(0, existingItem.currentStock - resource.quantity)
+        };
+        productApi.updateInventory(existingItem.id, updatedResource)
+            .then(response => {
+                const updatedItem = InventoryItemAssembler.toEntityFromResource(response.data);
+                const index = inventory.value.findIndex(item => item.id === updatedItem.id);
+                if (index !== -1) inventory.value[index] = updatedItem;
+            })
+            .catch(error => errors.value.push(error));
+    }
+
     return {
         products,
         inventory,
@@ -317,7 +355,8 @@ const useProductStore = defineStore('product', () => {
         addProduct,
         updateProduct,
         deleteProduct,
-        registerStockIntake
+        registerStockIntake,
+        registerStockSale
     };
 });
 

@@ -234,6 +234,8 @@ async function handlePaymentConfirm({ paymentMethod }) {
   isSubmitting.value    = true;
   showPaymentModal.value = false;
 
+  const soldLines = [...cartItems.value];
+
   const result = await salesStore.confirmSale({
     paymentMethod: paymentMethod,
     customerId:    null,
@@ -243,6 +245,11 @@ async function handlePaymentConfirm({ paymentMethod }) {
   isSubmitting.value = false;
 
   if (result.success) {
+    // Deduct sold quantities from inventory now that the sale is persisted.
+    soldLines.forEach(line => {
+      productStore.registerStockSale({ productId: line.productId, quantity: line.quantity });
+    });
+
     const lastSale = salesStore.sales[salesStore.sales.length - 1];
     completedSale.value = lastSale || null;
   } else {

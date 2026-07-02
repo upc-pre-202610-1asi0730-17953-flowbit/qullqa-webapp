@@ -138,7 +138,8 @@ const useDashboardStore = defineStore('dashboard', () => {
      *
      * Business rules:
      * - Only sales with status === 'PAID' contribute to revenue and quantity totals.
-     * - Revenue per sale detail = (quantity × unitPrice) - discount.
+     * - Revenue per sale detail = quantity × unitPrice × (1 - discount), discount
+     *   being a decimal fraction (0–1), matching SaleDetail.lineTotal.
      * - barHeightPercent is scaled so the day with maximum revenue = 100%.
      * - Days with no PAID sales render with totalAmount = 0 and barHeightPercent = 0.
      *
@@ -187,7 +188,7 @@ const useDashboardStore = defineStore('dashboard', () => {
 
                     const saleLineDetails = allDetails.filter(detail => detail.saleId === sale.id);
                     const saleTotal = saleLineDetails.reduce((accumulator, detail) => {
-                        const lineRevenue = (detail.quantity * detail.unitPrice) - (detail.discount ?? 0);
+                        const lineRevenue = detail.quantity * detail.unitPrice * (1 - (detail.discount ?? 0));
                         return accumulator + lineRevenue;
                     }, 0);
 

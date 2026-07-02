@@ -56,8 +56,9 @@ export class Delivery {
      * @param {string}         [params.currentLabel='']       - Human-readable current location name.
      * @param {number}         [params.currentLatitude=0]     - Current GPS latitude.
      * @param {number}         [params.currentLongitude=0]    - Current GPS longitude.
-     * @param {string[]}       [params.products=[]]           - List of product descriptions in the shipment.
-     * @param {string}         [params.totalWeight='']        - Total shipment weight description.
+     * @param {Array<{productId: number, quantity: number}>} [params.products=[]] - Structured lines of products in the shipment.
+     * @param {number}         [params.totalWeightValue=0]    - Total shipment weight (numeric).
+     * @param {string}         [params.totalWeightUnit='kg']  - Unit for totalWeightValue ('kg' or 'lb').
      * @param {number|null}    [params.businessId=null]       - Business this delivery belongs to.
      * @param {number|null}    [params.purchaseDetailId=null] - Linked purchase detail identifier.
      * @param {Waypoint[]}     [params.waypoints=[]]          - Ordered route checkpoints.
@@ -81,7 +82,8 @@ export class Delivery {
                     currentLatitude  = 0,
                     currentLongitude = 0,
                     products         = [],
-                    totalWeight      = '',
+                    totalWeightValue = 0,
+                    totalWeightUnit  = 'kg',
                     businessId       = null,
                     purchaseDetailId = null,
                     waypoints        = []
@@ -104,7 +106,8 @@ export class Delivery {
         this.currentLatitude  = currentLatitude;
         this.currentLongitude = currentLongitude;
         this.products         = Array.isArray(products) ? [...products] : [];
-        this.totalWeight      = totalWeight;
+        this.totalWeightValue = totalWeightValue;
+        this.totalWeightUnit  = totalWeightUnit;
         this.businessId       = businessId;
         this.purchaseDetailId = purchaseDetailId;
         this.waypoints        = waypoints

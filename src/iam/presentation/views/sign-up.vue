@@ -47,7 +47,7 @@ function validateForm() {
 async function submitSignUp() {
   if (!validateForm()) return;
   isLoading.value = true;
-  iamStore.signUp({ fullName: form.value.fullName, businessName: form.value.businessName, email: form.value.email, password: form.value.password });
+  iamStore.signUp({ fullName: form.value.fullName, businessName: form.value.businessName, businessType: form.value.businessType, email: form.value.email, password: form.value.password });
   await new Promise(resolve => setTimeout(resolve, 700));
   isLoading.value = false;
   if (iamStore.isAuthenticated) router.push({ name: 'dashboard' });

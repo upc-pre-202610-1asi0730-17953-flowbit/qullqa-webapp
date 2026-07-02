@@ -3,6 +3,7 @@ import { computed, onMounted, ref, toRefs } from 'vue';
 import { useI18n }                           from 'vue-i18n';
 import useDeliveryStore                      from '../../application/delivery.store.js';
 import useIamStore                           from '../../../iam/application/iam.store.js';
+import useProductStore                       from '../../../product/application/product.store.js';
 import { DeliveryStatus }                    from '../../domain/model/delivery.entity.js';
 import DeliveryDetailModal                   from './delivery-detail-modal.vue';
 import DeliveryFormModal                     from './delivery-form-modal.vue';
@@ -10,6 +11,7 @@ import DeliveryFormModal                     from './delivery-form-modal.vue';
 const { t }           = useI18n();
 const deliveryStore   = useDeliveryStore();
 const iamStore        = useIamStore();
+const productStore    = useProductStore();
 
 const {
   deliveries,
@@ -53,9 +55,9 @@ const activeStatusFilter = ref('ALL');
 // ─── Lifecycle ───────────────────────────────────────────────────────────────
 
 onMounted(() => {
-  if (deliveriesLoaded.value) return;
   const businessId = iamStore.currentUser?.businessId ?? null;
-  fetchDeliveries(businessId);
+  if (!deliveriesLoaded.value) fetchDeliveries(businessId);
+  if (!productStore.productsLoaded) productStore.fetchProducts(businessId);
 });
 
 // ─── Filtering ───────────────────────────────────────────────────────────────

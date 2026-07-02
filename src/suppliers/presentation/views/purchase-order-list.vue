@@ -85,6 +85,9 @@ onMounted(() => {
     if (!productStore.productsLoaded) {
       productStore.fetchProducts(businessId);
     }
+    if (!productStore.inventoryLoaded) {
+      productStore.fetchInventory(businessId);
+    }
   }
 });
 
@@ -242,11 +245,23 @@ function openOrderDetail(order) {
 }
 
 /**
- * Transitions the selected order to RECEIVED status.
+ * Transitions the selected order to RECEIVED status and increments inventory
+ * for each ordered line — this is the central stock replenishment flow.
  */
 function receiveOrder() {
   if (selectedOrder.value) {
-    updatePurchaseOrderStatus(selectedOrder.value.id, PurchaseOrderStatus.RECEIVED);
+    const order      = selectedOrder.value;
+    const businessId = iamStore.currentUser?.businessId ?? null;
+
+    updatePurchaseOrderStatus(order.id, PurchaseOrderStatus.RECEIVED);
+
+    order.details.forEach(detail => {
+      productStore.registerStockIntake({
+        productId:  detail.productId,
+        businessId: businessId,
+        quantity:   detail.quantity
+      });
+    });
   }
   showOrderDetailModal.value = false;
 }

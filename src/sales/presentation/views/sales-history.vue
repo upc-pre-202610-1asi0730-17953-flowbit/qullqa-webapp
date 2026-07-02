@@ -160,20 +160,33 @@ function toggleExpand(saleId) {
 }
 
 /**
- * Cancels a sale after inline confirmation.
+ * Cancels a sale after inline confirmation, then restores the sold
+ * quantities back into inventory (the cancellation itself only flips
+ * the sale's status; restocking is a Product & Inventory concern).
  * @param {import('../../domain/model/sale.entity.js').Sale} sale
  */
-function handleCancelSale(sale) {
-  salesStore.cancelSale(sale);
+async function handleCancelSale(sale) {
+  const businessId = iamStore.currentUser?.businessId;
+  const result = await salesStore.cancelSale(sale);
+  if (result.success) {
+    result.restockedDetails.forEach(detail => {
+      productStore.registerStockIntake({
+        productId:  detail.productId,
+        businessId: businessId,
+        quantity:   detail.quantity
+      });
+    });
+  }
 }
 
 // ─── Lifecycle ───────────────────────────────────────────────────────────────
 
 onMounted(() => {
   const businessId = iamStore.currentUser?.businessId;
-  if (!salesStore.salesLoaded)     salesStore.fetchSales(businessId);
-  if (!salesStore.customersLoaded) salesStore.fetchCustomers(businessId);
+  if (!salesStore.salesLoaded)      salesStore.fetchSales(businessId);
+  if (!salesStore.customersLoaded)  salesStore.fetchCustomers(businessId);
   if (!productStore.productsLoaded) productStore.fetchProducts(businessId);
+  if (!productStore.inventoryLoaded) productStore.fetchInventory(businessId);
 });
 </script>
 

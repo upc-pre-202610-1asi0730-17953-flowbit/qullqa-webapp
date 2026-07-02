@@ -14,10 +14,13 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { IamApi } from '../infrastructure/iam.api.js';
+import { AuthProvider } from '../infrastructure/auth-provider.js';
 import { UserAccountAssembler } from '../infrastructure/user-account.assembler.js';
 import { UserAccount } from '../domain/model/user-account.entity.js';
+import { SESSION_EXPIRED_EVENT } from '../../shared/infrastructure/base-api.js';
 
 const iamApi = new IamApi();
+const authProvider = new AuthProvider();
 
 /**
  * Reactive store that exposes IAM commands and queries.
@@ -38,10 +41,22 @@ const useIamStore = defineStore('iam', () => {
     const users = ref([]);
 
     /**
+     * All available roles, fetched from the API.
+     * @type {import('vue').Ref<Array<{id: number, position: string}>>}
+     */
+    const roles = ref([]);
+
+    /**
      * Whether the user list has been loaded from the API.
      * @type {import('vue').Ref<boolean>}
      */
     const usersLoaded = ref(false);
+
+    /**
+     * Whether the role list has been loaded from the API.
+     * @type {import('vue').Ref<boolean>}
+     */
+    const rolesLoaded = ref(false);
 
     /**
      * Whether there is an authenticated user session.
@@ -115,6 +130,11 @@ const useIamStore = defineStore('iam', () => {
 
     restoreSession();
 
+    // When BaseApi sees a 401, it clears the token and dispatches this event.
+    // Wired here (not in BaseApi) so the shared/infrastructure layer never
+    // depends on IAM. Never fires today since no real token is issued yet.
+    window.addEventListener(SESSION_EXPIRED_EVENT, () => signOut());
+
     /**
      * Number of loaded user accounts.
      * @type {import('vue').ComputedRef<number>}
@@ -143,16 +163,8 @@ const useIamStore = defineStore('iam', () => {
             return;
         }
 
-        iamApi.signIn(email).then(response => {
-            const matchedUsers = response.data instanceof Array ? response.data : [];
-            const matched = matchedUsers.find(user => user.email === email && user.password === password);
-
-            if (!matched) {
-                errors.value.push('sign-in.error-credentials');
-                return;
-            }
-
-            currentUser.value = UserAccountAssembler.toEntityFromResource(matched);
+        authProvider.signIn(email, password).then(matchedResource => {
+            currentUser.value = UserAccountAssembler.toEntityFromResource(matchedResource);
             isAuthenticated.value = true;
             persistSession(currentUser.value);
         }).catch(error => {
@@ -163,10 +175,17 @@ const useIamStore = defineStore('iam', () => {
     /**
      * Registers a new user and business account.
      * Business rule: businessName, fullName, valid email, password >= 6 chars,
-     * and password confirmation must match.
+     * and password confirmation must match (enforced by the Sign Up view).
+     *
+     * businessName/businessType are forwarded to the payload even though the
+     * mock's /users endpoint has no matching columns: the point is that the
+     * data captured in the form is no longer silently dropped between the UI
+     * and the store. Wiring them into an actual Business record is a phase 2
+     * concern (needs a joint User+Business creation endpoint).
      *
      * @param {Object} payload - Registration form data.
      * @param {string} payload.businessName - Name of the business.
+     * @param {string} [payload.businessType] - BODEGA or FARMACIA.
      * @param {string} payload.fullName - Full name of the user.
      * @param {string} payload.email - Email address.
      * @param {string} payload.password - Password (min 6 characters).
@@ -176,17 +195,19 @@ const useIamStore = defineStore('iam', () => {
         errors.value = [];
 
         const resource = {
-            name:       payload.fullName.split(' ')[0] ?? payload.fullName,
-            lastName:   payload.fullName.split(' ').slice(1).join(' ') ?? '',
-            email:      payload.email,
-            password:   payload.password,
-            status:     'ACTIVE',
-            roleId:     1,
-            businessId: null
+            name:         payload.fullName.split(' ')[0] ?? payload.fullName,
+            lastName:     payload.fullName.split(' ').slice(1).join(' ') ?? '',
+            email:        payload.email,
+            password:     payload.password,
+            status:       'ACTIVE',
+            roleId:       1,
+            businessId:   null,
+            businessName: payload.businessName,
+            businessType: payload.businessType ?? null
         };
 
-        iamApi.signUp(resource).then(response => {
-            const createdUser = UserAccountAssembler.toEntityFromResource(response.data);
+        authProvider.signUp(resource).then(createdResource => {
+            const createdUser = UserAccountAssembler.toEntityFromResource(createdResource);
             currentUser.value  = createdUser;
             isAuthenticated.value = true;
             persistSession(currentUser.value);
@@ -217,6 +238,33 @@ const useIamStore = defineStore('iam', () => {
         }).catch(error => {
             errors.value.push(error.message);
         });
+    }
+
+    /**
+     * Loads all roles from the API. Roles are the single source of truth for
+     * role labels — presentation components must resolve a roleId to its
+     * `position` (ADMIN/CASHIER/WAREHOUSE) via getRolePosition instead of
+     * hardcoding their own numeric-id-to-label mapping.
+     * @returns {void}
+     */
+    function fetchRoles() {
+        iamApi.getRoles().then(response => {
+            roles.value = response.data instanceof Array ? response.data : [];
+            rolesLoaded.value = true;
+        }).catch(error => {
+            errors.value.push(error.message);
+        });
+    }
+
+    /**
+     * Resolves a roleId to its position (ADMIN/CASHIER/WAREHOUSE).
+     * @param {number|string} roleId
+     * @returns {string|null} The role's position, or null if not loaded/found.
+     */
+    function getRolePosition(roleId) {
+        const numericId = parseInt(roleId);
+        const role = roles.value.find(roleItem => roleItem.id === numericId);
+        return role ? role.position : null;
     }
 
     /**
@@ -275,7 +323,9 @@ const useIamStore = defineStore('iam', () => {
     return {
         currentUser,
         users,
+        roles,
         usersLoaded,
+        rolesLoaded,
         isAuthenticated,
         errors,
         usersCount,
@@ -283,6 +333,8 @@ const useIamStore = defineStore('iam', () => {
         signUp,
         signOut,
         fetchUsers,
+        fetchRoles,
+        getRolePosition,
         getUserById,
         addUser,
         updateUser,

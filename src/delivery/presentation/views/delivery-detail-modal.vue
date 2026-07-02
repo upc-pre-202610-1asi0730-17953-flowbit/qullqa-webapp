@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { useI18n }  from 'vue-i18n';
 import useDeliveryStore from '../../application/delivery.store.js';
+import useProductStore  from '../../../product/application/product.store.js';
 import { DeliveryStatus } from '../../domain/model/delivery.entity.js';
 
 const props = defineProps({
@@ -26,6 +27,17 @@ const emit = defineEmits([
 
 const { t }         = useI18n();
 const deliveryStore = useDeliveryStore();
+const productStore  = useProductStore();
+
+/**
+ * Resolves a productId to its display name, falling back to the raw id.
+ * @param {number} productId
+ * @returns {string}
+ */
+function getProductName(productId) {
+  const product = productStore.products.find(productItem => productItem.id === productId);
+  return product ? product.name : `#${productId}`;
+}
 
 // ─── Status config ─────────────────────────────────────────────────────────
 
@@ -403,7 +415,7 @@ async function handleComplete() {
               { label: t('tracking.field-registered'), value: formatDateTime(delivery.registeredAt) },
               { label: t('tracking.field-estimated'),  value: formatDateTime(delivery.estimatedArrival) },
               ...(delivery.completedAt ? [{ label: t('tracking.field-completed'), value: formatDateTime(delivery.completedAt) }] : []),
-              { label: t('tracking.field-weight'),    value: delivery.totalWeight || '—' }
+              { label: t('tracking.field-weight'),    value: delivery.totalWeightValue ? `${delivery.totalWeightValue} ${delivery.totalWeightUnit}` : '—' }
             ]"
               :key="infoField.label"
               class="border-round-xl p-3"
@@ -429,12 +441,14 @@ async function handleComplete() {
           </p>
           <div class="flex flex-column gap-2">
             <div
-                v-for="(productDescription, productIndex) in delivery.products"
+                v-for="(productLine, productIndex) in delivery.products"
                 :key="productIndex"
                 class="flex align-items-center gap-2"
             >
               <i class="pi pi-box" style="color: #0E7490; font-size: 0.75rem; flex-shrink: 0;"/>
-              <span style="font-size: 0.82rem; color: #1E293B;">{{ productDescription }}</span>
+              <span style="font-size: 0.82rem; color: #1E293B;">
+                {{ getProductName(productLine.productId) }} ×{{ productLine.quantity }}
+              </span>
             </div>
           </div>
         </div>

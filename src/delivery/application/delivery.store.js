@@ -164,8 +164,9 @@ const useDeliveryStore = defineStore('delivery', () => {
      * @param {string}   params.vehicle          - Vehicle description.
      * @param {string}   params.licensePlate     - Vehicle license plate.
      * @param {string}   params.estimatedArrival - Estimated arrival date-time string.
-     * @param {string[]} params.products         - List of product description strings.
-     * @param {string}   params.totalWeight      - Total weight description.
+     * @param {Array<{productId: number, quantity: number}>} params.products - Structured product lines.
+     * @param {number}   params.totalWeightValue - Total weight (numeric).
+     * @param {string}   params.totalWeightUnit  - Weight unit ('kg' or 'lb').
      * @param {number}   params.businessId       - Business identifier.
      * @returns {Promise<{ success: boolean, errorKey: string|null }>}
      */
@@ -180,7 +181,8 @@ const useDeliveryStore = defineStore('delivery', () => {
                                       licensePlate,
                                       estimatedArrival,
                                       products,
-                                      totalWeight,
+                                      totalWeightValue,
+                                      totalWeightUnit,
                                       businessId
                                   }) {
         const nowIso         = new Date().toISOString();
@@ -204,7 +206,8 @@ const useDeliveryStore = defineStore('delivery', () => {
             currentLatitude:  -12.0453,
             currentLongitude: -77.0311,
             products:         products,
-            totalWeight:      totalWeight || '—',
+            totalWeightValue: totalWeightValue || 0,
+            totalWeightUnit:  totalWeightUnit || 'kg',
             businessId:       businessId,
             purchaseDetailId: null
         };
@@ -321,7 +324,8 @@ const useDeliveryStore = defineStore('delivery', () => {
             currentLatitude:  targetWaypoint.latitude,
             currentLongitude: targetWaypoint.longitude,
             products:         delivery.products,
-            totalWeight:      delivery.totalWeight,
+            totalWeightValue: delivery.totalWeightValue,
+            totalWeightUnit:  delivery.totalWeightUnit,
             businessId:       delivery.businessId,
             purchaseDetailId: delivery.purchaseDetailId
         };
@@ -389,7 +393,8 @@ const useDeliveryStore = defineStore('delivery', () => {
             currentLatitude:  delivery.currentLatitude,
             currentLongitude: delivery.currentLongitude,
             products:         delivery.products,
-            totalWeight:      delivery.totalWeight,
+            totalWeightValue: delivery.totalWeightValue,
+            totalWeightUnit:  delivery.totalWeightUnit,
             businessId:       delivery.businessId,
             purchaseDetailId: delivery.purchaseDetailId
         };
@@ -453,7 +458,8 @@ const useDeliveryStore = defineStore('delivery', () => {
             currentLatitude:  delivery.currentLatitude,
             currentLongitude: delivery.currentLongitude,
             products:         delivery.products,
-            totalWeight:      delivery.totalWeight,
+            totalWeightValue: delivery.totalWeightValue,
+            totalWeightUnit:  delivery.totalWeightUnit,
             businessId:       delivery.businessId,
             purchaseDetailId: delivery.purchaseDetailId
         };
@@ -519,7 +525,8 @@ const useDeliveryStore = defineStore('delivery', () => {
             currentLatitude:  delivery.currentLatitude,
             currentLongitude: delivery.currentLongitude,
             products:         delivery.products,
-            totalWeight:      delivery.totalWeight,
+            totalWeightValue: delivery.totalWeightValue,
+            totalWeightUnit:  delivery.totalWeightUnit,
             businessId:       delivery.businessId,
             purchaseDetailId: delivery.purchaseDetailId
         };

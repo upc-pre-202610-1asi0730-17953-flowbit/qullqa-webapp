@@ -1188,11 +1188,15 @@
       "currentLatitude": -12.03,
       "currentLongitude": -77.05,
       "products": [
-        "Leche Gloria Entera 1L ×200"
+        {
+          "productId": 1,
+          "quantity": 200
+        }
       ],
-      "totalWeight": "220 kg",
       "businessId": 1,
-      "purchaseDetailId": 4
+      "purchaseDetailId": 4,
+      "totalWeightValue": 220.0,
+      "totalWeightUnit": "kg"
     },
     {
       "id": 2,
@@ -1213,11 +1217,15 @@
       "currentLatitude": -12.1,
       "currentLongitude": -77.05,
       "products": [
-        "Amoxicilina 500mg ×80"
+        {
+          "productId": 6,
+          "quantity": 80
+        }
       ],
-      "totalWeight": "12 kg",
       "businessId": 2,
-      "purchaseDetailId": 5
+      "purchaseDetailId": 5,
+      "totalWeightValue": 12.0,
+      "totalWeightUnit": "kg"
     },
     {
       "id": 3,
@@ -1238,12 +1246,19 @@
       "currentLatitude": -12.0464,
       "currentLongitude": -77.0428,
       "products": [
-        "Leche Gloria Entera 1L ×200",
-        "Arroz Costeño 5kg ×100"
+        {
+          "productId": 1,
+          "quantity": 200
+        },
+        {
+          "productId": 2,
+          "quantity": 100
+        }
       ],
-      "totalWeight": "720 kg",
       "businessId": 1,
-      "purchaseDetailId": 1
+      "purchaseDetailId": 1,
+      "totalWeightValue": 720.0,
+      "totalWeightUnit": "kg"
     },
     {
       "id": 4,
@@ -1264,11 +1279,15 @@
       "currentLatitude": -11.98,
       "currentLongitude": -77.06,
       "products": [
-        "Leche Gloria Entera 1L ×120"
+        {
+          "productId": 1,
+          "quantity": 120
+        }
       ],
-      "totalWeight": "132 kg",
       "businessId": 1,
-      "purchaseDetailId": 6
+      "purchaseDetailId": 6,
+      "totalWeightValue": 132.0,
+      "totalWeightUnit": "kg"
     },
     {
       "id": 5,
@@ -1289,11 +1308,15 @@
       "currentLatitude": -12.03,
       "currentLongitude": -77.035,
       "products": [
-        "Gaseosa Inca Kola 1.5L ×200"
+        {
+          "productId": 4,
+          "quantity": 200
+        }
       ],
-      "totalWeight": "300 kg",
       "businessId": 1,
-      "purchaseDetailId": 8
+      "purchaseDetailId": 8,
+      "totalWeightValue": 300.0,
+      "totalWeightUnit": "kg"
     },
     {
       "trackingNumber": "TRK-2026-9512",
@@ -1313,12 +1336,16 @@
       "currentLatitude": -12.0453,
       "currentLongitude": -77.0311,
       "products": [
-        "Cocal cola x64"
+        {
+          "productId": 1,
+          "quantity": 64
+        }
       ],
-      "totalWeight": "90kg",
       "businessId": null,
       "purchaseDetailId": null,
-      "id": 6
+      "id": 6,
+      "totalWeightValue": 90.0,
+      "totalWeightUnit": "kg"
     },
     {
       "id": 7,
@@ -1339,11 +1366,15 @@
       "currentLatitude": -12.0453,
       "currentLongitude": -77.0311,
       "products": [
-        "Coca cola x64"
+        {
+          "productId": 1,
+          "quantity": 64
+        }
       ],
-      "totalWeight": "90kg",
       "businessId": null,
-      "purchaseDetailId": null
+      "purchaseDetailId": null,
+      "totalWeightValue": 90.0,
+      "totalWeightUnit": "kg"
     }
   ],
   "waypoints": [

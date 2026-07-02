@@ -341,15 +341,40 @@ const useSalesStore = defineStore('sales', () => {
     }
 
     /**
+     * Fetches the persisted SaleDetail lines for a sale.
+     * Needed because sales loaded via fetchSales carry an empty `details`
+     * array (the mock API does not embed line items in the sale resource).
+     *
+     * @param {number|string} saleId
+     * @returns {Promise<SaleDetail[]>}
+     */
+    function fetchSaleDetailsForSale(saleId) {
+        return salesApi.getSaleDetailsBySale(saleId)
+            .then(response => SaleDetailAssembler.toEntitiesFromResponse(response))
+            .catch(error => {
+                errors.value.push(error);
+                return [];
+            });
+    }
+
+    /**
      * Cancels a previously persisted sale by updating its status to CANCELLED.
      *
      * Business rule: only OPEN or PAID sales can be cancelled.
      *
+     * Stock is NOT reverted here: reverting inventory belongs to the Product &
+     * Inventory Management bounded context, so this returns the line items
+     * that were sold and lets the caller (presentation layer) restock them
+     * via the ProductStore, mirroring how other cross-context orchestration
+     * is already done in this codebase (see purchase-order-list.vue).
+     *
      * @param {Sale} sale - The Sale entity to cancel.
-     * @returns {void}
+     * @returns {Promise<{ success: boolean, restockedDetails: SaleDetail[] }>}
      */
-    function cancelSale(sale) {
-        if (sale.status === SaleStatus.CANCELLED) return;
+    async function cancelSale(sale) {
+        if (sale.status === SaleStatus.CANCELLED) {
+            return { success: false, restockedDetails: [] };
+        }
 
         const updatedResource = {
             id:            sale.id,
@@ -363,15 +388,23 @@ const useSalesStore = defineStore('sales', () => {
             currency:      sale.currency
         };
 
-        salesApi.updateSale(sale.id, updatedResource).then(response => {
+        try {
+            const response = await salesApi.updateSale(sale.id, updatedResource);
             const cancelledSale = SaleAssembler.toEntityFromResource(response.data);
             const index = sales.value.findIndex(existingSale => existingSale.id === cancelledSale.id);
             if (index !== -1) {
                 sales.value[index] = cancelledSale;
             }
-        }).catch(error => {
+
+            const restockedDetails = sale.details.length > 0
+                ? sale.details
+                : await fetchSaleDetailsForSale(sale.id);
+
+            return { success: true, restockedDetails };
+        } catch (error) {
             errors.value.push(error);
-        });
+            return { success: false, restockedDetails: [] };
+        }
     }
 
     // ─── Customer CRUD ────────────────────────────────────────────────────────
@@ -442,6 +475,7 @@ const useSalesStore = defineStore('sales', () => {
         // Fetch
         fetchSales,
         fetchCustomers,
+        fetchSaleDetailsForSale,
         // POS session
         startNewSale,
         addDetailToCurrentSale,

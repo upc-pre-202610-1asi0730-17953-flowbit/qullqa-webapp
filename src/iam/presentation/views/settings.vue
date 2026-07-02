@@ -9,8 +9,8 @@ const { t }    = useI18n();
 const confirm  = useConfirm();
 const iamStore = useIamStore();
 
-const { users, usersLoaded } = toRefs(iamStore);
-const { fetchUsers, deleteUser } = iamStore;
+const { users, usersLoaded, rolesLoaded } = toRefs(iamStore);
+const { fetchUsers, fetchRoles, getRolePosition, deleteUser } = iamStore;
 
 const activeTab = ref('profile');
 
@@ -38,20 +38,31 @@ const showNewPassword = ref(false);
 
 const notificationsEnabled = ref(true);
 
-onMounted(() => { if (!usersLoaded.value) fetchUsers(); });
+onMounted(() => {
+  if (!usersLoaded.value) fetchUsers();
+  if (!rolesLoaded.value) fetchRoles();
+});
 
+/**
+ * Resolves a roleId to its display label via roles.position (the single
+ * source of truth), instead of a hardcoded roleId → label mapping.
+ */
 function resolveRoleLabel(roleId) {
-  const roleMap = { 1: t('settings.role-admin'), 2: t('settings.role-collaborator'), 3: t('settings.role-seller') };
-  return roleMap[roleId] ?? t('settings.role-seller');
+  const labelByPosition = {
+    ADMIN:     t('settings.role-admin'),
+    CASHIER:   t('settings.role-collaborator'),
+    WAREHOUSE: t('settings.role-seller')
+  };
+  return labelByPosition[getRolePosition(roleId)] ?? t('settings.role-seller');
 }
 
 function resolveRoleStyle(roleId) {
-  const styles = {
-    1: { bg: '#FEE2E2', color: '#DC2626' },
-    2: { bg: '#EDE9FE', color: '#7C3AED' },
-    3: { bg: '#DBEAFE', color: '#1D4ED8' }
+  const styleByPosition = {
+    ADMIN:     { bg: '#FEE2E2', color: '#DC2626' },
+    CASHIER:   { bg: '#EDE9FE', color: '#7C3AED' },
+    WAREHOUSE: { bg: '#DBEAFE', color: '#1D4ED8' }
   };
-  return styles[roleId] ?? styles[3];
+  return styleByPosition[getRolePosition(roleId)] ?? styleByPosition.WAREHOUSE;
 }
 
 function resolveStatusStyle(status) {
