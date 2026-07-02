@@ -21,6 +21,7 @@ export class UserAccount {
      * @param {?number} [params.businessId=null] - Foreign key of the associated business.
      * @param {string} [params.status='ACTIVE'] - Account status: ACTIVE, INACTIVE, or BLOCKED.
      * @param {?number} [params.roleId=null] - Foreign key of the assigned role.
+     * @param {string} [params.phone=''] - User contact phone number (optional).
      */
     constructor({
                     id = null,
@@ -29,7 +30,8 @@ export class UserAccount {
                     lastName = '',
                     businessId = null,
                     status = 'ACTIVE',
-                    roleId = null
+                    roleId = null,
+                    phone = ''
                 }) {
         this.id = id;
         this.email = email;
@@ -38,6 +40,7 @@ export class UserAccount {
         this.businessId = businessId;
         this.status = status;
         this.roleId = roleId;
+        this.phone = phone;
     }
 
     /**
