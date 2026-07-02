@@ -51,6 +51,10 @@
     "error-credentials": "Credenciales inválidas. Revisa tu correo y contraseña."
   },
   "sign-up": {
+    "strength-weak": "Débil",
+    "strength-fair": "Regular",
+    "strength-good": "Buena",
+    "strength-strong": "Fuerte",
     "title": "Crear cuenta gratis",
     "subtitle": "Comienza sin costo. Actualiza tu plan cuando lo necesites.",
     "full-name": "Nombre completo",
@@ -661,6 +665,7 @@
     "stat-completed": "Entregados",
     "stat-total": "Total envíos",
     "live-label": "envío(s) en tránsito ahora",
+    "live-badge": "EN VIVO",
     "history-title": "Historial de envíos",
     "search-placeholder": "Buscar por código, proveedor o conductor...",
     "filter-all": "Todos",

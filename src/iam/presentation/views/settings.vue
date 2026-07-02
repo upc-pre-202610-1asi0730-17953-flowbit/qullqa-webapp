@@ -205,7 +205,8 @@ function computePasswordStrength(password) {
   return 4;
 }
 const strengthColors = ['', '#EF4444', '#FACC15', '#0E7490', '#16A34A'];
-const strengthLabels = ['', 'Débil', 'Regular', 'Buena', 'Fuerte'];
+const strengthLabelKeys = ['', 'sign-up.strength-weak', 'sign-up.strength-fair', 'sign-up.strength-good', 'sign-up.strength-strong'];
+function strengthLabel(level) { return strengthLabelKeys[level] ? t(strengthLabelKeys[level]) : ''; }
 </script>
 
 <template>
@@ -576,7 +577,7 @@ const strengthLabels = ['', 'Débil', 'Regular', 'Buena', 'Fuerte'];
                 />
               </div>
               <span style="font-size: 0.72rem; font-weight: 600; min-width: 42px; text-align: right;" :style="{ color: strengthColors[computePasswordStrength(securityForm.newPassword)] }">
-                {{ strengthLabels[computePasswordStrength(securityForm.newPassword)] }}
+                {{ strengthLabel(computePasswordStrength(securityForm.newPassword)) }}
               </span>
             </div>
             <p v-if="securityErrors.newPassword" class="settings-error"><i class="pi pi-exclamation-circle" style="font-size: 0.7rem;"/> {{ securityErrors.newPassword }}</p>

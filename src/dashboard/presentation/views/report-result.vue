@@ -3,10 +3,27 @@ import { computed, onMounted, toRefs } from 'vue';
 import { useRouter }                   from 'vue-router';
 import { useI18n }                     from 'vue-i18n';
 import useDashboardStore               from '../../application/dashboard.store.js';
+import { ReportType }                  from '../../domain/model/report.entity.js';
 
 const { t }          = useI18n();
 const router         = useRouter();
 const dashboardStore = useDashboardStore();
+
+/**
+ * Translated label for a report type, reusing the same reports.type-* keys
+ * already defined for the report-filters type dropdown.
+ * @param {string} type - A ReportType value.
+ * @returns {string}
+ */
+function reportTypeLabel(type) {
+  const keys = {
+    [ReportType.INVENTORY]:     'reports.type-inventory',
+    [ReportType.SALES]:         'reports.type-sales',
+    [ReportType.LOW_STOCK]:     'reports.type-low-stock',
+    [ReportType.REPLENISHMENT]: 'reports.type-replenishment'
+  };
+  return t(keys[type] ?? type);
+}
 
 const { reports, reportsLoaded, metrics, errors } = toRefs(dashboardStore);
 const { exportReport } = dashboardStore;
@@ -110,7 +127,7 @@ function formatDate(isoDate) {
           <div class="grid">
             <div class="col-12 md:col-4">
               <p class="m-0 text-sm" style="color: #64748B;">{{ t('reports.type') }}</p>
-              <p class="m-0 mt-1 font-semibold" style="color: #0B3558;">{{ latestReport.typeLabel }}</p>
+              <p class="m-0 mt-1 font-semibold" style="color: #0B3558;">{{ reportTypeLabel(latestReport.type) }}</p>
             </div>
             <div class="col-12 md:col-4">
               <p class="m-0 text-sm" style="color: #64748B;">{{ t('reports.filters') }}</p>

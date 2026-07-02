@@ -28,10 +28,11 @@ function computePasswordStrength(password) {
   return 4;
 }
 
-const strengthLabels = ['', 'Débil', 'Regular', 'Buena', 'Fuerte'];
+const strengthLabelKeys = ['', 'sign-up.strength-weak', 'sign-up.strength-fair', 'sign-up.strength-good', 'sign-up.strength-strong'];
 const strengthColors = ['', '#EF4444', '#FACC15', '#0E7490', '#16A34A'];
 
 function resolveStrengthBarColor(level) { return strengthColors[level] || '#E2E8F0'; }
+function strengthLabel(level) { return strengthLabelKeys[level] ? t(strengthLabelKeys[level]) : ''; }
 
 function validateForm() {
   fieldErrors.value = { fullName: '', businessName: '', businessType: '', email: '', password: '' };
@@ -250,7 +251,7 @@ function selectBusinessType(typeValue) {
                 />
               </div>
               <span style="font-size: 0.72rem; font-weight: 600; min-width: 42px; text-align: right;" :style="{ color: resolveStrengthBarColor(computePasswordStrength(form.password)) }">
-                {{ strengthLabels[computePasswordStrength(form.password)] }}
+                {{ strengthLabel(computePasswordStrength(form.password)) }}
               </span>
             </div>
             <p v-if="fieldErrors.password" class="auth-error"><i class="pi pi-exclamation-circle" style="font-size: 0.72rem;"/> {{ fieldErrors.password }}</p>

@@ -51,6 +51,10 @@
     "error-credentials": "Invalid credentials. Please check your email and password."
   },
   "sign-up": {
+    "strength-weak": "Weak",
+    "strength-fair": "Fair",
+    "strength-good": "Good",
+    "strength-strong": "Strong",
     "title": "Create free account",
     "subtitle": "Start for free. Upgrade your plan whenever you need.",
     "full-name": "Full name",
@@ -661,6 +665,7 @@
     "stat-completed": "Delivered",
     "stat-total": "Total shipments",
     "live-label": "shipment(s) in transit right now",
+    "live-badge": "LIVE",
     "history-title": "Shipment history",
     "search-placeholder": "Search by tracking ID, supplier or driver...",
     "filter-all": "All",

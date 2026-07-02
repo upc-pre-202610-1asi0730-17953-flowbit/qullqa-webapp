@@ -240,7 +240,7 @@ async function handleComplete() {
                     style="width: 8px; height: 8px; background-color: #38BDF8; display: block;"
                 />
               </span>
-              <span style="color: #38BDF8; font-size: 0.65rem; font-weight: 700;">EN VIVO</span>
+              <span style="color: #38BDF8; font-size: 0.65rem; font-weight: 700;">{{ t('tracking.live-badge') }}</span>
             </div>
           </div>
 

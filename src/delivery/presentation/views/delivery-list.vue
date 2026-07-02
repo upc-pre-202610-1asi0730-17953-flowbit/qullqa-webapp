@@ -324,7 +324,7 @@ function handleDeliveryCreated() {
                     style="background-color: rgba(56,189,248,0.15); border: 1px solid rgba(56,189,248,0.3);"
                 >
                   <span class="live-dot border-circle" style="width: 6px; height: 6px; background-color: #38BDF8; display: inline-block;"/>
-                  <span style="font-size: 0.62rem; color: #38BDF8; font-weight: 700;">EN VIVO</span>
+                  <span style="font-size: 0.62rem; color: #38BDF8; font-weight: 700;">{{ t('tracking.live-badge') }}</span>
                 </span>
               </div>
               <p class="m-0 mt-1" style="font-size: 0.72rem; color: #7FA8BF;">
