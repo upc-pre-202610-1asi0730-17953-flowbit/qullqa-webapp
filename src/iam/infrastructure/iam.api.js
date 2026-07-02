@@ -1,8 +1,9 @@
 import { BaseApi } from '../../shared/infrastructure/base-api.js';
 import { BaseEndpoint } from '../../shared/infrastructure/base-endpoint.js';
 
-const usersEndpointPath = import.meta.env.VITE_USERS_ENDPOINT_PATH;
-const rolesEndpointPath = import.meta.env.VITE_ROLES_ENDPOINT_PATH;
+const usersEndpointPath     = import.meta.env.VITE_USERS_ENDPOINT_PATH;
+const rolesEndpointPath     = import.meta.env.VITE_ROLES_ENDPOINT_PATH;
+const businessesEndpointPath = import.meta.env.VITE_BUSINESSES_ENDPOINT_PATH;
 
 /**
  * Infrastructure gateway for the Identity & Access Management bounded context.
@@ -27,11 +28,18 @@ export class IamApi extends BaseApi {
      */
     #rolesEndpoint;
 
-    /** Creates endpoint clients for users and roles. */
+    /**
+     * @private
+     * @type {BaseEndpoint}
+     */
+    #businessesEndpoint;
+
+    /** Creates endpoint clients for users, roles and businesses. */
     constructor() {
         super();
-        this.#usersEndpoint = new BaseEndpoint(this, usersEndpointPath);
-        this.#rolesEndpoint = new BaseEndpoint(this, rolesEndpointPath);
+        this.#usersEndpoint      = new BaseEndpoint(this, usersEndpointPath);
+        this.#rolesEndpoint      = new BaseEndpoint(this, rolesEndpointPath);
+        this.#businessesEndpoint = new BaseEndpoint(this, businessesEndpointPath);
     }
 
     /**
@@ -96,5 +104,24 @@ export class IamApi extends BaseApi {
      */
     getRoles() {
         return this.#rolesEndpoint.getAll();
+    }
+
+    /**
+     * Fetches a single business by its identifier.
+     * @param {number|string} id - Business identifier.
+     * @returns {Promise<import('axios').AxiosResponse>} Business resource.
+     */
+    getBusinessById(id) {
+        return this.#businessesEndpoint.getById(id);
+    }
+
+    /**
+     * Updates an existing business (profile fields and/or plan).
+     * @param {number|string} id - Business identifier.
+     * @param {Object} resource - Updated business resource payload.
+     * @returns {Promise<import('axios').AxiosResponse>} Updated business resource.
+     */
+    updateBusiness(id, resource) {
+        return this.#businessesEndpoint.update(id, resource);
     }
 }
