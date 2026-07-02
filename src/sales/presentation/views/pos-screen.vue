@@ -50,6 +50,15 @@ const showPaymentModal = ref(false);
 /** @type {import('vue').Ref<import('../../domain/model/sale.entity.js').Sale|null>} The last completed sale for the success modal. */
 const completedSale = ref(null);
 
+/**
+ * Snapshot of the cart lines at the moment a sale is confirmed, kept for the
+ * success modal. `cartItems` can't be reused there: it's derived from
+ * `salesStore.currentSale`, which is cleared to null right after a successful
+ * confirmSale(), so by the time the modal renders `cartItems` is already [].
+ * @type {import('vue').Ref<Array>}
+ */
+const lastSoldLines = ref([]);
+
 /** @type {import('vue').Ref<string|null>} Inline stock error message shown briefly under the grid. */
 const stockErrorMessage = ref(null);
 
@@ -251,7 +260,8 @@ async function handlePaymentConfirm({ paymentMethod }) {
     });
 
     const lastSale = salesStore.sales[salesStore.sales.length - 1];
-    completedSale.value = lastSale || null;
+    lastSoldLines.value  = soldLines;
+    completedSale.value  = lastSale || null;
   } else {
     showStockError(t('pos.error-confirm-failed'));
   }
@@ -263,6 +273,7 @@ async function handlePaymentConfirm({ paymentMethod }) {
  */
 function handleNewSale() {
   completedSale.value = null;
+  lastSoldLines.value = [];
   const businessId    = iamStore.currentUser?.businessId;
   salesStore.startNewSale(businessId);
 }
@@ -538,7 +549,7 @@ onMounted(() => {
     <sale-success-modal
         v-if="completedSale"
         :sale="completedSale"
-        :sale-items="cartItems"
+        :sale-items="lastSoldLines"
         @new-sale="handleNewSale"
     />
   </div>
