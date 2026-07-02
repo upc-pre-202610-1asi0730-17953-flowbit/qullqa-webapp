@@ -37,6 +37,9 @@ const activeStatusFilter = ref('ALL');
 /** @type {import('vue').Ref<string|null>} The id of the currently expanded sale row. */
 const expandedSaleId = ref(null);
 
+/** @type {import('vue').Ref<number|null>} The id of the sale whose line items are being fetched. */
+const loadingDetailsSaleId = ref(null);
+
 // ─── Computed ──────────────────────────────────────────────────────────────
 
 /**
@@ -153,10 +156,27 @@ function formatCurrency(amount) {
 
 /**
  * Toggles the expanded state of a sale row.
- * @param {number} saleId
+ *
+ * `fetchSales()` loads sales without their line items (the mock API doesn't
+ * nest them), so `sale.details` is always [] right after the list loads.
+ * The first time a row is expanded, its details are fetched lazily and
+ * cached on the entity so later toggles don't refetch.
+ *
+ * @param {import('../../domain/model/sale.entity.js').Sale} sale
  */
-function toggleExpand(saleId) {
-  expandedSaleId.value = expandedSaleId.value === saleId ? null : saleId;
+async function toggleExpand(sale) {
+  if (expandedSaleId.value === sale.id) {
+    expandedSaleId.value = null;
+    return;
+  }
+
+  expandedSaleId.value = sale.id;
+
+  if (sale.details.length === 0) {
+    loadingDetailsSaleId.value = sale.id;
+    sale.details = await salesStore.fetchSaleDetailsForSale(sale.id);
+    loadingDetailsSaleId.value = null;
+  }
 }
 
 /**
@@ -267,7 +287,7 @@ onMounted(() => {
             <!-- Main row -->
             <tr
                 style="border-bottom: 1px solid #F1F5F9; cursor: pointer;"
-                @click="toggleExpand(sale.id)"
+                @click="toggleExpand(sale)"
                 @mouseenter="(e) => e.currentTarget.style.backgroundColor = '#F8FAFC'"
                 @mouseleave="(e) => e.currentTarget.style.backgroundColor = 'transparent'"
             >
@@ -325,6 +345,17 @@ onMounted(() => {
                       :style="{ transform: expandedSaleId === sale.id ? 'rotate(180deg)' : 'rotate(0deg)' }"
                   />
                 </div>
+              </td>
+            </tr>
+
+            <!-- Loading line items -->
+            <tr
+                v-if="expandedSaleId === sale.id && loadingDetailsSaleId === sale.id"
+                :key="`${sale.id}-loading`"
+                style="background-color: #F8FAFC;"
+            >
+              <td colspan="7" class="px-6 py-3">
+                <i class="pi pi-spin pi-spinner" style="color: #94A3B8; font-size: 0.85rem;"/>
               </td>
             </tr>
 
@@ -420,7 +451,7 @@ onMounted(() => {
           <button
               class="w-full flex align-items-center justify-content-center gap-1 mt-3 border-round-lg py-2"
               style="background-color: #F1F5F9; color: #64748B; border: none; cursor: pointer;"
-              @click="toggleExpand(sale.id)"
+              @click="toggleExpand(sale)"
           >
                         <span style="font-size: 0.72rem; font-weight: 600;">
                             {{ expandedSaleId === sale.id ? t('sales.hide-items') : t('sales.show-items') }}
@@ -431,6 +462,15 @@ onMounted(() => {
                 :style="{ transform: expandedSaleId === sale.id ? 'rotate(180deg)' : 'rotate(0deg)' }"
             />
           </button>
+
+          <!-- Loading line items -->
+          <div
+              v-if="expandedSaleId === sale.id && loadingDetailsSaleId === sale.id"
+              class="mt-2 pt-2"
+              style="border-top: 1px solid #F1F5F9;"
+          >
+            <i class="pi pi-spin pi-spinner" style="color: #94A3B8; font-size: 0.85rem;"/>
+          </div>
 
           <!-- Expanded items -->
           <div
