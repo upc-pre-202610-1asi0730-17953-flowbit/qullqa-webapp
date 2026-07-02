@@ -4,11 +4,11 @@ import es from './locales/es.json';
 
 /**
  * Vue I18n instance configured for English (en) and Spanish (es).
- * Default locale is English; falls back to English when a key is missing.
+ * Default locale is Spanish (primary market: Peru); falls back to English when a key is missing.
  */
 const i18n = createI18n({
     legacy: false,
-    locale: 'en',
+    locale: 'es',
     fallbackLocale: 'en',
     messages: { en, es }
 });

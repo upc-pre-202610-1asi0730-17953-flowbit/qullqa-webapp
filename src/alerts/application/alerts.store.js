@@ -191,9 +191,10 @@ const useAlertsStore = defineStore('alerts', () => {
      * Acknowledges an alert — transitions ACTIVE → ACKNOWLEDGED.
      * Business rule: only ACTIVE alerts may be acknowledged.
      * @param {import('../domain/model/alert.entity.js').Alert} alert
+     * @returns {Promise<import('../domain/model/alert.entity.js').Alert>}
      */
     function acknowledgeAlert(alert) {
-        if (alert.status !== AlertStatus.ACTIVE) return;
+        if (alert.status !== AlertStatus.ACTIVE) return Promise.resolve(alert);
 
         const resource = {
             ...alert,
@@ -202,22 +203,27 @@ const useAlertsStore = defineStore('alerts', () => {
             notifiedAt: new Date().toISOString()
         };
 
-        alertsApi.acknowledgeAlert(alert.id, resource)
+        return alertsApi.acknowledgeAlert(alert.id, resource)
             .then(response => {
                 const updatedAlert = AlertAssembler.toEntityFromResource(response.data);
                 const index = alerts.value.findIndex(existing => existing.id === updatedAlert.id);
                 if (index !== -1) alerts.value[index] = updatedAlert;
+                return updatedAlert;
             })
-            .catch(error => errors.value.push(error));
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
     }
 
     /**
      * Resolves an alert — transitions ACTIVE/ACKNOWLEDGED/SENT → RESOLVED.
      * Business rule: RESOLVED alerts are immutable.
      * @param {import('../domain/model/alert.entity.js').Alert} alert
+     * @returns {Promise<import('../domain/model/alert.entity.js').Alert>}
      */
     function resolveAlert(alert) {
-        if (alert.status === AlertStatus.RESOLVED) return;
+        if (alert.status === AlertStatus.RESOLVED) return Promise.resolve(alert);
 
         const resource = {
             ...alert,
@@ -225,13 +231,17 @@ const useAlertsStore = defineStore('alerts', () => {
             resolvedAt: new Date().toISOString()
         };
 
-        alertsApi.resolveAlert(alert.id, resource)
+        return alertsApi.resolveAlert(alert.id, resource)
             .then(response => {
                 const updatedAlert = AlertAssembler.toEntityFromResource(response.data);
                 const index = alerts.value.findIndex(existing => existing.id === updatedAlert.id);
                 if (index !== -1) alerts.value[index] = updatedAlert;
+                return updatedAlert;
             })
-            .catch(error => errors.value.push(error));
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
     }
 
     /**

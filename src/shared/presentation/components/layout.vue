@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useI18n } from 'vue-i18n';
 import LanguageSwitcher from './language-switcher.vue';
@@ -11,6 +11,18 @@ const router     = useRouter();
 const route      = useRoute();
 const iamStore   = useIamStore();
 const alertsStore = useAlertsStore();
+
+/**
+ * Loads alerts as soon as the authenticated layout mounts so the sidebar/mobile
+ * badge and critical-alert highlight reflect real data on every page, not only
+ * after the user has visited the Alerts section at least once.
+ */
+onMounted(() => {
+  const businessId = iamStore.currentUser?.businessId ?? null;
+  if (businessId && !alertsStore.alertsLoaded) {
+    alertsStore.fetchAlerts(businessId);
+  }
+});
 
 /**
  * Controls whether the mobile sidebar drawer is visible.
@@ -57,6 +69,14 @@ const activeAlertCount = computed(() =>
 );
 
 /**
+ * Whether there is at least one critical alert still pending.
+ * Used to visually emphasize the Alerts entry point (sidebar item and mobile bell)
+ * beyond just the numeric badge, per UX heuristic recommendation.
+ * @type {import('vue').ComputedRef<boolean>}
+ */
+const hasCriticalAlerts = computed(() => alertsStore.criticalActiveCount > 0);
+
+/**
  * Navigates to the selected route and closes the mobile sidebar.
  * @param {string} routeName - Name of the target route.
  */
@@ -99,6 +119,8 @@ function handleSignOut() {
         <button
             class="flex align-items-center justify-content-center border-round-lg border-none cursor-pointer"
             style="width: 36px; height: 36px; background: none; color: #FAFAF7;"
+            :aria-label="sidebarOpen ? t('sidebar.close-menu') : t('sidebar.open-menu')"
+            :title="sidebarOpen ? t('sidebar.close-menu') : t('sidebar.open-menu')"
             @click="toggleSidebar"
         >
           <i :class="sidebarOpen ? 'pi pi-times' : 'pi pi-bars'" style="font-size: 1.1rem;"/>
@@ -111,14 +133,17 @@ function handleSignOut() {
         <!-- Mobile alert badge -->
         <button
             class="relative flex align-items-center justify-content-center border-round-lg border-none cursor-pointer"
-            style="width: 36px; height: 36px; background: none; color: #FAFAF7;"
+            :class="{ 'alerts-btn-critical': hasCriticalAlerts }"
+            style="width: 40px; height: 40px; background: none; color: #FAFAF7;"
+            :aria-label="t('option.alerts')"
+            :title="t('option.alerts')"
             @click="navigateTo('alerts')"
         >
-          <i class="pi pi-bell" style="font-size: 1.1rem;"/>
+          <i class="pi pi-bell" :style="{ fontSize: '1.3rem', color: hasCriticalAlerts ? '#F87171' : '#FAFAF7' }"/>
           <span
               v-if="activeAlertCount > 0"
               class="absolute flex align-items-center justify-content-center border-circle"
-              style="top: 4px; right: 4px; width: 16px; height: 16px; background-color: #EF4444; color: #fff; font-size: 0.6rem; font-weight: 700;"
+              style="top: 2px; right: 2px; width: 16px; height: 16px; background-color: #EF4444; color: #fff; font-size: 0.6rem; font-weight: 700;"
           >
                         {{ activeAlertCount > 9 ? '9+' : activeAlertCount }}
                     </span>
@@ -154,15 +179,19 @@ function handleSignOut() {
             :key="item.labelKey"
             class="relative w-full flex align-items-center gap-3 px-3 py-3 border-round-lg border-none cursor-pointer"
             :style="{
-                        backgroundColor: isActiveRoute(item.routeName) ? 'rgba(14,116,144,0.25)' : 'transparent',
-                        color:           isActiveRoute(item.routeName) ? '#FAFAF7' : '#93B5C9',
+                        backgroundColor: isActiveRoute(item.routeName)
+                            ? 'rgba(14,116,144,0.25)'
+                            : (item.showBadge && hasCriticalAlerts ? 'rgba(239,68,68,0.14)' : 'transparent'),
+                        color:           isActiveRoute(item.routeName)
+                            ? '#FAFAF7'
+                            : (item.showBadge && hasCriticalAlerts ? '#FCA5A5' : '#93B5C9'),
                         fontSize:        '0.88rem',
                         fontWeight:      isActiveRoute(item.routeName) ? 600 : 400,
                         transition:      'background-color 0.15s, color 0.15s'
                     }"
             @click="navigateTo(item.routeName)"
             @mouseenter="(event) => { if (!isActiveRoute(item.routeName)) event.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.06)'; }"
-            @mouseleave="(event) => { if (!isActiveRoute(item.routeName)) event.currentTarget.style.backgroundColor = 'transparent'; }"
+            @mouseleave="(event) => { if (!isActiveRoute(item.routeName)) event.currentTarget.style.backgroundColor = (item.showBadge && hasCriticalAlerts) ? 'rgba(239,68,68,0.14)' : 'transparent'; }"
         >
           <i :class="item.icon" style="font-size: 1rem; flex-shrink: 0;"/>
           <span>{{ t(item.labelKey) }}</span>
@@ -252,6 +281,15 @@ function handleSignOut() {
 <style scoped>
 aside {
   padding-top: 56px;
+}
+
+.alerts-btn-critical {
+  animation: alerts-critical-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes alerts-critical-pulse {
+  0%, 100% { background-color: transparent; }
+  50%      { background-color: rgba(239, 68, 68, 0.22); }
 }
 
 @media (min-width: 1024px) {

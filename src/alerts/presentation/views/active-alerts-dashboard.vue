@@ -1,11 +1,13 @@
 <script setup>
 import { computed, onMounted, ref, toRefs } from 'vue';
 import { useI18n }        from 'vue-i18n';
+import { useToast }       from 'primevue/usetoast';
 import useAlertsStore     from '../../application/alerts.store.js';
 import useIamStore        from '../../../iam/application/iam.store.js';
 import { AlertStatus } from '../../domain/model/alert.entity.js';
 
 const { t }       = useI18n();
+const toast       = useToast();
 const alertsStore = useAlertsStore();
 const iamStore    = useIamStore();
 
@@ -99,18 +101,41 @@ const filteredAlerts = computed(() => {
 });
 
 // ─── Modal actions ─────────────────────────────────────────────────────────────
+const acknowledging = ref(false);
+const resolving     = ref(false);
+
 function openDetail(alert) { selectedAlert.value = alert; }
 
 function handleAcknowledge() {
   if (!selectedAlert.value) return;
-  acknowledgeAlert(selectedAlert.value);
-  selectedAlert.value = { ...selectedAlert.value, status: AlertStatus.ACKNOWLEDGED, isActionable: true };
+  acknowledging.value = true;
+  acknowledgeAlert(selectedAlert.value)
+      .then(() => {
+        selectedAlert.value = { ...selectedAlert.value, status: AlertStatus.ACKNOWLEDGED, isActionable: true };
+        toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('alerts.toast-ack-success'), life: 3500 });
+      })
+      .catch(() => {
+        toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('alerts.toast-ack-error'), life: 4500 });
+      })
+      .finally(() => {
+        acknowledging.value = false;
+      });
 }
 
 function handleResolve() {
   if (!selectedAlert.value) return;
-  resolveAlert(selectedAlert.value);
-  selectedAlert.value = null;
+  resolving.value = true;
+  resolveAlert(selectedAlert.value)
+      .then(() => {
+        selectedAlert.value = null;
+        toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('alerts.toast-resolve-success'), life: 3500 });
+      })
+      .catch(() => {
+        toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('alerts.toast-resolve-error'), life: 4500 });
+      })
+      .finally(() => {
+        resolving.value = false;
+      });
 }
 
 // ─── Rule editing ──────────────────────────────────────────────────────────────
@@ -478,11 +503,11 @@ function formatDateTime(isoDate) {
           </div>
           <!-- Actions -->
           <div v-if="selectedAlert.status !== 'RESOLVED'" class="alerts-modal-actions">
-            <button v-if="selectedAlert.status === 'ACTIVE'" class="alerts-modal-btn-acknowledge" @click="handleAcknowledge">
-              <i class="pi pi-eye" /> {{ t('alerts.btn-acknowledge') }}
+            <button v-if="selectedAlert.status === 'ACTIVE'" class="alerts-modal-btn-acknowledge" :disabled="acknowledging" @click="handleAcknowledge">
+              <i :class="acknowledging ? 'pi pi-spin pi-spinner' : 'pi pi-eye'" /> {{ t('alerts.btn-acknowledge') }}
             </button>
-            <button class="alerts-modal-btn-resolve" @click="handleResolve">
-              <i class="pi pi-check" /> {{ t('alerts.btn-resolve') }}
+            <button class="alerts-modal-btn-resolve" :disabled="resolving" @click="handleResolve">
+              <i :class="resolving ? 'pi pi-spin pi-spinner' : 'pi pi-check'" /> {{ t('alerts.btn-resolve') }}
             </button>
           </div>
           <button class="alerts-modal-btn-close" @click="selectedAlert = null">{{ t('alerts.modal-close') }}</button>

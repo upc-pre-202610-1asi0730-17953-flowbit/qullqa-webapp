@@ -193,27 +193,38 @@ const useProductStore = defineStore('product', () => {
     /**
      * Creates a new product and appends it to local state.
      * @param {import('../domain/model/product.entity.js').Product} product
+     * @returns {Promise<import('../domain/model/product.entity.js').Product>}
      */
     function addProduct(product) {
-        productApi.createProduct(product)
+        return productApi.createProduct(product)
             .then(response => {
-                products.value.push(ProductAssembler.toEntityFromResource(response.data));
+                const createdProduct = ProductAssembler.toEntityFromResource(response.data);
+                products.value.push(createdProduct);
+                return createdProduct;
             })
-            .catch(error => errors.value.push(error));
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
     }
 
     /**
      * Updates an existing product and synchronizes local state.
      * @param {import('../domain/model/product.entity.js').Product} product - Must include id.
+     * @returns {Promise<import('../domain/model/product.entity.js').Product>}
      */
     function updateProduct(product) {
-        productApi.updateProduct(product.id, product)
+        return productApi.updateProduct(product.id, product)
             .then(response => {
                 const updatedProduct = ProductAssembler.toEntityFromResource(response.data);
                 const index = products.value.findIndex(existingProduct => existingProduct.id === updatedProduct.id);
                 if (index !== -1) products.value[index] = updatedProduct;
+                return updatedProduct;
             })
-            .catch(error => errors.value.push(error));
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
     }
 
     /**
@@ -223,19 +234,19 @@ const useProductStore = defineStore('product', () => {
      * with currentStock > 0. An error is pushed and no API call is made.
      *
      * @param {number|string} id
+     * @returns {Promise<void>}
      */
     function deleteProduct(id) {
         const numericId     = parseInt(id);
         const inventoryItem = inventory.value.find(item => item.productId === numericId);
 
         if (inventoryItem && inventoryItem.currentStock > 0) {
-            errors.value.push(
-                new Error(`Cannot delete product #${numericId}: it has ${inventoryItem.currentStock} units in stock.`)
-            );
-            return;
+            const error = new Error(`Cannot delete product #${numericId}: it has ${inventoryItem.currentStock} units in stock.`);
+            errors.value.push(error);
+            return Promise.reject(error);
         }
 
-        productApi.deleteProduct(numericId)
+        return productApi.deleteProduct(numericId)
             .then(() => {
                 const productIndex = products.value.findIndex(product => product.id === numericId);
                 if (productIndex !== -1) products.value.splice(productIndex, 1);
@@ -243,7 +254,10 @@ const useProductStore = defineStore('product', () => {
                 const inventoryIndex = inventory.value.findIndex(item => item.productId === numericId);
                 if (inventoryIndex !== -1) inventory.value.splice(inventoryIndex, 1);
             })
-            .catch(error => errors.value.push(error));
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
     }
 
     /**
@@ -259,11 +273,13 @@ const useProductStore = defineStore('product', () => {
      * @param {number} resource.businessId
      * @param {number} resource.quantity   - Must be > 0.
      * @param {number} [resource.warehouseId]
+     * @returns {Promise<import('../domain/model/inventory-item.entity.js').InventoryItem>}
      */
     function registerStockIntake(resource) {
         if (!resource.quantity || resource.quantity <= 0) {
-            errors.value.push(new Error('Stock intake quantity must be a positive integer greater than zero.'));
-            return;
+            const error = new Error('Stock intake quantity must be a positive integer greater than zero.');
+            errors.value.push(error);
+            return Promise.reject(error);
         }
 
         const existingItem = inventory.value.find(item => item.productId === parseInt(resource.productId));
@@ -273,27 +289,36 @@ const useProductStore = defineStore('product', () => {
                 ...existingItem,
                 stockUnit: existingItem.currentStock + resource.quantity
             };
-            productApi.updateInventory(existingItem.id, updatedResource)
+            return productApi.updateInventory(existingItem.id, updatedResource)
                 .then(response => {
                     const updatedItem = InventoryItemAssembler.toEntityFromResource(response.data);
                     const index = inventory.value.findIndex(item => item.id === updatedItem.id);
                     if (index !== -1) inventory.value[index] = updatedItem;
+                    return updatedItem;
                 })
-                .catch(error => errors.value.push(error));
-        } else {
-            const newResource = {
-                productId:    parseInt(resource.productId),
-                businessId:   parseInt(resource.businessId),
-                warehouseId:  resource.warehouseId ? parseInt(resource.warehouseId) : null,
-                stockUnit:    resource.quantity,
-                minimumStock: 0
-            };
-            productApi.createInventory(newResource)
-                .then(response => {
-                    inventory.value.push(InventoryItemAssembler.toEntityFromResource(response.data));
-                })
-                .catch(error => errors.value.push(error));
+                .catch(error => {
+                    errors.value.push(error);
+                    throw error;
+                });
         }
+
+        const newResource = {
+            productId:    parseInt(resource.productId),
+            businessId:   parseInt(resource.businessId),
+            warehouseId:  resource.warehouseId ? parseInt(resource.warehouseId) : null,
+            stockUnit:    resource.quantity,
+            minimumStock: 0
+        };
+        return productApi.createInventory(newResource)
+            .then(response => {
+                const createdItem = InventoryItemAssembler.toEntityFromResource(response.data);
+                inventory.value.push(createdItem);
+                return createdItem;
+            })
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
     }
 
     /**
