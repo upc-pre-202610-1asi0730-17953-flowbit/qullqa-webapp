@@ -29,16 +29,17 @@ const intakeTargetProduct  = ref(null);
 
 const categoryOptions = ['Todos', 'DAIRY', 'GRAINS', 'OILS', 'BEVERAGES', 'CLEANING', 'MEDICINE', 'OTHER'];
 
-const categoryLabels = {
-  DAIRY:     'Lácteos',
-  GRAINS:    'Granos',
-  OILS:      'Aceites',
-  BEVERAGES: 'Bebidas',
-  CLEANING:  'Limpieza',
-  MEDICINE:  'Medicamentos',
-  OTHER:     'Otros',
-  Todos:     'Todos'
-};
+/**
+ * Translated label for a product category (or 'Todos'), reusing the same
+ * pos.category-* keys already defined for the POS product grid so the
+ * wording stays consistent across bounded contexts and follows the locale.
+ * @param {string} category
+ * @returns {string}
+ */
+function categoryLabel(category) {
+  if (category === 'Todos') return t('pos.category-all');
+  return t(`pos.category-${category.toLowerCase()}`);
+}
 
 const categoryColors = {
   DAIRY:     { bg: '#DBEAFE', color: '#1D4ED8' },
@@ -59,12 +60,22 @@ function getProductInitial(name) {
 }
 
 const statusConfig = {
-  normal:   { label: 'Normal',     color: '#16A34A', background: '#DCFCE7', icon: 'pi pi-box'                  },
-  low:      { label: 'Stock bajo', color: '#D97706', background: '#FEF3C7', icon: 'pi pi-exclamation-triangle'  },
-  expiring: { label: 'Por vencer', color: '#EA580C', background: '#FFEDD5', icon: 'pi pi-clock'                 },
-  critical: { label: 'Crítico',    color: '#DC2626', background: '#FEE2E2', icon: 'pi pi-exclamation-circle'    },
-  out:      { label: 'Sin stock',  color: '#64748B', background: '#F1F5F9', icon: 'pi pi-times-circle'          }
+  normal:   { color: '#16A34A', background: '#DCFCE7', icon: 'pi pi-box'                 },
+  low:      { color: '#D97706', background: '#FEF3C7', icon: 'pi pi-exclamation-triangle' },
+  expiring: { color: '#EA580C', background: '#FFEDD5', icon: 'pi pi-clock'                },
+  critical: { color: '#DC2626', background: '#FEE2E2', icon: 'pi pi-exclamation-circle'   },
+  out:      { color: '#64748B', background: '#F1F5F9', icon: 'pi pi-times-circle'         }
 };
+
+/**
+ * Translated label for a resolved product status, reusing the existing
+ * inventory.status-* keys.
+ * @param {string} statusKey
+ * @returns {string}
+ */
+function statusLabel(statusKey) {
+  return t(`inventory.status-${statusKey}`);
+}
 
 onMounted(() => {
   const businessId = iamStore.currentUser?.businessId ?? null;
@@ -404,7 +415,7 @@ const warehouseSummary = [
         <div class="relative" style="min-width: 160px;">
           <i class="pi pi-filter absolute filter-icon"/>
           <select v-model="selectedCategory" class="category-select">
-            <option v-for="cat in categoryOptions" :key="cat" :value="cat">{{ categoryLabels[cat] ?? cat }}</option>
+            <option v-for="cat in categoryOptions" :key="cat" :value="cat">{{ categoryLabel(cat) }}</option>
           </select>
           <i class="pi pi-chevron-down absolute select-arrow"/>
         </div>
@@ -501,7 +512,7 @@ const warehouseSummary = [
                     class="border-round-2xl category-badge"
                     :style="{ backgroundColor: getCategoryColor(product.category).bg, color: getCategoryColor(product.category).color }"
                 >
-                  {{ categoryLabels[product.category] ?? product.category }}
+                  {{ categoryLabel(product.category) }}
                 </span>
               </td>
               <!-- Stock -->
@@ -527,7 +538,7 @@ const warehouseSummary = [
                     }"
                 >
                   <i :class="statusConfig[resolveProductStatus(product.id)]?.icon" style="font-size: 0.65rem;"/>
-                  {{ statusConfig[resolveProductStatus(product.id)]?.label }}
+                  {{ statusLabel(resolveProductStatus(product.id)) }}
                 </span>
               </td>
               <!-- Actions -->
@@ -594,7 +605,7 @@ const warehouseSummary = [
                   class="border-round-2xl mt-1 inline-block category-badge-sm"
                   :style="{ backgroundColor: getCategoryColor(product.category).bg, color: getCategoryColor(product.category).color }"
               >
-                {{ categoryLabels[product.category] ?? product.category }}
+                {{ categoryLabel(product.category) }}
               </span>
             </div>
             <span
@@ -605,7 +616,7 @@ const warehouseSummary = [
                 }"
             >
               <i :class="statusConfig[resolveProductStatus(product.id)]?.icon" style="font-size: 0.65rem;"/>
-              {{ statusConfig[resolveProductStatus(product.id)]?.label }}
+              {{ statusLabel(resolveProductStatus(product.id)) }}
             </span>
           </div>
 
@@ -897,7 +908,7 @@ const warehouseSummary = [
               <div style="flex: 1;">
                 <label class="modal-label">{{ t('inventory.modal-field-category') }}</label>
                 <select v-model="productModalForm.category" class="modal-input modal-select">
-                  <option v-for="cat in categoryOptions.slice(1)" :key="cat" :value="cat">{{ categoryLabels[cat] ?? cat }}</option>
+                  <option v-for="cat in categoryOptions.slice(1)" :key="cat" :value="cat">{{ categoryLabel(cat) }}</option>
                 </select>
               </div>
               <div style="flex: 1;">
