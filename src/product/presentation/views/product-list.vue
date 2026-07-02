@@ -12,8 +12,8 @@ const productStore = useProductStore();
 const iamStore     = useIamStore();
 
 const { products, productsLoaded, inventory, stockMovements, errors } = toRefs(productStore);
-const { fetchProducts, fetchInventory, fetchStockMovements,
-  addProduct, updateProduct, registerStockIntake } = productStore;
+const { fetchProducts, fetchInventory, fetchBatches, fetchStockMovements,
+  addProduct, updateProduct, registerStockIntake, isProductExpiringSoon } = productStore;
 
 const savingProduct = ref(false);
 const savingIntake  = ref(false);
@@ -72,13 +72,47 @@ onMounted(() => {
     if (!productsLoaded.value) fetchProducts(businessId);
     fetchInventory(businessId);
   }
+  if (!productStore.batchesLoaded) fetchBatches();
 });
 
+/**
+ * Resolves a product's inventory status for the summary cards, filter pills
+ * and status badge.
+ *
+ * Business rule: combines the InventoryItem's own stock-level state
+ * (out/low/normal, see InventoryItem.stockStatus) with an independent
+ * expiration check against active batches. A product that is both low on
+ * stock and expiring soon is reported as 'critical' — the most urgent case.
+ *
+ * @param {number|string} productId
+ * @returns {'out'|'critical'|'low'|'expiring'|'normal'}
+ */
 function resolveProductStatus(productId) {
   const inventoryItem = productStore.getInventoryByProduct(productId);
   if (!inventoryItem || inventoryItem.currentStock === 0) return 'out';
-  if (inventoryItem.currentStock <= inventoryItem.minimumStock) return 'critical';
+
+  const isLow      = inventoryItem.isLowStock;
+  const isExpiring = isProductExpiringSoon(productId);
+
+  if (isLow && isExpiring) return 'critical';
+  if (isExpiring)          return 'expiring';
+  if (isLow)                return 'low';
   return 'normal';
+}
+
+/**
+ * Checks whether a product's resolved status matches a filter/pill key.
+ * 'low' and 'expiring' filters also include 'critical' products, since a
+ * critical product is by definition both low on stock and expiring soon.
+ * @param {string} productStatus
+ * @param {string} filterKey
+ * @returns {boolean}
+ */
+function statusMatchesFilter(productStatus, filterKey) {
+  if (filterKey === 'all')      return true;
+  if (filterKey === 'low')      return productStatus === 'low' || productStatus === 'critical';
+  if (filterKey === 'expiring') return productStatus === 'expiring' || productStatus === 'critical';
+  return productStatus === filterKey;
 }
 
 function resolveCurrentStock(productId) {
@@ -89,6 +123,24 @@ function resolveCurrentStock(productId) {
 function resolveMinimumStock(productId) {
   const inventoryItem = productStore.getInventoryByProduct(productId);
   return inventoryItem ? inventoryItem.minimumStock : 0;
+}
+
+/**
+ * Formats the nearest active batch expiration date for a product, or '—' when
+ * the product has no active batch with an expiration date.
+ * @param {number|string} productId
+ * @returns {string}
+ */
+function resolveExpirationLabel(productId) {
+  const daysToExpiry = productStore.getDaysToNearestExpiry(productId);
+  if (daysToExpiry === null) return '—';
+
+  const nearestBatch = productStore.batches
+      .filter(batch => batch.productId === parseInt(productId) && batch.status === 'ACTIVE' && batch.expiration)
+      .reduce((soonest, batch) =>
+          !soonest || new Date(batch.expiration) < new Date(soonest.expiration) ? batch : soonest, null);
+
+  return new Date(nearestBatch.expiration).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 const summaryCounts = computed(() => {
@@ -108,13 +160,13 @@ const filteredProducts = computed(() => {
     const matchesSearch   = !query || product.name.toLowerCase().includes(query);
     const matchesCategory = selectedCategory.value === 'Todos' || product.category === selectedCategory.value;
     const productStatus   = resolveProductStatus(product.id);
-    const matchesStatus   = selectedStatusFilter.value === 'all' || productStatus === selectedStatusFilter.value;
+    const matchesStatus   = statusMatchesFilter(productStatus, selectedStatusFilter.value);
     return matchesSearch && matchesCategory && matchesStatus;
   });
 });
 
 function countByStatus(statusKey) {
-  return products.value.filter(product => resolveProductStatus(product.id) === statusKey).length;
+  return products.value.filter(product => statusMatchesFilter(resolveProductStatus(product.id), statusKey)).length;
 }
 
 // ── Product modal ──────────────────────────────────────────────────────────────
@@ -464,7 +516,7 @@ const warehouseSummary = [
               <!-- Price -->
               <td class="px-4 py-3 price-value">{{ formatCurrency(product.basePrice) }}</td>
               <!-- Expiration -->
-              <td class="px-4 py-3 expiration-placeholder">—</td>
+              <td class="px-4 py-3 expiration-placeholder">{{ resolveExpirationLabel(product.id) }}</td>
               <!-- Status badge -->
               <td class="px-4 py-3">
                 <span

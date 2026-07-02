@@ -134,6 +134,17 @@ export class ProductApi extends BaseApi {
     }
 
     /**
+     * Fetches all batches across every product.
+     * Batch resources carry no businessId of their own, so scoping to the
+     * authenticated business is done client-side by matching productId
+     * against the already-loaded, business-scoped products list.
+     * @returns {Promise<import('axios').AxiosResponse>}
+     */
+    getAllBatches() {
+        return this.#batchesEndpoint.getAll();
+    }
+
+    /**
      * Fetches all warehouses for a given business.
      * @param {number|string} businessId
      * @returns {Promise<import('axios').AxiosResponse>}
