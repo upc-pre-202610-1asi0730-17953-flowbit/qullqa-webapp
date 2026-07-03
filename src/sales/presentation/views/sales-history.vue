@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useI18n }      from 'vue-i18n';
+import { useToast }     from 'primevue/usetoast';
 import useSalesStore    from '../../application/sales.store.js';
 import useProductStore  from '../../../product/application/product.store.js';
 import useIamStore      from '../../../iam/application/iam.store.js';
@@ -22,6 +23,7 @@ import { SaleStatus }   from '../../domain/model/sale.entity.js';
  */
 
 const { t }        = useI18n();
+const toast        = useToast();
 const salesStore   = useSalesStore();
 const productStore = useProductStore();
 const iamStore     = useIamStore();
@@ -188,14 +190,23 @@ async function toggleExpand(sale) {
 async function handleCancelSale(sale) {
   const businessId = iamStore.currentUser?.businessId;
   const result = await salesStore.cancelSale(sale);
-  if (result.success) {
-    result.restockedDetails.forEach(detail => {
-      productStore.registerStockIntake({
-        productId:  detail.productId,
-        businessId: businessId,
-        quantity:   detail.quantity
-      });
-    });
+
+  if (!result.success) {
+    toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('sales.toast-cancel-error'), life: 4500 });
+    return;
+  }
+
+  try {
+    await Promise.all(result.restockedDetails.map(detail =>
+        productStore.registerStockIntake({
+          productId:  detail.productId,
+          businessId: businessId,
+          quantity:   detail.quantity
+        })
+    ));
+    toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('sales.toast-cancel-success'), life: 3500 });
+  } catch {
+    toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('sales.toast-cancel-error'), life: 4500 });
   }
 }
 

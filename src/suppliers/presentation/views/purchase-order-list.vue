@@ -338,6 +338,20 @@ function cancelOrder() {
 function formatCurrency(amount) {
   return `S/ ${(amount || 0).toFixed(2)}`;
 }
+
+/**
+ * Resolves a purchase order detail line's product name. Orders created in the
+ * current session already carry a denormalized productName; preexisting
+ * orders loaded from the mock don't, so fall back to looking it up in the
+ * already-loaded product catalog before falling back to the raw id.
+ * @param {Object} detail - A purchase order detail line.
+ * @returns {string}
+ */
+function resolveProductName(detail) {
+  if (detail.productName) return detail.productName;
+  const product = productStore.getProductById(detail.productId);
+  return product ? product.name : `#${detail.productId}`;
+}
 </script>
 
 <template>
@@ -773,7 +787,7 @@ function formatCurrency(amount) {
                     :key="detailIndex"
                     class="orders-detail-tr"
                 >
-                  <td class="orders-detail-td">{{ detail.productName || `#${detail.productId}` }}</td>
+                  <td class="orders-detail-td">{{ resolveProductName(detail) }}</td>
                   <td class="orders-detail-td orders-detail-td-center">{{ detail.quantity }}</td>
                   <td class="orders-detail-td orders-detail-td-right orders-detail-td-muted">
                     {{ formatCurrency(detail.unitPrice) }}

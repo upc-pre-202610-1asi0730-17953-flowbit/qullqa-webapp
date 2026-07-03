@@ -483,7 +483,7 @@ const warehouseSummary = [
       <!-- Loading -->
       <div v-if="!productsLoaded" class="flex justify-content-center align-items-center gap-3 py-8">
         <i class="pi pi-spin pi-spinner" style="font-size: 1.5rem; color: #0E7490;"/>
-        <span class="loading-text">Cargando productos…</span>
+        <span class="loading-text">{{ t('inventory.loading') }}</span>
       </div>
 
       <!-- Load errors -->
@@ -647,17 +647,17 @@ const warehouseSummary = [
           <!-- Stats mini-cards -->
           <div class="mb-3 mini-stats-grid">
             <div class="border-round-lg p-2 text-center mini-stat">
-              <p class="m-0 mb-1 mini-stat-label">Stock</p>
+              <p class="m-0 mb-1 mini-stat-label">{{ t('inventory.col-stock') }}</p>
               <p class="m-0 mini-stat-value" :style="{ color: resolveCurrentStock(product.id) === 0 ? '#CBD5E1' : '#0B3558' }">
                 {{ resolveCurrentStock(product.id) }}
               </p>
             </div>
             <div class="border-round-lg p-2 text-center mini-stat">
-              <p class="m-0 mb-1 mini-stat-label">Mínimo</p>
+              <p class="m-0 mb-1 mini-stat-label">{{ t('inventory.col-min') }}</p>
               <p class="m-0 mini-stat-value" style="color: #64748B;">{{ resolveMinimumStock(product.id) }}</p>
             </div>
             <div class="border-round-lg p-2 text-center mini-stat">
-              <p class="m-0 mb-1 mini-stat-label">Precio</p>
+              <p class="m-0 mb-1 mini-stat-label">{{ t('inventory.col-price') }}</p>
               <p class="m-0 mini-price-value">{{ formatCurrency(product.basePrice) }}</p>
             </div>
           </div>
@@ -669,14 +669,14 @@ const warehouseSummary = [
                 @click="openIntakeModal(product)"
             >
               <i class="pi pi-inbox" style="font-size: 0.82rem;"/>
-              Ingreso
+              {{ t('inventory.btn-intake-short') }}
             </button>
             <button
                 class="flex-1 flex align-items-center justify-content-center gap-2 py-2 border-round-xl cursor-pointer btn-mobile-edit"
                 @click="openEditProductModal(product)"
             >
               <i class="pi pi-pencil" style="font-size: 0.82rem;"/>
-              Editar
+              {{ t('inventory.btn-edit') }}
             </button>
           </div>
         </div>
@@ -752,7 +752,7 @@ const warehouseSummary = [
           <div class="flex align-items-center justify-content-center border-round-xl empty-icon-wrap">
             <i class="pi pi-clock" style="font-size: 1.8rem; color: #CBD5E1;"/>
           </div>
-          <p class="m-0 empty-text">Sin movimientos registrados</p>
+          <p class="m-0 empty-text">{{ t('inventory.no-movements') }}</p>
         </div>
       </div>
 
@@ -762,7 +762,7 @@ const warehouseSummary = [
           <div class="flex align-items-center justify-content-center border-round-xl empty-icon-wrap-sm">
             <i class="pi pi-clock" style="font-size: 1.6rem; color: #CBD5E1;"/>
           </div>
-          <p class="m-0 empty-text">Sin movimientos registrados</p>
+          <p class="m-0 empty-text">{{ t('inventory.no-movements') }}</p>
         </div>
         <div
             v-for="(movement, index) in stockMovements"

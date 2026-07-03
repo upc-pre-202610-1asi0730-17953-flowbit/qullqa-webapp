@@ -19,7 +19,9 @@
   },
   "home": {
     "title": "Welcome to Qullqa",
-    "content": "Manage your inventory, sales, suppliers and deliveries all in one place."
+    "content": "Manage your inventory, sales, suppliers and deliveries all in one place.",
+    "content-personalized": "Hi {name}, manage your inventory, sales, suppliers and deliveries all in one place.",
+    "go-dashboard": "Go to Dashboard"
   },
   "page-not-found": {
     "title": "Page Not Found",
@@ -166,6 +168,7 @@
     "plan-price": "S/ {price}/month",
     "plan-upgrade": "Upgrade plan",
     "plan-current": "Current plan",
+    "plan-badge-current": "CURRENT",
     "plan-upgrade-header": "Change plan",
     "plan-upgrade-confirm": "Confirm switching to {name}? The new plan applies immediately.",
     "security-title": "Security",
@@ -269,6 +272,7 @@
     "btn-new-product": "New product",
     "btn-register-intake": "Register intake",
     "btn-edit": "Edit",
+    "btn-intake-short": "Intake",
     "tab-products": "Products",
     "tab-movements": "Movements",
     "tab-warehouse": "Stock by warehouse",
@@ -293,6 +297,8 @@
     "col-status": "Status",
     "col-actions": "",
     "no-results": "No products found",
+    "loading": "Loading products…",
+    "no-movements": "No movements recorded",
     "status-normal": "Normal",
     "status-low": "Low stock",
     "status-expiring": "Expiring",
@@ -444,6 +450,8 @@
     "hide-items": "Hide items",
     "no-results": "No sales found",
     "cancel-action": "Cancel",
+    "toast-cancel-success": "Sale cancelled and stock replenished",
+    "toast-cancel-error": "Could not cancel the sale. Try again.",
     "confirm-cancel": "Are you sure you want to cancel sale #{id}?",
     "cancel-header": "Cancel Sale"
   },

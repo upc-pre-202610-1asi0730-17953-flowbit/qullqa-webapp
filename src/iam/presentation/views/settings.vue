@@ -637,7 +637,7 @@ function strengthLabel(level) { return strengthLabelKeys[level] ? t(strengthLabe
             <div class="p-5" :style="{ background: `linear-gradient(135deg, ${planStyle(index).gradFrom}, ${planStyle(index).gradTo})` }">
               <div class="flex align-items-start justify-content-between">
                 <p class="m-0" style="font-size: 1rem; font-weight: 700; color: #fff;">{{ plan.name }}</p>
-                <span v-if="currentBusiness?.planId === plan.id" class="border-round-3xl px-2 py-1" style="background-color: rgba(255,255,255,0.2); font-size: 0.65rem; font-weight: 700; color: #fff; white-space: nowrap;">ACTUAL</span>
+                <span v-if="currentBusiness?.planId === plan.id" class="border-round-3xl px-2 py-1" style="background-color: rgba(255,255,255,0.2); font-size: 0.65rem; font-weight: 700; color: #fff; white-space: nowrap;">{{ t('settings.plan-badge-current') }}</span>
               </div>
               <p class="m-0 mt-3" style="font-size: 2rem; font-weight: 700; color: #fff; line-height: 1;">
                 {{ t('settings.plan-price', { price: plan.price.toFixed(2) }) }}
