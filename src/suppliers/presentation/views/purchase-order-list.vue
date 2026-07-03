@@ -1,15 +1,20 @@
 <script setup>
 import { computed, onMounted, ref, toRefs } from 'vue';
 import { useI18n }        from 'vue-i18n';
+import { useToast }       from 'primevue/usetoast';
 import useSupplierStore   from '../../application/supplier.store.js';
 import useIamStore        from '../../../iam/application/iam.store.js';
 import useProductStore    from '../../../product/application/product.store.js';
 import { PurchaseOrderStatus } from '../../domain/model/purchase-order.entity.js';
 
 const { t }         = useI18n();
+const toast         = useToast();
 const supplierStore = useSupplierStore();
 const iamStore      = useIamStore();
 const productStore  = useProductStore();
+
+const savingNewOrder      = ref(false);
+const updatingOrderStatus = ref(false);
 
 const {
   purchaseOrders,
@@ -216,6 +221,8 @@ function submitNewOrder() {
   if (!validateNewOrderForm()) return;
 
   const businessId = iamStore.currentUser?.businessId ?? null;
+
+  savingNewOrder.value = true;
   createPurchaseOrder({
     businessId:   businessId,
     supplierId:   parseInt(newOrderForm.value.supplierId),
@@ -228,9 +235,17 @@ function submitNewOrder() {
       unitPrice:   parseFloat(line.unitPrice),
       discount:    parseFloat(line.discount ?? 0)
     }))
-  });
-
-  showNewOrderModal.value = false;
+  })
+      .then(() => {
+        toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('suppliers.order-toast-create-success'), life: 3500 });
+        showNewOrderModal.value = false;
+      })
+      .catch(() => {
+        toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('suppliers.order-toast-create-error'), life: 4500 });
+      })
+      .finally(() => {
+        savingNewOrder.value = false;
+      });
 }
 
 // ─── Order detail modal ────────────────────────────────────────────────────────
@@ -249,41 +264,70 @@ function openOrderDetail(order) {
  * for each ordered line — this is the central stock replenishment flow.
  */
 function receiveOrder() {
-  if (selectedOrder.value) {
-    const order      = selectedOrder.value;
-    const businessId = iamStore.currentUser?.businessId ?? null;
+  if (!selectedOrder.value) return;
 
-    updatePurchaseOrderStatus(order.id, PurchaseOrderStatus.RECEIVED);
+  const order      = selectedOrder.value;
+  const businessId = iamStore.currentUser?.businessId ?? null;
 
-    order.details.forEach(detail => {
-      productStore.registerStockIntake({
-        productId:  detail.productId,
-        businessId: businessId,
-        quantity:   detail.quantity
+  updatingOrderStatus.value = true;
+  updatePurchaseOrderStatus(order.id, PurchaseOrderStatus.RECEIVED)
+      .then(() => Promise.all(order.details.map(detail =>
+          productStore.registerStockIntake({
+            productId:  detail.productId,
+            businessId: businessId,
+            quantity:   detail.quantity
+          })
+      )))
+      .then(() => {
+        toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('suppliers.order-toast-receive-success'), life: 3500 });
+        showOrderDetailModal.value = false;
+      })
+      .catch(() => {
+        toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('suppliers.order-toast-status-error'), life: 4500 });
+      })
+      .finally(() => {
+        updatingOrderStatus.value = false;
       });
-    });
-  }
-  showOrderDetailModal.value = false;
 }
 
 /**
  * Transitions the selected order to DELAYED status.
  */
 function delayOrder() {
-  if (selectedOrder.value) {
-    updatePurchaseOrderStatus(selectedOrder.value.id, PurchaseOrderStatus.DELAYED);
-  }
-  showOrderDetailModal.value = false;
+  if (!selectedOrder.value) return;
+
+  updatingOrderStatus.value = true;
+  updatePurchaseOrderStatus(selectedOrder.value.id, PurchaseOrderStatus.DELAYED)
+      .then(() => {
+        toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('suppliers.order-toast-delay-success'), life: 3500 });
+        showOrderDetailModal.value = false;
+      })
+      .catch(() => {
+        toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('suppliers.order-toast-status-error'), life: 4500 });
+      })
+      .finally(() => {
+        updatingOrderStatus.value = false;
+      });
 }
 
 /**
  * Transitions the selected order to CANCELLED status.
  */
 function cancelOrder() {
-  if (selectedOrder.value) {
-    updatePurchaseOrderStatus(selectedOrder.value.id, PurchaseOrderStatus.CANCELLED);
-  }
-  showOrderDetailModal.value = false;
+  if (!selectedOrder.value) return;
+
+  updatingOrderStatus.value = true;
+  updatePurchaseOrderStatus(selectedOrder.value.id, PurchaseOrderStatus.CANCELLED)
+      .then(() => {
+        toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('suppliers.order-toast-cancel-success'), life: 3500 });
+        showOrderDetailModal.value = false;
+      })
+      .catch(() => {
+        toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('suppliers.order-toast-status-error'), life: 4500 });
+      })
+      .finally(() => {
+        updatingOrderStatus.value = false;
+      });
 }
 
 /**
@@ -647,11 +691,12 @@ function formatCurrency(amount) {
 
           <!-- Footer -->
           <div class="orders-modal-footer">
-            <button class="orders-modal-btn-cancel" @click="showNewOrderModal = false">
+            <button class="orders-modal-btn-cancel" :disabled="savingNewOrder" @click="showNewOrderModal = false">
               {{ t('suppliers.order-modal-cancel') }}
             </button>
-            <button class="orders-modal-btn-save" @click="submitNewOrder">
-              {{ t('suppliers.order-modal-submit') }}
+            <button class="orders-modal-btn-save" :disabled="savingNewOrder" @click="submitNewOrder">
+              <i v-if="savingNewOrder" class="pi pi-spin pi-spinner" style="margin-right: 0.4rem;"/>
+              {{ savingNewOrder ? t('suppliers.order-modal-saving') : t('suppliers.order-modal-submit') }}
             </button>
           </div>
         </div>
@@ -765,16 +810,16 @@ function formatCurrency(amount) {
           <div v-if="selectedOrder.isActionable" class="orders-detail-actions-section">
             <p class="orders-detail-section-label">{{ t('suppliers.order-detail-update-status') }}</p>
             <div class="orders-detail-action-buttons">
-              <button class="orders-action-btn orders-action-btn-receive" @click="receiveOrder">
-                <i class="pi pi-check-circle" />
+              <button class="orders-action-btn orders-action-btn-receive" :disabled="updatingOrderStatus" @click="receiveOrder">
+                <i :class="updatingOrderStatus ? 'pi pi-spin pi-spinner' : 'pi pi-check-circle'" />
                 <span>{{ t('suppliers.order-action-receive') }}</span>
               </button>
-              <button class="orders-action-btn orders-action-btn-delay" @click="delayOrder">
-                <i class="pi pi-clock" />
+              <button class="orders-action-btn orders-action-btn-delay" :disabled="updatingOrderStatus" @click="delayOrder">
+                <i :class="updatingOrderStatus ? 'pi pi-spin pi-spinner' : 'pi pi-clock'" />
                 <span>{{ t('suppliers.order-action-delay') }}</span>
               </button>
-              <button class="orders-action-btn orders-action-btn-cancel" @click="cancelOrder">
-                <i class="pi pi-times-circle" />
+              <button class="orders-action-btn orders-action-btn-cancel" :disabled="updatingOrderStatus" @click="cancelOrder">
+                <i :class="updatingOrderStatus ? 'pi pi-spin pi-spinner' : 'pi pi-times-circle'" />
                 <span>{{ t('suppliers.order-action-cancel') }}</span>
               </button>
             </div>

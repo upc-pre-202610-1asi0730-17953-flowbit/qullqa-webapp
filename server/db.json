@@ -331,10 +331,10 @@
       "productId": 1,
       "businessId": 1,
       "warehouseId": 1,
-      "currentStock": 149,
+      "currentStock": 148,
       "minimumStock": 0,
       "updatedAt": "",
-      "stockUnit": 148
+      "stockUnit": 298
     },
     {
       "id": 2,
@@ -1029,16 +1029,16 @@
     },
     {
       "id": 4,
+      "businessId": 1,
       "name": "Laive",
       "lastName": "SA",
       "ruc": "20100116392",
       "email": "pedidos@laive.com.pe",
       "phone": "013490000",
       "address": "Av. Argentina 1155, Lima",
-      "status": "ACTIVE",
-      "businessId": 1,
       "contactPerson": "Miguel Torres",
       "category": "GROCERIES",
+      "status": "INACTIVE",
       "since": "2023-01-15"
     },
     {
@@ -1077,12 +1077,14 @@
     },
     {
       "id": 3,
-      "date": "2026-05-08T07:30:00Z",
-      "status": "GENERATED",
-      "currency": "PEN",
-      "description": "Orden pendiente recepción",
+      "businessId": 1,
       "supplierId": 1,
-      "businessId": 1
+      "date": "2026-05-08T07:30:00Z",
+      "expectedDate": "",
+      "receivedDate": "2026-07-03",
+      "status": "RECEIVED",
+      "currency": "PEN",
+      "description": "Orden pendiente recepción"
     },
     {
       "id": 4,

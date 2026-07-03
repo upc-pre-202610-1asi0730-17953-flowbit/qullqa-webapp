@@ -14,7 +14,8 @@ const iamStore      = useIamStore();
 const { suppliers, suppliersLoaded, errors } = toRefs(supplierStore);
 const { fetchSuppliers, addSupplier, updateSupplier, deactivateSupplier } = supplierStore;
 
-const savingSupplier = ref(false);
+const savingSupplier      = ref(false);
+const deactivatingSupplier = ref(false);
 
 // ─── Search & filter state ─────────────────────────────────────────────────────
 
@@ -236,11 +237,24 @@ function initiateDeactivation(supplier) {
  * Confirms and executes supplier deactivation.
  */
 function confirmDeactivation() {
-  if (deactTarget.value) {
-    deactivateSupplier(deactTarget.value.id);
+  if (!deactTarget.value) {
+    showConfirmDeact.value = false;
+    return;
   }
-  showConfirmDeact.value = false;
-  deactTarget.value      = null;
+
+  deactivatingSupplier.value = true;
+  deactivateSupplier(deactTarget.value.id)
+      .then(() => {
+        toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('suppliers.toast-deactivate-success'), life: 3500 });
+        showConfirmDeact.value = false;
+        deactTarget.value      = null;
+      })
+      .catch(() => {
+        toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('suppliers.toast-deactivate-error'), life: 4500 });
+      })
+      .finally(() => {
+        deactivatingSupplier.value = false;
+      });
 }
 
 // ─── Mobile accordion ─────────────────────────────────────────────────────────
@@ -721,11 +735,12 @@ function formatCurrency(amount) {
             }}
           </p>
           <div class="supplier-modal-footer">
-            <button class="supplier-modal-btn-cancel" @click="showConfirmDeact = false">
+            <button class="supplier-modal-btn-cancel" :disabled="deactivatingSupplier" @click="showConfirmDeact = false">
               {{ t('suppliers.modal-cancel') }}
             </button>
-            <button class="supplier-detail-btn-deactivate" @click="confirmDeactivation">
-              {{ t('suppliers.btn-deactivate-confirm') }}
+            <button class="supplier-detail-btn-deactivate" :disabled="deactivatingSupplier" @click="confirmDeactivation">
+              <i v-if="deactivatingSupplier" class="pi pi-spin pi-spinner" style="margin-right: 0.4rem;"/>
+              {{ deactivatingSupplier ? t('suppliers.modal-saving') : t('suppliers.btn-deactivate-confirm') }}
             </button>
           </div>
         </div>
