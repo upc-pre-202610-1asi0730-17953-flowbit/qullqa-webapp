@@ -318,8 +318,8 @@
     },
     {
       "productId": 8,
-      "expiration": "2027-03-01",
-      "purchasePrice": 0,
+      "expiration": "2026-06-25",
+      "purchasePrice": 0.5,
       "status": "ACTIVE",
       "inventoryId": 8,
       "id": 10
@@ -398,7 +398,7 @@
       "currentStock": 50,
       "minimumStock": 5,
       "updatedAt": "",
-      "stockUnit": 50
+      "stockUnit": 0
     }
   ],
   "sales": [
@@ -626,6 +626,17 @@
       "description": "",
       "currency": "PEN",
       "id": 22
+    },
+    {
+      "businessId": 1,
+      "customerId": null,
+      "status": "PAID",
+      "totalAmount": 50,
+      "paymentMethod": "CASH",
+      "date": "2026-07-03T14:15:30.526Z",
+      "description": "",
+      "currency": "PEN",
+      "id": 23
     }
   ],
   "saleDetails": [
@@ -932,6 +943,14 @@
       "unitPrice": 26.9,
       "discount": 0,
       "id": 38
+    },
+    {
+      "saleId": 23,
+      "productId": 8,
+      "quantity": 50,
+      "unitPrice": 1,
+      "discount": 0,
+      "id": 39
     }
   ],
   "customers": [
