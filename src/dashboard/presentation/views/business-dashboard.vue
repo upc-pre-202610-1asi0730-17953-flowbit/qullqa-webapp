@@ -4,8 +4,9 @@ import { useRouter }                   from 'vue-router';
 import { useI18n }                     from 'vue-i18n';
 import useDashboardStore               from '../../application/dashboard.store.js';
 import useIamStore                     from '../../../iam/application/iam.store.js';
+import { toDateLocale }                from '../../../shared/presentation/date-locale.js';
 
-const { t }          = useI18n();
+const { t, locale }  = useI18n();
 const router         = useRouter();
 const dashboardStore = useDashboardStore();
 const iamStore       = useIamStore();
@@ -138,7 +139,7 @@ function formatCurrency(amount) {
  */
 function formatDateTime(isoString) {
   if (!isoString) return '—';
-  return new Date(isoString).toLocaleString('es-PE', {
+  return new Date(isoString).toLocaleString(toDateLocale(locale.value), {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit', hour12: false
   });
@@ -160,12 +161,30 @@ function alertSeverityKey(severity) {
 const gridLines = [0, 25, 50, 75];
 
 /**
- * Current date formatted in Spanish long format (e.g. "Viernes, 12 de junio de 2026").
- * Capitalized because toLocaleDateString returns lowercase weekday in es-PE.
+ * i18n key suffixes for weekday abbreviations, indexed Monday(0)..Sunday(6),
+ * matching the dayIndex convention used by dashboard.store.js's salesByDay.
+ * @type {string[]}
+ */
+const WEEKDAY_KEY_SUFFIXES = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+
+/**
+ * Translates a salesByDay entry's dayIndex (0=Monday..6=Sunday) into a
+ * locale-aware short weekday label.
+ * @param {number} dayIndex
+ * @returns {string}
+ */
+function weekdayLabel(dayIndex) {
+  return t(`dashboard.weekday-${WEEKDAY_KEY_SUFFIXES[dayIndex]}`);
+}
+
+/**
+ * Current date formatted in long format (e.g. "Viernes, 12 de junio de 2026"),
+ * following the active UI locale rather than a hardcoded Spanish one.
+ * Capitalized because toLocaleDateString returns a lowercase weekday.
  * @type {import('vue').ComputedRef<string>}
  */
 const currentDateLabel = computed(() => {
-  const formatted = new Date().toLocaleDateString('es-PE', {
+  const formatted = new Date().toLocaleDateString(toDateLocale(locale.value), {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   });
   return formatted.charAt(0).toUpperCase() + formatted.slice(1);
@@ -339,7 +358,7 @@ const quickActions = computed(() => [
             <div class="chart-bars">
               <div
                   v-for="dayEntry in salesByDay"
-                  :key="dayEntry.dayLabel"
+                  :key="dayEntry.dayIndex"
                   class="chart-bar-col"
               >
                 <span class="chart-bar-col__amount">
@@ -349,7 +368,7 @@ const quickActions = computed(() => [
                     class="chart-bar-col__bar"
                     :style="{ height: dayEntry.barHeightPercent + '%' }"
                 />
-                <span class="chart-bar-col__label">{{ dayEntry.dayLabel }}</span>
+                <span class="chart-bar-col__label">{{ weekdayLabel(dayEntry.dayIndex) }}</span>
               </div>
             </div>
             <div class="chart-axis"/>

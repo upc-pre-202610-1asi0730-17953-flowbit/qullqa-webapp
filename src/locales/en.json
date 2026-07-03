@@ -213,6 +213,13 @@
     "loading": "Loading metrics...",
     "expiring-soon": "Expiring Soon",
     "weekly-movements": "Weekly Movements",
+    "weekday-mon": "Mon",
+    "weekday-tue": "Tue",
+    "weekday-wed": "Wed",
+    "weekday-thu": "Thu",
+    "weekday-fri": "Fri",
+    "weekday-sat": "Sat",
+    "weekday-sun": "Sun",
     "top-products": "Top Selling Products",
     "quick-actions": "Quick Actions",
     "action-new-product": "New product",
@@ -506,7 +513,8 @@
     "error-out-of-stock": "{name} is out of stock",
     "error-insufficient-stock-for": "Insufficient stock for {name} (available: {stock})",
     "error-max-stock": "Maximum available stock: {stock}",
-    "error-confirm-failed": "Could not register the sale. Please try again."
+    "error-confirm-failed": "Could not register the sale. Please try again.",
+    "error-stock-deduction-failed": "The sale was registered, but stock could not be deducted. Please check inventory."
   },
   "customers": {
     "title": "Customers",

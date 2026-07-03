@@ -14,12 +14,6 @@ import { ReportFilters }      from '../domain/model/report-filters.entity.js';
 const dashboardApi = new DashboardApi();
 
 /**
- * Short weekday labels in Spanish, indexed Monday-Sunday (0 = Monday).
- * @type {string[]}
- */
-const WEEKDAY_LABELS_ES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
-
-/**
  * Reactive store that exposes Dashboard & Analytics commands and queries.
  * @returns {Object} Store state and actions.
  */
@@ -37,7 +31,9 @@ const useDashboardStore = defineStore('dashboard', () => {
 
     /**
      * Aggregated sales per weekday for the last 7 days.
-     * Each entry: { dayLabel, totalAmount, barHeightPercent }.
+     * Each entry: { dayIndex, totalAmount, barHeightPercent }. dayIndex is
+     * 0=Monday..6=Sunday; the presentation layer translates it to a label
+     * via i18n so the domain/application layer stays locale-agnostic.
      * @type {import('vue').Ref<Array>}
      */
     const salesByDay = ref([]);
@@ -148,23 +144,34 @@ const useDashboardStore = defineStore('dashboard', () => {
     function fetchSalesByDay(businessId) {
         Promise.all([
             dashboardApi.getSales(businessId),
-            dashboardApi.getSaleDetails(),
             dashboardApi.getProducts(businessId)
         ])
-            .then(([salesResponse, detailsResponse, productsResponse]) => {
+            .then(([salesResponse, productsResponse]) => {
                 const allSales    = salesResponse.data   instanceof Array ? salesResponse.data   : [];
-                const allDetails  = detailsResponse.data instanceof Array ? detailsResponse.data : [];
                 const allProducts = productsResponse.data instanceof Array ? productsResponse.data : [];
 
                 // Filter to PAID sales belonging to this business
                 const paidSales = allSales.filter(sale => sale.status === 'PAID');
-                const paidSaleIds = new Set(paidSales.map(sale => sale.id));
 
+                // Fetch line items one sale at a time (scoped by saleId) so no
+                // other business's sale-detail rows are ever requested.
+                const detailPromises = paidSales.map(sale =>
+                    dashboardApi.getSaleDetailsBySale(sale.id)
+                        .then(response => response.data instanceof Array ? response.data : [])
+                );
+
+                return Promise.all(detailPromises).then(detailArrays => ({
+                    allProducts,
+                    paidSales,
+                    allDetails: detailArrays.flat()
+                }));
+            })
+            .then(({ allProducts, paidSales, allDetails }) => {
                 // Only details that belong to paid sales
-                const paidDetails = allDetails.filter(detail => paidSaleIds.has(detail.saleId));
+                const paidDetails = allDetails;
 
                 // ── salesByDay computation ──────────────────────────────────
-                // Build a map of the last 7 calendar days: key = 'YYYY-MM-DD', value = { dayLabel, totalAmount }
+                // Build a map of the last 7 calendar days: key = 'YYYY-MM-DD', value = { dayIndex, totalAmount }
                 const today = new Date();
                 const dayMap = new Map();
 
@@ -176,9 +183,8 @@ const useDashboardStore = defineStore('dashboard', () => {
                     // getDay() returns 0=Sunday...6=Saturday; remap to 0=Monday
                     const jsDay        = date.getDay();
                     const mondayIndex  = (jsDay + 6) % 7;
-                    const dayLabel     = WEEKDAY_LABELS_ES[mondayIndex];
 
-                    dayMap.set(dateKey, { dayLabel, totalAmount: 0 });
+                    dayMap.set(dateKey, { dayIndex: mondayIndex, totalAmount: 0 });
                 }
 
                 // Accumulate PAID sale totals per day
@@ -273,9 +279,16 @@ const useDashboardStore = defineStore('dashboard', () => {
     /**
      * Exports the latest report as a CSV download using the current metrics snapshot.
      * Business rule: aborts with an error when metrics or the report are not loaded.
+     *
+     * Row labels are supplied by the caller (already translated) so this
+     * application-layer function stays locale-agnostic — same DDD principle
+     * already applied when Report.typeLabel was moved out of the domain entity.
+     *
      * @param {number|string} reportId
+     * @param {Object} [labels] - Translated CSV row labels; English fallback
+     *   is used for any key the caller omits.
      */
-    function exportReport(reportId) {
+    function exportReport(reportId, labels = {}) {
         const report = getReportById(reportId);
         if (!report) {
             errors.value.push(new Error(`Report with id ${reportId} not found.`));
@@ -286,16 +299,28 @@ const useDashboardStore = defineStore('dashboard', () => {
             return;
         }
         const snapshot = metrics.value;
+        const L = {
+            header:            'Metric,Value',
+            totalProducts:     'Total Products',
+            lowStockProducts:  'Low Stock Products',
+            inventoryValue:    'Inventory Value (PEN)',
+            totalSales:        'Total Sales (PEN)',
+            salesCount:        'Sales Count',
+            averageSaleValue:  'Average Sale Value (PEN)',
+            stockHealth:       'Stock Health (%)',
+            generatedAt:       'Generated At',
+            ...labels
+        };
         const csvRows = [
-            'Metric,Value',
-            `Total Products,${snapshot.totalProducts}`,
-            `Low Stock Products,${snapshot.lowStockProducts}`,
-            `Inventory Value (PEN),${snapshot.inventoryValue}`,
-            `Total Sales (PEN),${snapshot.totalSales}`,
-            `Sales Count,${snapshot.salesCount}`,
-            `Average Sale Value (PEN),${snapshot.averageSaleValue}`,
-            `Stock Health (%),${snapshot.stockHealthPercentage}`,
-            `Generated At,${snapshot.generatedAt}`
+            L.header,
+            `${L.totalProducts},${snapshot.totalProducts}`,
+            `${L.lowStockProducts},${snapshot.lowStockProducts}`,
+            `${L.inventoryValue},${snapshot.inventoryValue}`,
+            `${L.totalSales},${snapshot.totalSales}`,
+            `${L.salesCount},${snapshot.salesCount}`,
+            `${L.averageSaleValue},${snapshot.averageSaleValue}`,
+            `${L.stockHealth},${snapshot.stockHealthPercentage}`,
+            `${L.generatedAt},${snapshot.generatedAt}`
         ];
         const blob         = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
         const downloadUrl  = URL.createObjectURL(blob);

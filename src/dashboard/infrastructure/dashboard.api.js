@@ -72,12 +72,14 @@ export class DashboardApi extends BaseApi {
     }
 
     /**
-     * Fetches all sale detail lines.
-     * Used to compute top products by quantity and revenue.
+     * Fetches the sale detail lines belonging to a single sale.
+     * Used to compute top products by quantity and revenue, scoped one sale
+     * at a time so no other business's sale-line data is ever requested.
+     * @param {number|string} saleId
      * @returns {Promise<import('axios').AxiosResponse>}
      */
-    getSaleDetails() {
-        return this.#saleDetailsEndpoint.getAll();
+    getSaleDetailsBySale(saleId) {
+        return this.#saleDetailsEndpoint.getAllByParam('saleId', saleId);
     }
 
     /**

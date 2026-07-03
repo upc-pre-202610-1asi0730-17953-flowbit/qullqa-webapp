@@ -213,6 +213,13 @@
     "loading": "Cargando métricas...",
     "expiring-soon": "Por Vencer",
     "weekly-movements": "Movimientos de la semana",
+    "weekday-mon": "Lun",
+    "weekday-tue": "Mar",
+    "weekday-wed": "Mié",
+    "weekday-thu": "Jue",
+    "weekday-fri": "Vie",
+    "weekday-sat": "Sáb",
+    "weekday-sun": "Dom",
     "top-products": "Productos más vendidos",
     "quick-actions": "Acciones rápidas",
     "action-new-product": "Nuevo producto",
@@ -506,7 +513,8 @@
     "error-out-of-stock": "{name} no tiene stock disponible",
     "error-insufficient-stock-for": "Stock insuficiente para {name} (disponible: {stock})",
     "error-max-stock": "Stock máximo disponible: {stock}",
-    "error-confirm-failed": "No se pudo registrar la venta. Intenta de nuevo."
+    "error-confirm-failed": "No se pudo registrar la venta. Intenta de nuevo.",
+    "error-stock-deduction-failed": "La venta se registró, pero no se pudo descontar el stock. Revisa el inventario."
   },
   "customers": {
     "title": "Clientes",

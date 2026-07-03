@@ -4,8 +4,9 @@ import { useRouter }                   from 'vue-router';
 import { useI18n }                     from 'vue-i18n';
 import useDashboardStore               from '../../application/dashboard.store.js';
 import { ReportType }                  from '../../domain/model/report.entity.js';
+import { toDateLocale }                from '../../../shared/presentation/date-locale.js';
 
-const { t }          = useI18n();
+const { t, locale }  = useI18n();
 const router         = useRouter();
 const dashboardStore = useDashboardStore();
 
@@ -49,11 +50,23 @@ onMounted(() => {
 });
 
 /**
- * Triggers the CSV export for the latest report via the store.
+ * Triggers the CSV export for the latest report via the store, passing
+ * already-translated row labels so the exported file matches the active
+ * UI locale instead of a hardcoded English fallback.
  */
 function handleExportReport() {
   if (!latestReport.value) return;
-  exportReport(latestReport.value.id);
+  exportReport(latestReport.value.id, {
+    header:           `${t('reports.col-metric')},${t('reports.col-value')}`,
+    totalProducts:    t('reports.metrics-total-products'),
+    lowStockProducts: t('reports.metrics-low-stock'),
+    inventoryValue:   t('reports.metrics-inventory-value'),
+    totalSales:       t('reports.metrics-total-sales'),
+    salesCount:       t('reports.metrics-sales-count'),
+    averageSaleValue: t('reports.metrics-average-sale'),
+    stockHealth:      t('reports.metrics-stock-health'),
+    generatedAt:      t('reports.generated-at')
+  });
 }
 
 /**
@@ -88,7 +101,7 @@ function formatCurrency(amount) {
  */
 function formatDate(isoDate) {
   if (!isoDate) return '-';
-  return new Date(isoDate).toLocaleDateString('es-PE');
+  return new Date(isoDate).toLocaleDateString(toDateLocale(locale.value));
 }
 </script>
 
