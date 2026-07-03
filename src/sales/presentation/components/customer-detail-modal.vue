@@ -68,7 +68,7 @@ const totalPurchases = computed(() =>
 const totalSpent = computed(() =>
     props.sales
         .filter(sale => sale.customerId === props.customer.id && sale.status === 'PAID')
-        .reduce((sum, sale) => sum + (sale.totalAmount || 0), 0)
+        .reduce((sum, sale) => sum + sale.subtotal, 0)
 );
 
 /**

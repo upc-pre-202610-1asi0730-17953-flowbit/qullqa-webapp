@@ -64,11 +64,12 @@ export class IamApi extends BaseApi {
     }
 
     /**
-     * Fetches all user accounts.
-     * @returns {Promise<import('axios').AxiosResponse>} All user resources.
+     * Fetches all user accounts scoped to the given business.
+     * @param {number|string} businessId
+     * @returns {Promise<import('axios').AxiosResponse>} User resources for that business.
      */
-    getUsers() {
-        return this.#usersEndpoint.getAll();
+    getUsers(businessId) {
+        return this.#usersEndpoint.getAllByParam('businessId', businessId);
     }
 
     /**

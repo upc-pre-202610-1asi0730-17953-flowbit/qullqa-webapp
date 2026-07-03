@@ -134,6 +134,25 @@ export class ProductApi extends BaseApi {
     }
 
     /**
+     * Creates a new batch resource for a product.
+     * @param {Object} resource
+     * @returns {Promise<import('axios').AxiosResponse>}
+     */
+    createBatch(resource) {
+        return this.#batchesEndpoint.create(resource);
+    }
+
+    /**
+     * Updates an existing batch resource.
+     * @param {number|string} id
+     * @param {Object} resource
+     * @returns {Promise<import('axios').AxiosResponse>}
+     */
+    updateBatch(id, resource) {
+        return this.#batchesEndpoint.update(id, resource);
+    }
+
+    /**
      * Fetches all batches across every product.
      * Batch resources carry no businessId of their own, so scoping to the
      * authenticated business is done client-side by matching productId

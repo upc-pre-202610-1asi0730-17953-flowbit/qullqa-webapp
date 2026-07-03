@@ -66,7 +66,7 @@ const useSalesStore = defineStore('sales', () => {
      */
     const totalRevenue = computed(() => {
         const paidSales = sales.value.filter(sale => sale.status === SaleStatus.PAID);
-        const sum = paidSales.reduce((accumulator, sale) => accumulator + (sale.totalAmount || 0), 0);
+        const sum = paidSales.reduce((accumulator, sale) => accumulator + sale.subtotal, 0);
         return Math.round(sum * 100) / 100;
     });
 
@@ -112,16 +112,37 @@ const useSalesStore = defineStore('sales', () => {
 
     /**
      * Loads all sales for the given business and updates local state.
+     *
+     * Each sale's line items are hydrated eagerly (one /saleDetails fetch per
+     * sale, in parallel) because the mock's /sales resource doesn't embed
+     * them and Sale.subtotal/grandTotal — used across the stats bar, the
+     * history table and the customer detail modal — depend on `details`
+     * being populated, not just when a row happens to be expanded.
+     *
      * @param {number|string} businessId - Business identifier from the IAM store.
      * @returns {void}
      */
     function fetchSales(businessId) {
-        salesApi.getSales(businessId).then(response => {
-            sales.value   = SaleAssembler.toEntitiesFromResponse(response);
-            salesLoaded.value = true;
-        }).catch(error => {
-            errors.value.push(error);
-        });
+        salesApi.getSales(businessId)
+            .then(response => {
+                const rawSales = response.data instanceof Array ? response.data : [];
+                const hydratedSalePromises = rawSales.map(rawSale =>
+                    salesApi.getSaleDetailsBySale(rawSale.id)
+                        .then(detailsResponse => {
+                            const rawDetails = detailsResponse.data instanceof Array ? detailsResponse.data : [];
+                            return SaleAssembler.toEntityFromResource({ ...rawSale, details: rawDetails });
+                        })
+                        .catch(() => SaleAssembler.toEntityFromResource(rawSale))
+                );
+                return Promise.all(hydratedSalePromises);
+            })
+            .then(hydratedSales => {
+                sales.value        = hydratedSales;
+                salesLoaded.value = true;
+            })
+            .catch(error => {
+                errors.value.push(error);
+            });
     }
 
     /**

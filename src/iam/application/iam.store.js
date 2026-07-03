@@ -242,11 +242,12 @@ const useIamStore = defineStore('iam', () => {
     }
 
     /**
-     * Loads all user accounts from the API.
+     * Loads all user accounts scoped to the given business from the API.
+     * @param {number|string} businessId
      * @returns {void}
      */
-    function fetchUsers() {
-        iamApi.getUsers().then(response => {
+    function fetchUsers(businessId) {
+        iamApi.getUsers(businessId).then(response => {
             users.value      = UserAccountAssembler.toEntitiesFromResponse(response);
             usersLoaded.value = true;
         }).catch(error => {

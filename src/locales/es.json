@@ -267,6 +267,7 @@
     "subtitle": "Gestiona tus productos, stock y movimientos",
     "btn-new-product": "Nuevo producto",
     "btn-register-intake": "Registrar ingreso",
+    "btn-edit": "Editar",
     "tab-products": "Productos",
     "tab-movements": "Movimientos",
     "tab-warehouse": "Stock por almacén",

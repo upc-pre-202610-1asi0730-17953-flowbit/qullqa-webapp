@@ -168,42 +168,67 @@
       "name": "Leche Gloria Entera 1L",
       "description": "Leche evaporada entera en caja",
       "category": "DAIRY",
-      "businessId": 1
+      "businessId": 1,
+      "basePrice": 4.5
     },
     {
       "id": 2,
       "name": "Arroz Costeño Extra 5kg",
       "description": "Arroz premium grano largo",
       "category": "GRAINS",
-      "businessId": 1
+      "businessId": 1,
+      "basePrice": 26.9
     },
     {
       "id": 3,
       "name": "Aceite Vegetal Primor 1L",
       "description": "Aceite de girasol refinado",
       "category": "OILS",
-      "businessId": 1
+      "businessId": 1,
+      "basePrice": 9.9
     },
     {
       "id": 4,
+      "businessId": 1,
       "name": "Gaseosa Inca Kola 1.5L",
       "description": "Bebida gaseosa sabor original",
       "category": "BEVERAGES",
-      "businessId": 1
+      "basePrice": 6.5,
+      "status": "ACTIVE"
     },
     {
       "id": 5,
       "name": "Paracetamol 500mg x 20",
       "description": "Analgésico y antipirético",
       "category": "MEDICINE",
-      "businessId": 2
+      "businessId": 2,
+      "basePrice": 3.5
     },
     {
       "id": 6,
       "name": "Amoxicilina 500mg x 12",
       "description": "Antibiótico de amplio espectro",
       "category": "MEDICINE",
-      "businessId": 2
+      "businessId": 2,
+      "basePrice": 15
+    },
+    {
+      "id": 7,
+      "businessId": 1,
+      "name": "Cola Real 2L",
+      "description": "Alicorp SAC",
+      "category": "BEVERAGES",
+      "basePrice": 5,
+      "status": "ACTIVE"
+    },
+    {
+      "id": 8,
+      "businessId": 1,
+      "name": "Agua San Carlos 1L",
+      "description": "Alicorp SAC",
+      "category": "BEVERAGES",
+      "basePrice": 1,
+      "status": "ACTIVE"
     }
   ],
   "batches": [
@@ -232,12 +257,12 @@
       "inventoryId": 3
     },
     {
-      "id": 4,
-      "expiration": "2026-05-24",
-      "purchasePrice": 3.2,
-      "status": "ACTIVE",
       "productId": 4,
-      "inventoryId": 4
+      "expiration": "2026-07-30",
+      "purchasePrice": 0,
+      "status": "ACTIVE",
+      "inventoryId": 4,
+      "id": 4
     },
     {
       "id": 5,
@@ -254,36 +279,80 @@
       "status": "ACTIVE",
       "productId": 6,
       "inventoryId": 6
+    },
+    {
+      "productId": 7,
+      "expiration": "2026-07-30",
+      "purchasePrice": 0,
+      "status": "ACTIVE",
+      "inventoryId": 7,
+      "id": 7
+    },
+    {
+      "productId": 7,
+      "expiration": "2027-02-02",
+      "purchasePrice": 4,
+      "status": "ACTIVE",
+      "inventoryId": null,
+      "id": 8
+    },
+    {
+      "productId": 7,
+      "expiration": "2027-05-01",
+      "purchasePrice": 0,
+      "status": "ACTIVE",
+      "inventoryId": null,
+      "id": 9
+    },
+    {
+      "productId": 8,
+      "expiration": "2027-03-01",
+      "purchasePrice": 0,
+      "status": "ACTIVE",
+      "inventoryId": 8,
+      "id": 10
     }
   ],
   "inventories": [
     {
       "id": 1,
-      "stockUnit": 150,
       "productId": 1,
+      "businessId": 1,
       "warehouseId": 1,
-      "businessId": 1
+      "currentStock": 149,
+      "minimumStock": 0,
+      "updatedAt": "",
+      "stockUnit": 148
     },
     {
       "id": 2,
-      "stockUnit": 80,
       "productId": 2,
+      "businessId": 1,
       "warehouseId": 1,
-      "businessId": 1
+      "currentStock": 79,
+      "minimumStock": 0,
+      "updatedAt": "",
+      "stockUnit": 78
     },
     {
       "id": 3,
-      "stockUnit": 60,
       "productId": 3,
+      "businessId": 1,
       "warehouseId": 2,
-      "businessId": 1
+      "currentStock": 60,
+      "minimumStock": 0,
+      "updatedAt": "",
+      "stockUnit": 59
     },
     {
       "id": 4,
-      "stockUnit": 12,
       "productId": 4,
+      "businessId": 1,
       "warehouseId": 1,
-      "businessId": 1
+      "currentStock": 12,
+      "minimumStock": 2,
+      "updatedAt": "",
+      "stockUnit": 12
     },
     {
       "id": 5,
@@ -298,6 +367,26 @@
       "productId": 6,
       "warehouseId": 3,
       "businessId": 2
+    },
+    {
+      "id": 7,
+      "productId": 7,
+      "businessId": 1,
+      "warehouseId": null,
+      "currentStock": 50,
+      "minimumStock": 10,
+      "updatedAt": "",
+      "stockUnit": 50
+    },
+    {
+      "id": 8,
+      "productId": 8,
+      "businessId": 1,
+      "warehouseId": null,
+      "currentStock": 50,
+      "minimumStock": 5,
+      "updatedAt": "",
+      "stockUnit": 50
     }
   ],
   "sales": [
@@ -492,6 +581,39 @@
       "description": "",
       "currency": "PEN",
       "id": 19
+    },
+    {
+      "businessId": 1,
+      "customerId": null,
+      "status": "OPEN",
+      "totalAmount": 0,
+      "paymentMethod": null,
+      "date": "2026-07-03T02:41:14.402Z",
+      "description": "",
+      "currency": "PEN",
+      "id": 20
+    },
+    {
+      "businessId": 1,
+      "customerId": null,
+      "status": "PAID",
+      "totalAmount": 0,
+      "paymentMethod": "CASH",
+      "date": "2026-07-03T02:41:14.402Z",
+      "description": "",
+      "currency": "PEN",
+      "id": 21
+    },
+    {
+      "businessId": 1,
+      "customerId": null,
+      "status": "PAID",
+      "totalAmount": 41.3,
+      "paymentMethod": "YAPE",
+      "date": "2026-07-03T03:21:12.072Z",
+      "description": "",
+      "currency": "PEN",
+      "id": 22
     }
   ],
   "saleDetails": [
@@ -742,6 +864,62 @@
       "unitPrice": 0,
       "discount": 0,
       "id": 31
+    },
+    {
+      "saleId": 20,
+      "productId": 1,
+      "quantity": 1,
+      "unitPrice": 0,
+      "discount": 0,
+      "id": 32
+    },
+    {
+      "saleId": 20,
+      "productId": 2,
+      "quantity": 1,
+      "unitPrice": 0,
+      "discount": 0,
+      "id": 33
+    },
+    {
+      "saleId": 21,
+      "productId": 1,
+      "quantity": 1,
+      "unitPrice": 0,
+      "discount": 0,
+      "id": 34
+    },
+    {
+      "saleId": 21,
+      "productId": 2,
+      "quantity": 1,
+      "unitPrice": 0,
+      "discount": 0,
+      "id": 35
+    },
+    {
+      "saleId": 22,
+      "productId": 1,
+      "quantity": 1,
+      "unitPrice": 4.5,
+      "discount": 0,
+      "id": 36
+    },
+    {
+      "saleId": 22,
+      "productId": 3,
+      "quantity": 1,
+      "unitPrice": 9.9,
+      "discount": 0,
+      "id": 37
+    },
+    {
+      "saleId": 22,
+      "productId": 2,
+      "quantity": 1,
+      "unitPrice": 26.9,
+      "discount": 0,
+      "id": 38
     }
   ],
   "customers": [

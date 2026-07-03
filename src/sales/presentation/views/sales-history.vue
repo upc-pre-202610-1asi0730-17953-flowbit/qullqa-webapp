@@ -315,7 +315,7 @@ onMounted(() => {
                 <span v-else style="color: #94A3B8;">—</span>
               </td>
               <td class="px-4 py-3" style="font-size: 0.88rem; font-weight: 700; color: #0B3558;">
-                {{ formatCurrency(sale.totalAmount) }}
+                {{ formatCurrency(sale.subtotal) }}
               </td>
               <td class="px-4 py-3">
                                     <span
@@ -432,7 +432,7 @@ onMounted(() => {
                         </span>
             <span v-else />
             <span style="font-size: 1rem; font-weight: 800; color: #0B3558;">
-                            {{ formatCurrency(sale.totalAmount) }}
+                            {{ formatCurrency(sale.subtotal) }}
                         </span>
           </div>
 

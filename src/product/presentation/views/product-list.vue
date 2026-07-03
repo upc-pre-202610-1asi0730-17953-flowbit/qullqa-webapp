@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, toRefs } from 'vue';
 import { useI18n }        from 'vue-i18n';
 import { useToast }       from 'primevue/usetoast';
-import useProductStore    from '../../application/product.store.js';
+import useProductStore, { parseLocalDate } from '../../application/product.store.js';
 import useIamStore        from '../../../iam/application/iam.store.js';
 import { Product, ProductCategory, ProductStatus } from '../../domain/model/product.entity.js';
 
@@ -13,7 +13,8 @@ const iamStore     = useIamStore();
 
 const { products, productsLoaded, inventory, stockMovements, errors } = toRefs(productStore);
 const { fetchProducts, fetchInventory, fetchBatches, fetchStockMovements,
-  addProduct, updateProduct, registerStockIntake, isProductExpiringSoon } = productStore;
+  addProduct, updateProduct, registerStockIntake, updateMinimumStock,
+  createBatchForProduct, isProductExpiringSoon } = productStore;
 
 const savingProduct = ref(false);
 const savingIntake  = ref(false);
@@ -149,9 +150,9 @@ function resolveExpirationLabel(productId) {
   const nearestBatch = productStore.batches
       .filter(batch => batch.productId === parseInt(productId) && batch.status === 'ACTIVE' && batch.expiration)
       .reduce((soonest, batch) =>
-          !soonest || new Date(batch.expiration) < new Date(soonest.expiration) ? batch : soonest, null);
+          !soonest || parseLocalDate(batch.expiration) < parseLocalDate(soonest.expiration) ? batch : soonest, null);
 
-  return new Date(nearestBatch.expiration).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return parseLocalDate(nearestBatch.expiration).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 const summaryCounts = computed(() => {
@@ -228,14 +229,35 @@ function saveProductFromModal() {
     status:      ProductStatus.ACTIVE
   });
 
+  const minimumStock   = parseInt(productModalForm.value.minimumStock) || 0;
+  const purchasePrice  = parseFloat(productModalForm.value.cost) || 0;
+  const expirationDate = productModalForm.value.expirationDate;
+
   savingProduct.value = true;
   const savePromise = editingProduct.value
       ? updateProduct(productEntity)
+          .then(() => updateMinimumStock(editingProduct.value.id, minimumStock))
+          .then(() => {
+            if (expirationDate) {
+              return createBatchForProduct({ productId: editingProduct.value.id, expiration: expirationDate, purchasePrice });
+            }
+          })
       : addProduct(productEntity).then(createdProduct => {
         const initialStock = parseInt(productModalForm.value.currentStock) || 0;
-        if (initialStock > 0) {
-          return registerStockIntake({ productId: createdProduct.id, businessId, quantity: initialStock });
-        }
+        const intakePromise = initialStock > 0
+            ? registerStockIntake({ productId: createdProduct.id, businessId, quantity: initialStock, minimumStock })
+            : Promise.resolve();
+
+        return intakePromise.then(createdInventoryItem => {
+          if (expirationDate) {
+            return createBatchForProduct({
+              productId:   createdProduct.id,
+              expiration:  expirationDate,
+              purchasePrice,
+              inventoryId: createdInventoryItem ? createdInventoryItem.id : null
+            });
+          }
+        });
       });
 
   savePromise
@@ -327,7 +349,7 @@ const warehouseSummary = [
               class="hidden sm:flex align-items-center gap-2 px-3 py-2 border-round-xl cursor-pointer btn-intake-outline"
               @click="openIntakeModal(null)"
           >
-            <i class="pi pi-arrow-down-circle" style="font-size: 0.9rem;"/>
+            <i class="pi pi-inbox" style="font-size: 0.9rem;"/>
             {{ t('inventory.btn-register-intake') }}
           </button>
           <!-- New product -->
@@ -546,14 +568,16 @@ const warehouseSummary = [
                 <div class="flex align-items-center gap-1 justify-content-end">
                   <button
                       class="p-2 border-round-lg border-none cursor-pointer btn-icon-intake"
-                      title="Registrar ingreso"
+                      :title="t('inventory.btn-register-intake')"
+                      :aria-label="t('inventory.btn-register-intake')"
                       @click="openIntakeModal(product)"
                   >
-                    <i class="pi pi-arrow-down-circle" style="font-size: 0.95rem;"/>
+                    <i class="pi pi-inbox" style="font-size: 0.95rem;"/>
                   </button>
                   <button
                       class="p-2 border-round-lg border-none cursor-pointer btn-icon-edit"
-                      title="Editar"
+                      :title="t('inventory.btn-edit')"
+                      :aria-label="t('inventory.btn-edit')"
                       @click="openEditProductModal(product)"
                   >
                     <i class="pi pi-pencil" style="font-size: 0.9rem;"/>
@@ -644,7 +668,7 @@ const warehouseSummary = [
                 class="flex-1 flex align-items-center justify-content-center gap-2 py-2 border-round-xl border-none cursor-pointer btn-mobile-intake"
                 @click="openIntakeModal(product)"
             >
-              <i class="pi pi-arrow-down-circle" style="font-size: 0.82rem;"/>
+              <i class="pi pi-inbox" style="font-size: 0.82rem;"/>
               Ingreso
             </button>
             <button
@@ -665,7 +689,7 @@ const warehouseSummary = [
         class="sm:hidden fixed flex align-items-center justify-content-center border-round-3xl border-none cursor-pointer fab"
         @click="openIntakeModal(null)"
     >
-      <i class="pi pi-arrow-down-circle" style="font-size: 1.3rem;"/>
+      <i class="pi pi-inbox" style="font-size: 1.3rem;"/>
     </button>
 
     <!-- ══════════════════════════════════════════════════════════════
@@ -975,7 +999,7 @@ const warehouseSummary = [
         <div class="flex align-items-center justify-content-between px-5 py-4 modal-header">
           <div class="flex align-items-center gap-3">
             <div class="flex align-items-center justify-content-center border-round-lg modal-icon-wrap" style="background: linear-gradient(135deg, #DCFCE7, #BBF7D0);">
-              <i class="pi pi-arrow-down-circle" style="color: #16A34A; font-size: 0.95rem;"/>
+              <i class="pi pi-inbox" style="color: #16A34A; font-size: 0.95rem;"/>
             </div>
             <p class="m-0 modal-title">{{ t('inventory.intake-modal-title') }}</p>
           </div>

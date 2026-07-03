@@ -25,6 +25,19 @@ import { ProductStatus }            from '../domain/model/product.entity.js';
 
 const productApi = new ProductApi();
 
+/**
+ * Parses a date-only string (yyyy-mm-dd, as stored on batch.expiration) into a
+ * Date at local midnight. `new Date('yyyy-mm-dd')` parses as UTC midnight,
+ * which in a timezone behind UTC (e.g. Peru, UTC-5) displays/compares as the
+ * previous day — this avoids that off-by-one.
+ * @param {string} dateOnlyString - 'yyyy-mm-dd'.
+ * @returns {Date}
+ */
+export function parseLocalDate(dateOnlyString) {
+    const [year, month, day] = dateOnlyString.split('-').map(Number);
+    return new Date(year, month - 1, day);
+}
+
 const useProductStore = defineStore('product', () => {
 
     /** @type {import('vue').Ref<import('../domain/model/product.entity.js').Product[]>} */
@@ -205,7 +218,7 @@ const useProductStore = defineStore('product', () => {
         const activeExpirations = batches.value
             .filter(batch => batch.productId === numericId && batch.status === 'ACTIVE' && batch.expiration)
             .map(batch => {
-                const expirationDate = new Date(batch.expiration);
+                const expirationDate = parseLocalDate(batch.expiration);
                 return Math.round((expirationDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
             });
 
@@ -339,6 +352,8 @@ const useProductStore = defineStore('product', () => {
      * @param {number} resource.businessId
      * @param {number} resource.quantity   - Must be > 0.
      * @param {number} [resource.warehouseId]
+     * @param {number} [resource.minimumStock] - Only applied when creating a new
+     *   inventory record; ignored (existing value preserved) on top-up.
      * @returns {Promise<import('../domain/model/inventory-item.entity.js').InventoryItem>}
      */
     function registerStockIntake(resource) {
@@ -373,13 +388,101 @@ const useProductStore = defineStore('product', () => {
             businessId:   parseInt(resource.businessId),
             warehouseId:  resource.warehouseId ? parseInt(resource.warehouseId) : null,
             stockUnit:    resource.quantity,
-            minimumStock: 0
+            minimumStock: resource.minimumStock != null ? parseInt(resource.minimumStock) || 0 : 0
         };
         return productApi.createInventory(newResource)
             .then(response => {
                 const createdItem = InventoryItemAssembler.toEntityFromResource(response.data);
                 inventory.value.push(createdItem);
                 return createdItem;
+            })
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
+    }
+
+    /**
+     * Updates the minimum stock threshold on a product's existing inventory record.
+     *
+     * Business rule: minimumStock must be a non-negative integer. A product with
+     * no inventory record yet (never had a stock intake) has nowhere to persist
+     * this value, so the call resolves without effect — an intake must happen first.
+     *
+     * @param {number|string} productId
+     * @param {number} minimumStock
+     * @returns {Promise<import('../domain/model/inventory-item.entity.js').InventoryItem|void>}
+     */
+    function updateMinimumStock(productId, minimumStock) {
+        if (minimumStock == null || minimumStock < 0) {
+            const error = new Error('Minimum stock must be a non-negative integer.');
+            errors.value.push(error);
+            return Promise.reject(error);
+        }
+
+        const existingItem = inventory.value.find(item => item.productId === parseInt(productId));
+        if (!existingItem) return Promise.resolve();
+
+        const updatedResource = {
+            ...existingItem,
+            stockUnit:    existingItem.currentStock,
+            minimumStock: parseInt(minimumStock)
+        };
+        return productApi.updateInventory(existingItem.id, updatedResource)
+            .then(response => {
+                const updatedItem = InventoryItemAssembler.toEntityFromResource(response.data);
+                const index = inventory.value.findIndex(item => item.id === updatedItem.id);
+                if (index !== -1) inventory.value[index] = updatedItem;
+                return updatedItem;
+            })
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
+    }
+
+    /**
+     * Registers or updates a product's batch (used to track its expiration —
+     * see isProductExpiringSoon / getDaysToNearestExpiry).
+     *
+     * Business rule: this app's product form only captures a single expiration
+     * date per product (no batch selector UI), so if the product already has
+     * an active batch it is updated in place instead of creating another one —
+     * otherwise re-editing a product would pile up batches and the "nearest
+     * expiration" query would keep surfacing the oldest one instead of the
+     * date the user just entered.
+     *
+     * @param {Object} resource
+     * @param {number} resource.productId
+     * @param {string} resource.expiration - ISO date string (yyyy-mm-dd).
+     * @param {number} [resource.purchasePrice=0]
+     * @param {number|null} [resource.inventoryId=null]
+     * @returns {Promise<void>}
+     */
+    function createBatchForProduct(resource) {
+        const productId = parseInt(resource.productId);
+        const existingBatch = batches.value.find(batch => batch.productId === productId && batch.status === 'ACTIVE');
+
+        const batchResource = {
+            productId,
+            expiration:    resource.expiration,
+            purchasePrice: resource.purchasePrice || 0,
+            status:        'ACTIVE',
+            inventoryId:   resource.inventoryId ?? existingBatch?.inventoryId ?? null
+        };
+
+        const savePromise = existingBatch
+            ? productApi.updateBatch(existingBatch.id, { ...batchResource, id: existingBatch.id })
+            : productApi.createBatch(batchResource);
+
+        return savePromise
+            .then(response => {
+                if (existingBatch) {
+                    const index = batches.value.findIndex(batch => batch.id === existingBatch.id);
+                    if (index !== -1) batches.value[index] = response.data;
+                } else {
+                    batches.value.push(response.data);
+                }
             })
             .catch(error => {
                 errors.value.push(error);
@@ -452,6 +555,8 @@ const useProductStore = defineStore('product', () => {
         updateProduct,
         deleteProduct,
         registerStockIntake,
+        updateMinimumStock,
+        createBatchForProduct,
         registerStockSale
     };
 });

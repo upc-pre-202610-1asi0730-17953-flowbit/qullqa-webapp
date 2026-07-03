@@ -70,7 +70,7 @@ const upgradingPlanId = ref(null);
 const notificationsEnabled = ref(true);
 
 onMounted(() => {
-  if (!usersLoaded.value) fetchUsers();
+  if (!usersLoaded.value) fetchUsers(iamStore.currentUser?.businessId);
   if (!rolesLoaded.value) fetchRoles();
   if (!plansLoaded.value) subscriptionStore.fetchPlans();
   if (!businessLoaded.value && iamStore.currentUser?.businessId) {
