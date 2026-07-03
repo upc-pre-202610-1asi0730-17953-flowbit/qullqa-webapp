@@ -2,22 +2,25 @@
 import { computed, onMounted, ref, toRefs } from 'vue';
 import { useI18n }        from 'vue-i18n';
 import { useToast }       from 'primevue/usetoast';
+import { useConfirm }     from 'primevue';
 import useProductStore, { parseLocalDate } from '../../application/product.store.js';
 import useIamStore        from '../../../iam/application/iam.store.js';
 import { Product, ProductCategory, ProductStatus } from '../../domain/model/product.entity.js';
 
 const { t }        = useI18n();
 const toast        = useToast();
+const confirm      = useConfirm();
 const productStore = useProductStore();
 const iamStore     = useIamStore();
 
 const { products, productsLoaded, inventory, stockMovements, errors } = toRefs(productStore);
 const { fetchProducts, fetchInventory, fetchBatches, fetchStockMovements,
-  addProduct, updateProduct, registerStockIntake, updateMinimumStock,
+  addProduct, updateProduct, deleteProduct, registerStockIntake, updateMinimumStock,
   createBatchForProduct, isProductExpiringSoon } = productStore;
 
-const savingProduct = ref(false);
-const savingIntake  = ref(false);
+const savingProduct  = ref(false);
+const savingIntake   = ref(false);
+const deletingProductId = ref(null);
 
 const activeTab            = ref('products');
 const searchQuery          = ref('');
@@ -273,6 +276,39 @@ function saveProductFromModal() {
       });
 }
 
+/**
+ * Deletes a product after confirmation.
+ * Business rule (enforced by the store): a product with stock > 0 cannot be
+ * deleted — checked client-side first so the user gets an immediate,
+ * friendly explanation instead of a generic error after confirming.
+ * @param {import('../../domain/model/product.entity.js').Product} product
+ */
+function handleDeleteProduct(product) {
+  if (resolveCurrentStock(product.id) > 0) {
+    toast.add({ severity: 'warn', summary: t('common.toast-error-title'), detail: t('inventory.toast-delete-has-stock'), life: 5000 });
+    return;
+  }
+
+  confirm.require({
+    message: t('inventory.confirm-delete-body', { name: product.name }),
+    header:  t('inventory.confirm-delete-header'),
+    icon:    'pi pi-exclamation-triangle',
+    accept:  () => {
+      deletingProductId.value = product.id;
+      deleteProduct(product.id)
+          .then(() => {
+            toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('inventory.toast-delete-success'), life: 3500 });
+          })
+          .catch(() => {
+            toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('inventory.toast-delete-error'), life: 4500 });
+          })
+          .finally(() => {
+            deletingProductId.value = null;
+          });
+    }
+  });
+}
+
 // ── Intake modal ───────────────────────────────────────────────────────────────
 
 const intakeForm = ref({ productId: '', quantity: '', supplier: '', note: '' });
@@ -486,13 +522,14 @@ const warehouseSummary = [
         <span class="loading-text">{{ t('inventory.loading') }}</span>
       </div>
 
+      <template v-else>
       <!-- Load errors -->
       <div v-if="errors.length > 0" class="product-list-errors">
         {{ t('errors.occurred') }}: {{ errors.map(error => error.message).join(', ') }}
       </div>
 
       <!-- Desktop table -->
-      <div v-else class="hidden md:block border-round-xl overflow-hidden table-card">
+      <div class="hidden md:block border-round-xl overflow-hidden table-card">
         <div style="overflow-x: auto;">
           <table style="width: 100%; border-collapse: collapse;">
             <thead>
@@ -582,6 +619,15 @@ const warehouseSummary = [
                   >
                     <i class="pi pi-pencil" style="font-size: 0.9rem;"/>
                   </button>
+                  <button
+                      class="p-2 border-round-lg border-none cursor-pointer btn-icon-delete"
+                      :disabled="deletingProductId === product.id"
+                      :title="t('inventory.btn-delete')"
+                      :aria-label="t('inventory.btn-delete')"
+                      @click="handleDeleteProduct(product)"
+                  >
+                    <i :class="deletingProductId === product.id ? 'pi pi-spin pi-spinner' : 'pi pi-trash'" style="font-size: 0.9rem;"/>
+                  </button>
                 </div>
               </td>
             </tr>
@@ -597,6 +643,7 @@ const warehouseSummary = [
           </div>
         </div>
       </div>
+      </template>
 
       <!-- Mobile cards -->
       <div class="md:hidden" style="display: flex; flex-direction: column; gap: 0.75rem;">
@@ -677,6 +724,14 @@ const warehouseSummary = [
             >
               <i class="pi pi-pencil" style="font-size: 0.82rem;"/>
               {{ t('inventory.btn-edit') }}
+            </button>
+            <button
+                class="flex align-items-center justify-content-center py-2 px-3 border-round-xl cursor-pointer btn-mobile-delete"
+                :disabled="deletingProductId === product.id"
+                :aria-label="t('inventory.btn-delete')"
+                @click="handleDeleteProduct(product)"
+            >
+              <i :class="deletingProductId === product.id ? 'pi pi-spin pi-spinner' : 'pi pi-trash'" style="font-size: 0.82rem;"/>
             </button>
           </div>
         </div>
@@ -1346,6 +1401,20 @@ const warehouseSummary = [
   transform: scale(1.12);
 }
 
+.btn-icon-delete {
+  background: none;
+  color: #EF4444;
+  transition: all 0.15s;
+}
+.btn-icon-delete:hover {
+  background-color: #FEE2E2;
+  transform: scale(1.12);
+}
+.btn-icon-delete:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* ── Empty states ────────────────────────────────────────────── */
 .empty-icon-wrap {
   width: 64px;
@@ -1439,6 +1508,20 @@ const warehouseSummary = [
 .btn-mobile-edit:hover {
   background-color: #F8FAFC;
   border-color: #CBD5E1;
+}
+
+.btn-mobile-delete {
+  background: none;
+  border: 1.5px solid #FECACA;
+  color: #EF4444;
+  transition: all 0.15s;
+}
+.btn-mobile-delete:hover {
+  background-color: #FEE2E2;
+}
+.btn-mobile-delete:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* ── FAB ─────────────────────────────────────────────────────── */
