@@ -109,10 +109,10 @@ const useDeliveryStore = defineStore('delivery', () => {
     /**
      * Loads all deliveries for the given business and updates local state.
      * @param {number|string} businessId - Business identifier from the IAM store.
-     * @returns {void}
+     * @returns {Promise<void>}
      */
     function fetchDeliveries(businessId) {
-        deliveryApi.getDeliveries(businessId).then(response => {
+        return deliveryApi.getDeliveries(businessId).then(response => {
             deliveries.value    = DeliveryAssembler.toEntitiesFromResponse(response);
             deliveriesLoaded.value = true;
         }).catch(error => {

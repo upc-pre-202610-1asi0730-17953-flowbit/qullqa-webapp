@@ -56,7 +56,15 @@ const activeStatusFilter = ref('ALL');
 
 onMounted(() => {
   const businessId = iamStore.currentUser?.businessId ?? null;
-  if (!deliveriesLoaded.value) fetchDeliveries(businessId);
+
+  const deliveriesReady = deliveriesLoaded.value ? Promise.resolve() : fetchDeliveries(businessId);
+  // Waypoints are otherwise only fetched lazily when a delivery's detail modal
+  // is opened (see openDeliveryDetail) — without this, every "in transit" card's
+  // route progress bar would show 0% until the user opened it at least once.
+  deliveriesReady.then(() => {
+    Promise.all(inTransitDeliveries.value.map(delivery => loadDeliveryWaypoints(delivery.id)));
+  });
+
   if (!productStore.productsLoaded) productStore.fetchProducts(businessId);
 });
 
