@@ -641,39 +641,48 @@ function resolveProductName(detail) {
                 class="orders-line-row"
             >
               <!-- Product selector -->
-              <select
-                  v-model="line.productId"
-                  class="orders-line-product-select"
-                  @change="onProductSelected(lineIndex)"
-              >
-                <option value="" disabled>{{ t('suppliers.order-modal-product-placeholder') }}</option>
-                <option
-                    v-for="product in availableProducts"
-                    :key="product.id"
-                    :value="String(product.id)"
+              <div class="orders-line-field orders-line-field-product">
+                <label class="orders-line-field-label">{{ t('suppliers.order-detail-col-product') }}</label>
+                <select
+                    v-model="line.productId"
+                    class="orders-line-product-select"
+                    @change="onProductSelected(lineIndex)"
                 >
-                  {{ product.name }}
-                </option>
-              </select>
+                  <option value="" disabled>{{ t('suppliers.order-modal-product-placeholder') }}</option>
+                  <option
+                      v-for="product in availableProducts"
+                      :key="product.id"
+                      :value="String(product.id)"
+                  >
+                    {{ product.name }}
+                  </option>
+                </select>
+              </div>
 
               <!-- Quantity -->
-              <input
-                  v-model.number="line.quantity"
-                  type="number"
-                  min="1"
-                  class="orders-line-qty-input"
-                  :placeholder="t('suppliers.order-modal-qty-placeholder')"
-              />
+              <div class="orders-line-field">
+                <label class="orders-line-field-label">{{ t('suppliers.order-detail-col-qty') }}</label>
+                <input
+                    v-model.number="line.quantity"
+                    type="number"
+                    min="1"
+                    class="orders-line-qty-input"
+                    :placeholder="t('suppliers.order-modal-qty-placeholder')"
+                />
+              </div>
 
               <!-- Unit price -->
-              <input
-                  v-model.number="line.unitPrice"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  class="orders-line-price-input"
-                  :placeholder="t('suppliers.order-modal-price-placeholder')"
-              />
+              <div class="orders-line-field">
+                <label class="orders-line-field-label">{{ t('suppliers.order-detail-col-unit-price') }}</label>
+                <input
+                    v-model.number="line.unitPrice"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="orders-line-price-input"
+                    :placeholder="t('suppliers.order-modal-price-placeholder')"
+                />
+              </div>
 
               <!-- Remove line -->
               <button
@@ -1333,13 +1342,29 @@ function resolveProductName(detail) {
 
 .orders-line-row {
   display:     flex;
-  align-items: center;
+  align-items: flex-end;
   gap:         0.4rem;
 }
 
+.orders-line-field {
+  display:        flex;
+  flex-direction: column;
+  gap:            0.2rem;
+}
+
+.orders-line-field-product {
+  flex:      1;
+  min-width: 0;
+}
+
+.orders-line-field-label {
+  font-size:   0.68rem;
+  font-weight: 600;
+  color:       #64748B;
+}
+
 .orders-line-product-select {
-  flex:          1;
-  min-width:     0;
+  width:         100%;
   padding:       0.45rem 0.6rem;
   border:        1px solid #E2E8F0;
   border-radius: 0.5rem;
