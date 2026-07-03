@@ -343,22 +343,26 @@ const useProductStore = defineStore('product', () => {
      * Registers a stock intake for a product by updating (or creating) its inventory record.
      *
      * Business rules:
-     * - quantity must be a positive integer; zero or negative values are rejected.
+     * - Topping up an existing record requires a positive quantity (zero/negative rejected)
+     *   — an intake of nothing isn't a real movement.
+     * - Creating a new record accepts quantity >= 0: a product can be registered in the
+     *   catalog with no stock yet (e.g. only a minimumStock threshold set), still
+     *   getting an InventoryItem to persist minimumStock against. Negative is rejected.
      * - If an inventory record exists → increment currentStock via PUT.
      * - If no inventory record exists → create a new one via POST.
      *
      * @param {Object} resource
      * @param {number} resource.productId
      * @param {number} resource.businessId
-     * @param {number} resource.quantity   - Must be > 0.
+     * @param {number} resource.quantity   - Must be > 0 to top up; >= 0 to create.
      * @param {number} [resource.warehouseId]
      * @param {number} [resource.minimumStock] - Only applied when creating a new
      *   inventory record; ignored (existing value preserved) on top-up.
      * @returns {Promise<import('../domain/model/inventory-item.entity.js').InventoryItem>}
      */
     function registerStockIntake(resource) {
-        if (!resource.quantity || resource.quantity <= 0) {
-            const error = new Error('Stock intake quantity must be a positive integer greater than zero.');
+        if (resource.quantity == null || resource.quantity < 0) {
+            const error = new Error('Stock intake quantity must be zero or a positive integer.');
             errors.value.push(error);
             return Promise.reject(error);
         }
@@ -366,9 +370,18 @@ const useProductStore = defineStore('product', () => {
         const existingItem = inventory.value.find(item => item.productId === parseInt(resource.productId));
 
         if (existingItem) {
+            if (resource.quantity <= 0) {
+                const error = new Error('Stock intake quantity must be a positive integer greater than zero.');
+                errors.value.push(error);
+                return Promise.reject(error);
+            }
             const updatedResource = {
-                ...existingItem,
-                stockUnit: existingItem.currentStock + resource.quantity
+                id:           existingItem.id,
+                productId:    existingItem.productId,
+                businessId:   existingItem.businessId,
+                warehouseId:  existingItem.warehouseId,
+                minimumStock: existingItem.minimumStock,
+                stockUnit:    existingItem.currentStock + resource.quantity
             };
             return productApi.updateInventory(existingItem.id, updatedResource)
                 .then(response => {
@@ -414,7 +427,7 @@ const useProductStore = defineStore('product', () => {
      * @returns {Promise<import('../domain/model/inventory-item.entity.js').InventoryItem|void>}
      */
     function updateMinimumStock(productId, minimumStock) {
-        if (minimumStock == null || minimumStock < 0) {
+        if (minimumStock == null || Number.isNaN(minimumStock) || minimumStock < 0) {
             const error = new Error('Minimum stock must be a non-negative integer.');
             errors.value.push(error);
             return Promise.reject(error);
@@ -424,7 +437,10 @@ const useProductStore = defineStore('product', () => {
         if (!existingItem) return Promise.resolve();
 
         const updatedResource = {
-            ...existingItem,
+            id:           existingItem.id,
+            productId:    existingItem.productId,
+            businessId:   existingItem.businessId,
+            warehouseId:  existingItem.warehouseId,
             stockUnit:    existingItem.currentStock,
             minimumStock: parseInt(minimumStock)
         };
@@ -502,30 +518,41 @@ const useProductStore = defineStore('product', () => {
      * @param {Object} resource
      * @param {number} resource.productId
      * @param {number} resource.quantity - Units sold. Must be > 0.
+     * @returns {Promise<import('../domain/model/inventory-item.entity.js').InventoryItem>}
      */
     function registerStockSale(resource) {
         if (!resource.quantity || resource.quantity <= 0) {
-            errors.value.push(new Error('Sale stock deduction quantity must be a positive integer greater than zero.'));
-            return;
+            const error = new Error('Sale stock deduction quantity must be a positive integer greater than zero.');
+            errors.value.push(error);
+            return Promise.reject(error);
         }
 
         const existingItem = inventory.value.find(item => item.productId === parseInt(resource.productId));
         if (!existingItem) {
-            errors.value.push(new Error(`Cannot deduct stock for product #${resource.productId}: no inventory record found.`));
-            return;
+            const error = new Error(`Cannot deduct stock for product #${resource.productId}: no inventory record found.`);
+            errors.value.push(error);
+            return Promise.reject(error);
         }
 
         const updatedResource = {
-            ...existingItem,
-            stockUnit: Math.max(0, existingItem.currentStock - resource.quantity)
+            id:           existingItem.id,
+            productId:    existingItem.productId,
+            businessId:   existingItem.businessId,
+            warehouseId:  existingItem.warehouseId,
+            minimumStock: existingItem.minimumStock,
+            stockUnit:    Math.max(0, existingItem.currentStock - resource.quantity)
         };
-        productApi.updateInventory(existingItem.id, updatedResource)
+        return productApi.updateInventory(existingItem.id, updatedResource)
             .then(response => {
                 const updatedItem = InventoryItemAssembler.toEntityFromResource(response.data);
                 const index = inventory.value.findIndex(item => item.id === updatedItem.id);
                 if (index !== -1) inventory.value[index] = updatedItem;
+                return updatedItem;
             })
-            .catch(error => errors.value.push(error));
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
     }
 
     return {

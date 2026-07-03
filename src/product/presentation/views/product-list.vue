@@ -6,8 +6,9 @@ import { useConfirm }     from 'primevue';
 import useProductStore, { parseLocalDate } from '../../application/product.store.js';
 import useIamStore        from '../../../iam/application/iam.store.js';
 import { Product, ProductCategory, ProductStatus } from '../../domain/model/product.entity.js';
+import { toDateLocale }   from '../../../shared/presentation/date-locale.js';
 
-const { t }        = useI18n();
+const { t, locale } = useI18n();
 const toast        = useToast();
 const confirm      = useConfirm();
 const productStore = useProductStore();
@@ -155,7 +156,7 @@ function resolveExpirationLabel(productId) {
       .reduce((soonest, batch) =>
           !soonest || parseLocalDate(batch.expiration) < parseLocalDate(soonest.expiration) ? batch : soonest, null);
 
-  return parseLocalDate(nearestBatch.expiration).toLocaleDateString('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  return parseLocalDate(nearestBatch.expiration).toLocaleDateString(toDateLocale(locale.value), { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
 const summaryCounts = computed(() => {
@@ -205,6 +206,14 @@ function openCreateProductModal() {
 
 function openEditProductModal(product) {
   editingProduct.value = product;
+
+  // Pre-fill cost/expiration from the product's existing active batch so that
+  // leaving these fields untouched doesn't silently reset purchasePrice to 0
+  // (createBatchForProduct updates the active batch in place on save).
+  const activeBatch = productStore.batches.find(
+      batch => batch.productId === product.id && batch.status === 'ACTIVE'
+  );
+
   productModalForm.value = {
     name:           product.name,
     category:       product.category,
@@ -212,8 +221,8 @@ function openEditProductModal(product) {
     currentStock:   String(resolveCurrentStock(product.id)),
     minimumStock:   String(resolveMinimumStock(product.id)),
     basePrice:      String(product.basePrice),
-    cost:           '',
-    expirationDate: ''
+    cost:           activeBatch ? String(activeBatch.purchasePrice) : '',
+    expirationDate: activeBatch ? activeBatch.expiration : ''
   };
   showProductModal.value = true;
 }
@@ -247,9 +256,9 @@ function saveProductFromModal() {
           })
       : addProduct(productEntity).then(createdProduct => {
         const initialStock = parseInt(productModalForm.value.currentStock) || 0;
-        const intakePromise = initialStock > 0
-            ? registerStockIntake({ productId: createdProduct.id, businessId, quantity: initialStock, minimumStock })
-            : Promise.resolve();
+        // Always create the inventory record, even with 0 initial stock, so
+        // minimumStock has somewhere to persist (see registerStockIntake).
+        const intakePromise = registerStockIntake({ productId: createdProduct.id, businessId, quantity: initialStock, minimumStock });
 
         return intakePromise.then(createdInventoryItem => {
           if (expirationDate) {
