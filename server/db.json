@@ -177,11 +177,12 @@
   "products": [
     {
       "id": 1,
+      "businessId": 1,
       "name": "Leche Gloria Entera 1L",
       "description": "Leche evaporada entera en caja",
       "category": "DAIRY",
-      "businessId": 1,
-      "basePrice": 4.5
+      "basePrice": 4.5,
+      "status": "ACTIVE"
     },
     {
       "id": 2,
@@ -241,16 +242,43 @@
       "category": "BEVERAGES",
       "basePrice": 1,
       "status": "ACTIVE"
+    },
+    {
+      "id": 9,
+      "businessId": 1,
+      "name": "PW Test Product 1783107966057",
+      "description": "",
+      "category": "BEVERAGES",
+      "basePrice": 9.99,
+      "status": "ACTIVE"
+    },
+    {
+      "id": 10,
+      "businessId": 1,
+      "name": "PW Test Product 1783108096442",
+      "description": "",
+      "category": "BEVERAGES",
+      "basePrice": 9.99,
+      "status": "ACTIVE"
+    },
+    {
+      "id": 11,
+      "businessId": 1,
+      "name": "PW Test Product 1783108162665",
+      "description": "",
+      "category": "BEVERAGES",
+      "basePrice": 9.99,
+      "status": "ACTIVE"
     }
   ],
   "batches": [
     {
-      "id": 1,
+      "productId": 1,
       "expiration": "2026-12-31",
       "purchasePrice": 2.5,
       "status": "ACTIVE",
-      "productId": 1,
-      "inventoryId": 1
+      "inventoryId": 1,
+      "id": 1
     },
     {
       "id": 2,
@@ -331,17 +359,14 @@
       "productId": 1,
       "businessId": 1,
       "warehouseId": 1,
-      "currentStock": 148,
       "minimumStock": 0,
-      "updatedAt": "",
-      "stockUnit": 298
+      "stockUnit": 293
     },
     {
       "id": 2,
       "productId": 2,
       "businessId": 1,
       "warehouseId": 1,
-      "currentStock": 79,
       "minimumStock": 0,
       "updatedAt": "",
       "stockUnit": 78
@@ -351,7 +376,6 @@
       "productId": 3,
       "businessId": 1,
       "warehouseId": 2,
-      "currentStock": 60,
       "minimumStock": 0,
       "updatedAt": "",
       "stockUnit": 59
@@ -361,7 +385,6 @@
       "productId": 4,
       "businessId": 1,
       "warehouseId": 1,
-      "currentStock": 12,
       "minimumStock": 2,
       "updatedAt": "",
       "stockUnit": 12
@@ -385,7 +408,6 @@
       "productId": 7,
       "businessId": 1,
       "warehouseId": null,
-      "currentStock": 50,
       "minimumStock": 10,
       "updatedAt": "",
       "stockUnit": 50
@@ -395,10 +417,33 @@
       "productId": 8,
       "businessId": 1,
       "warehouseId": null,
-      "currentStock": 50,
       "minimumStock": 5,
       "updatedAt": "",
       "stockUnit": 0
+    },
+    {
+      "productId": 9,
+      "businessId": 1,
+      "warehouseId": null,
+      "stockUnit": 0,
+      "minimumStock": 7,
+      "id": 9
+    },
+    {
+      "productId": 10,
+      "businessId": 1,
+      "warehouseId": null,
+      "stockUnit": 0,
+      "minimumStock": 7,
+      "id": 10
+    },
+    {
+      "productId": 11,
+      "businessId": 1,
+      "warehouseId": null,
+      "stockUnit": 0,
+      "minimumStock": 7,
+      "id": 11
     }
   ],
   "sales": [
@@ -637,6 +682,61 @@
       "description": "",
       "currency": "PEN",
       "id": 23
+    },
+    {
+      "businessId": 1,
+      "customerId": null,
+      "status": "PAID",
+      "totalAmount": 4.5,
+      "paymentMethod": "CASH",
+      "date": "2026-07-03T19:51:22.114Z",
+      "description": "",
+      "currency": "PEN",
+      "id": 24
+    },
+    {
+      "businessId": 1,
+      "customerId": null,
+      "status": "PAID",
+      "totalAmount": 4.5,
+      "paymentMethod": "CASH",
+      "date": "2026-07-03T19:53:08.776Z",
+      "description": "",
+      "currency": "PEN",
+      "id": 25
+    },
+    {
+      "businessId": 1,
+      "customerId": null,
+      "status": "PAID",
+      "totalAmount": 4.5,
+      "paymentMethod": "CASH",
+      "date": "2026-07-03T19:54:25.893Z",
+      "description": "",
+      "currency": "PEN",
+      "id": 26
+    },
+    {
+      "businessId": 1,
+      "customerId": null,
+      "status": "PAID",
+      "totalAmount": 4.5,
+      "paymentMethod": "CASH",
+      "date": "2026-07-03T19:56:29.445Z",
+      "description": "",
+      "currency": "PEN",
+      "id": 27
+    },
+    {
+      "businessId": 1,
+      "customerId": null,
+      "status": "PAID",
+      "totalAmount": 4.5,
+      "paymentMethod": "CASH",
+      "date": "2026-07-03T19:58:53.316Z",
+      "description": "",
+      "currency": "PEN",
+      "id": 28
     }
   ],
   "saleDetails": [
@@ -951,6 +1051,46 @@
       "unitPrice": 1,
       "discount": 0,
       "id": 39
+    },
+    {
+      "saleId": 24,
+      "productId": 1,
+      "quantity": 1,
+      "unitPrice": 4.5,
+      "discount": 0,
+      "id": 40
+    },
+    {
+      "saleId": 25,
+      "productId": 1,
+      "quantity": 1,
+      "unitPrice": 4.5,
+      "discount": 0,
+      "id": 41
+    },
+    {
+      "saleId": 26,
+      "productId": 1,
+      "quantity": 1,
+      "unitPrice": 4.5,
+      "discount": 0,
+      "id": 42
+    },
+    {
+      "saleId": 27,
+      "productId": 1,
+      "quantity": 1,
+      "unitPrice": 4.5,
+      "discount": 0,
+      "id": 43
+    },
+    {
+      "saleId": 28,
+      "productId": 1,
+      "quantity": 1,
+      "unitPrice": 4.5,
+      "discount": 0,
+      "id": 44
     }
   ],
   "customers": [
@@ -1009,6 +1149,15 @@
       "documentNumber": "12345678",
       "phoneNumber": "987654321",
       "registeredAt": "2026-07-03T04:29:31.073Z"
+    },
+    {
+      "id": 8,
+      "businessId": 1,
+      "fullName": "Playwright Test Customer",
+      "documentNumber": "08165646",
+      "phoneNumber": "999888777",
+      "email": "pwtest1783108165646@example.com",
+      "registeredAt": "2026-07-03T19:49:25.726Z"
     }
   ],
   "suppliers": [
