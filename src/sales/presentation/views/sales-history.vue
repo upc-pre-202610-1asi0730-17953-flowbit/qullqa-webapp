@@ -6,6 +6,7 @@ import useSalesStore    from '../../application/sales.store.js';
 import useProductStore  from '../../../product/application/product.store.js';
 import useIamStore      from '../../../iam/application/iam.store.js';
 import { SaleStatus }   from '../../domain/model/sale.entity.js';
+import { toDateLocale } from '../../../shared/presentation/date-locale.js';
 
 /**
  * SalesHistory view for the Sales & POS Management bounded context.
@@ -22,7 +23,7 @@ import { SaleStatus }   from '../../domain/model/sale.entity.js';
  * @view SalesHistory
  */
 
-const { t }        = useI18n();
+const { t, locale } = useI18n();
 const toast        = useToast();
 const salesStore   = useSalesStore();
 const productStore = useProductStore();
@@ -137,7 +138,7 @@ function getMethodConfig(method) {
  */
 function formatDate(dateString) {
   if (!dateString) return '—';
-  return new Date(dateString).toLocaleString('es-PE', {
+  return new Date(dateString).toLocaleString(toDateLocale(locale.value), {
     day:    '2-digit',
     month:  '2-digit',
     year:   'numeric',

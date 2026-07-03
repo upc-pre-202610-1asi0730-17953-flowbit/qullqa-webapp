@@ -226,6 +226,7 @@ function showStockError(message) {
  * Opens the PaymentModal if the cart has at least one item.
  */
 function openPaymentModal() {
+  if (isSubmitting.value) return;
   if (cartItems.value.length === 0) {
     showStockError(t('pos.error-empty-cart'));
     return;
@@ -240,6 +241,8 @@ function openPaymentModal() {
  * @param {{ paymentMethod: string, cashGiven: number }} payload
  */
 async function handlePaymentConfirm({ paymentMethod }) {
+  if (isSubmitting.value) return;
+
   isSubmitting.value    = true;
   showPaymentModal.value = false;
 
@@ -251,20 +254,23 @@ async function handlePaymentConfirm({ paymentMethod }) {
     description:   ''
   });
 
-  isSubmitting.value = false;
-
   if (result.success) {
     // Deduct sold quantities from inventory now that the sale is persisted.
-    soldLines.forEach(line => {
-      productStore.registerStockSale({ productId: line.productId, quantity: line.quantity });
-    });
+    try {
+      await Promise.all(soldLines.map(line =>
+          productStore.registerStockSale({ productId: line.productId, quantity: line.quantity })
+      ));
+    } catch (error) {
+      showStockError(t('pos.error-stock-deduction-failed'));
+    }
 
-    const lastSale = salesStore.sales[salesStore.sales.length - 1];
     lastSoldLines.value  = soldLines;
-    completedSale.value  = lastSale || null;
+    completedSale.value  = result.sale;
   } else {
     showStockError(t('pos.error-confirm-failed'));
   }
+
+  isSubmitting.value = false;
 }
 
 /**

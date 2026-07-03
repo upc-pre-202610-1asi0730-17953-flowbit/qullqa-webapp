@@ -19,6 +19,7 @@ export class Customer {
      * @param {string}      [params.fullName='']         - Full display name of the customer.
      * @param {string}      [params.documentNumber='']   - DNI or RUC number.
      * @param {string}      [params.phoneNumber='']      - Contact phone number.
+     * @param {string}      [params.email='']            - Contact email address (optional).
      * @param {string}      [params.registeredAt='']     - ISO 8601 timestamp of registration.
      */
     constructor({
@@ -27,6 +28,7 @@ export class Customer {
                     fullName       = '',
                     documentNumber = '',
                     phoneNumber    = '',
+                    email          = '',
                     registeredAt   = ''
                 }) {
         this.id             = id;
@@ -34,6 +36,7 @@ export class Customer {
         this.fullName       = fullName;
         this.documentNumber = documentNumber;
         this.phoneNumber    = phoneNumber;
+        this.email          = email;
         this.registeredAt   = registeredAt;
     }
 

@@ -284,17 +284,17 @@ const useSalesStore = defineStore('sales', () => {
      * @param {string} paymentMethod - One of the PaymentMethod enum values.
      * @param {number|null} customerId - Optional customer id.
      * @param {string} description - Optional sale description/note.
-     * @returns {Promise<{ success: boolean, errorKey: string|null }>}
+     * @returns {Promise<{ success: boolean, errorKey: string|null, sale: Sale|null }>}
      */
     async function confirmSale({ paymentMethod, customerId = null, description = '' }) {
         if (!currentSale.value || !currentSale.value.isOpen) {
-            return { success: false, errorKey: 'pos.error-no-active-sale' };
+            return { success: false, errorKey: 'pos.error-no-active-sale', sale: null };
         }
         if (currentSale.value.details.length === 0) {
-            return { success: false, errorKey: 'pos.error-empty-cart' };
+            return { success: false, errorKey: 'pos.error-empty-cart', sale: null };
         }
         if (!paymentMethod || !Object.values(PaymentMethod).includes(paymentMethod)) {
-            return { success: false, errorKey: 'pos.error-no-payment-method' };
+            return { success: false, errorKey: 'pos.error-no-payment-method', sale: null };
         }
 
         const subtotal = currentSale.value.subtotal;
@@ -344,10 +344,10 @@ const useSalesStore = defineStore('sales', () => {
             sales.value.push(finalSale);
             currentSale.value = null;
 
-            return { success: true, errorKey: null };
+            return { success: true, errorKey: null, sale: finalSale };
         } catch (error) {
             errors.value.push(error);
-            return { success: false, errorKey: 'pos.error-confirm-failed' };
+            return { success: false, errorKey: 'pos.error-confirm-failed', sale: null };
         }
     }
 
@@ -468,16 +468,17 @@ const useSalesStore = defineStore('sales', () => {
     /**
      * Deletes a customer and removes it from local state.
      * @param {number|string} customerId - Identifier of the customer to delete.
-     * @returns {void}
+     * @returns {Promise<void>}
      */
     function deleteCustomer(customerId) {
-        salesApi.deleteCustomer(customerId).then(() => {
+        return salesApi.deleteCustomer(customerId).then(() => {
             const index = customers.value.findIndex(customer => customer.id === parseInt(customerId));
             if (index !== -1) {
                 customers.value.splice(index, 1);
             }
         }).catch(error => {
             errors.value.push(error);
+            throw error;
         });
     }
 

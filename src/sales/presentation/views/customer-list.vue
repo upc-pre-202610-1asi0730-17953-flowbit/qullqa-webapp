@@ -7,6 +7,7 @@ import useIamStore           from '../../../iam/application/iam.store.js';
 import CustomerModal         from '../components/customer-modal.vue';
 import CustomerDetailModal   from '../components/customer-detail-modal.vue';
 import { Customer }          from '../../domain/model/customer.entity.js';
+import { toDateLocale }      from '../../../shared/presentation/date-locale.js';
 
 /**
  * CustomerList view for the Sales & POS Management bounded context.
@@ -23,7 +24,7 @@ import { Customer }          from '../../domain/model/customer.entity.js';
  * @view CustomerList
  */
 
-const { t }      = useI18n();
+const { t, locale } = useI18n();
 const toast      = useToast();
 const salesStore = useSalesStore();
 const iamStore   = useIamStore();
@@ -82,7 +83,7 @@ function getAvatarInitials(fullName) {
  */
 function formatDate(dateString) {
   if (!dateString) return '—';
-  return new Date(dateString).toLocaleDateString('es-PE');
+  return new Date(dateString).toLocaleDateString(toDateLocale(locale.value));
 }
 
 // ─── Actions ───────────────────────────────────────────────────────────────
