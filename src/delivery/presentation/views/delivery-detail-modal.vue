@@ -4,6 +4,7 @@ import { useI18n }  from 'vue-i18n';
 import useDeliveryStore from '../../application/delivery.store.js';
 import useProductStore  from '../../../product/application/product.store.js';
 import { DeliveryStatus } from '../../domain/model/delivery.entity.js';
+import { toDateLocale } from '../../../shared/presentation/date-locale.js';
 
 const props = defineProps({
   /**
@@ -25,7 +26,7 @@ const emit = defineEmits([
   'completed'
 ]);
 
-const { t }         = useI18n();
+const { t, locale } = useI18n();
 const deliveryStore = useDeliveryStore();
 const productStore  = useProductStore();
 
@@ -108,7 +109,7 @@ function isCurrentWaypoint(waypointItem, waypointIndex) {
  */
 function formatDateTime(isoString) {
   if (!isoString) return '—';
-  return new Date(isoString).toLocaleString('es-PE', {
+  return new Date(isoString).toLocaleString(toDateLocale(locale.value), {
     day:    '2-digit',
     month:  '2-digit',
     year:   'numeric',

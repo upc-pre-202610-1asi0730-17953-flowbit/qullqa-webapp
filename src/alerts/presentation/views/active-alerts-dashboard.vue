@@ -5,8 +5,9 @@ import { useToast }       from 'primevue/usetoast';
 import useAlertsStore     from '../../application/alerts.store.js';
 import useIamStore        from '../../../iam/application/iam.store.js';
 import { AlertStatus } from '../../domain/model/alert.entity.js';
+import { toDateLocale } from '../../../shared/presentation/date-locale.js';
 
-const { t }       = useI18n();
+const { t, locale } = useI18n();
 const toast       = useToast();
 const alertsStore = useAlertsStore();
 const iamStore    = useIamStore();
@@ -153,12 +154,12 @@ function saveRuleThreshold(ruleId) {
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 function formatDate(isoDate) {
   if (!isoDate) return '—';
-  return new Date(isoDate).toLocaleDateString('es-PE', { year: 'numeric', month: 'short', day: 'numeric' });
+  return new Date(isoDate).toLocaleDateString(toDateLocale(locale.value), { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 function formatDateTime(isoDate) {
   if (!isoDate) return '—';
-  return new Date(isoDate).toLocaleDateString('es-PE', {
+  return new Date(isoDate).toLocaleDateString(toDateLocale(locale.value), {
     year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
   });
 }

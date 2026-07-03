@@ -7,8 +7,9 @@ import useProductStore                       from '../../../product/application/
 import { DeliveryStatus }                    from '../../domain/model/delivery.entity.js';
 import DeliveryDetailModal                   from './delivery-detail-modal.vue';
 import DeliveryFormModal                     from './delivery-form-modal.vue';
+import { toDateLocale }                      from '../../../shared/presentation/date-locale.js';
 
-const { t }           = useI18n();
+const { t, locale }   = useI18n();
 const deliveryStore   = useDeliveryStore();
 const iamStore        = useIamStore();
 const productStore    = useProductStore();
@@ -168,7 +169,7 @@ function getPillStyle(key) {
  */
 function formatDateTime(isoString) {
   if (!isoString) return '—';
-  return new Date(isoString).toLocaleString('es-PE', {
+  return new Date(isoString).toLocaleString(toDateLocale(locale.value), {
     day:    '2-digit',
     month:  '2-digit',
     year:   'numeric',
