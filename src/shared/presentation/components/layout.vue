@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n';
 import LanguageSwitcher from './language-switcher.vue';
 import useIamStore from '../../../iam/application/iam.store.js';
 import useAlertsStore from '../../../alerts/application/alerts.store.js';
+import { roleLabelKey } from '../../../iam/presentation/role-labels.js';
 
 const { t }      = useI18n();
 const router     = useRouter();
@@ -16,12 +17,28 @@ const alertsStore = useAlertsStore();
  * Loads alerts as soon as the authenticated layout mounts so the sidebar/mobile
  * badge and critical-alert highlight reflect real data on every page, not only
  * after the user has visited the Alerts section at least once.
+ * Also loads roles so the sidebar footer can resolve the real role label
+ * instead of a static placeholder.
  */
 onMounted(() => {
   const businessId = iamStore.currentUser?.businessId ?? null;
   if (businessId && !alertsStore.alertsLoaded) {
     alertsStore.fetchAlerts(businessId);
   }
+  if (!iamStore.rolesLoaded) {
+    iamStore.fetchRoles();
+  }
+});
+
+/**
+ * Resolves the current user's roleId to its display label via roles.position,
+ * the same source of truth used in Settings — this used to be a hardcoded
+ * "Administrador" string regardless of the actual logged-in user's role.
+ */
+const currentUserRoleLabel = computed(() => {
+  const roleId = iamStore.currentUser?.roleId;
+  if (roleId == null) return t('sidebar.admin-label');
+  return t(roleLabelKey(iamStore.getRolePosition(roleId)));
 });
 
 /**
@@ -239,7 +256,7 @@ function handleSignOut() {
               {{ iamStore.currentUser ? iamStore.currentUser.fullName : 'Qullqa' }}
             </p>
             <p class="m-0" style="color: #7FA8BF; font-size: 0.68rem;">
-              {{ t('sidebar.admin-label') }}
+              {{ currentUserRoleLabel }}
             </p>
           </div>
         </div>

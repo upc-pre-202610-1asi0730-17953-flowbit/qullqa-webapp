@@ -6,6 +6,7 @@ import useIamStore from '../../application/iam.store.js';
 import useSubscriptionStore from '../../../subscription/application/subscription.store.js';
 import LanguageSwitcher from '../../../shared/presentation/components/language-switcher.vue';
 import InviteUserModal from '../components/invite-user-modal.vue';
+import { roleLabelKey, roleStyleByPosition } from '../role-labels.js';
 
 const { t }    = useI18n();
 const confirm  = useConfirm();
@@ -85,21 +86,11 @@ onMounted(() => {
  * source of truth), instead of a hardcoded roleId → label mapping.
  */
 function resolveRoleLabel(roleId) {
-  const labelByPosition = {
-    ADMIN:     t('settings.role-admin'),
-    CASHIER:   t('settings.role-collaborator'),
-    WAREHOUSE: t('settings.role-seller')
-  };
-  return labelByPosition[getRolePosition(roleId)] ?? t('settings.role-seller');
+  return t(roleLabelKey(getRolePosition(roleId)));
 }
 
 function resolveRoleStyle(roleId) {
-  const styleByPosition = {
-    ADMIN:     { bg: '#FEE2E2', color: '#DC2626' },
-    CASHIER:   { bg: '#EDE9FE', color: '#7C3AED' },
-    WAREHOUSE: { bg: '#DBEAFE', color: '#1D4ED8' }
-  };
-  return styleByPosition[getRolePosition(roleId)] ?? styleByPosition.WAREHOUSE;
+  return roleStyleByPosition(getRolePosition(roleId));
 }
 
 function resolveStatusStyle(status) {

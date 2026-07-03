@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useI18n }      from 'vue-i18n';
 import useIamStore      from '../../application/iam.store.js';
 import { UserAccount }  from '../../domain/model/user-account.entity.js';
+import { roleLabelKey } from '../role-labels.js';
 
 /**
  * InviteUserModal component for the Identity & Access Management bounded context.
@@ -53,12 +54,7 @@ onMounted(() => {
  * @returns {string}
  */
 function roleLabel(position) {
-  const labelByPosition = {
-    ADMIN:     t('settings.role-admin'),
-    CASHIER:   t('settings.role-collaborator'),
-    WAREHOUSE: t('settings.role-seller')
-  };
-  return labelByPosition[position] ?? position;
+  return t(roleLabelKey(position));
 }
 
 const isFormValid = computed(() =>
