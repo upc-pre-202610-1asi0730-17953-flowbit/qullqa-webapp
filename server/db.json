@@ -982,6 +982,14 @@
       "phoneNumber": "987006006",
       "registeredAt": "2026-04-15T00:00:00Z",
       "businessId": 1
+    },
+    {
+      "id": 7,
+      "businessId": 1,
+      "fullName": "Cliente QA Test",
+      "documentNumber": "12345678",
+      "phoneNumber": "987654321",
+      "registeredAt": "2026-07-03T04:29:31.073Z"
     }
   ],
   "suppliers": [

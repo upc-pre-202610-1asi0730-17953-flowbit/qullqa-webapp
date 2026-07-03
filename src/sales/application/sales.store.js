@@ -433,31 +433,35 @@ const useSalesStore = defineStore('sales', () => {
     /**
      * Creates a new customer and appends it to local state.
      * @param {import('../domain/model/customer.entity.js').Customer} customer - Customer entity to persist.
-     * @returns {void}
+     * @returns {Promise<import('../domain/model/customer.entity.js').Customer>}
      */
     function addCustomer(customer) {
-        salesApi.createCustomer(customer).then(response => {
+        return salesApi.createCustomer(customer).then(response => {
             const newCustomer = CustomerAssembler.toEntityFromResource(response.data);
             customers.value.push(newCustomer);
+            return newCustomer;
         }).catch(error => {
             errors.value.push(error);
+            throw error;
         });
     }
 
     /**
      * Updates an existing customer and synchronises local state.
      * @param {import('../domain/model/customer.entity.js').Customer} customer - Customer entity with updated data.
-     * @returns {void}
+     * @returns {Promise<import('../domain/model/customer.entity.js').Customer>}
      */
     function updateCustomer(customer) {
-        salesApi.updateCustomer(customer.id, customer).then(response => {
+        return salesApi.updateCustomer(customer.id, customer).then(response => {
             const updatedCustomer = CustomerAssembler.toEntityFromResource(response.data);
             const index = customers.value.findIndex(existingCustomer => existingCustomer.id === updatedCustomer.id);
             if (index !== -1) {
                 customers.value[index] = updatedCustomer;
             }
+            return updatedCustomer;
         }).catch(error => {
             errors.value.push(error);
+            throw error;
         });
     }
 
