@@ -235,6 +235,7 @@
     "action-inventory-sub": "Ver todo el stock",
     "action-new-movement": "Registrar movimiento",
     "action-view-reports": "Ver reportes",
+    "action-view-reports-sub": "Exportar y analizar",
     "top-stock": "Mayor stock",
     "units": "unidades",
     "unknown-product": "Producto desconocido"

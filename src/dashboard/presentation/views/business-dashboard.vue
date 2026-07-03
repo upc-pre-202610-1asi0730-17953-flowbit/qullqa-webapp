@@ -227,8 +227,10 @@ const topStockProducts = computed(() => {
 });
 
 /**
- * The 6 quick-action cards shown in the 2×3 grid.
+ * The quick-action cards shown in the actions grid.
  * Each card declares its i18n keys, icon, colors, and navigation handler.
+ * Includes "View reports" (navigateToReports) — its only entry point in the
+ * whole app, since neither the sidebar nor any other view links to it.
  * @type {import('vue').ComputedRef<Array>}
  */
 const quickActions = computed(() => [
@@ -279,6 +281,14 @@ const quickActions = computed(() => [
     iconBg:   '#DBEAFE',
     iconColor:'#2563EB',
     handler:  navigateToNewProduct
+  },
+  {
+    labelKey: 'dashboard.action-view-reports',
+    subKey:   'dashboard.action-view-reports-sub',
+    icon:     'pi pi-chart-bar',
+    iconBg:   '#F1F5F9',
+    iconColor:'#475569',
+    handler:  navigateToReports
   }
 ]);
 </script>
