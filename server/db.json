@@ -47,6 +47,18 @@
       "businessId": 2,
       "phone": "954-321-098",
       "createdAt": "2025-04-10T11:00:00Z"
+    },
+    {
+      "name": "Test",
+      "lastName": "Usuario",
+      "email": "testuser1783050269745@qullqa.com",
+      "password": "password123",
+      "status": "ACTIVE",
+      "roleId": 1,
+      "businessId": null,
+      "businessName": "Bodega Test QA",
+      "businessType": "BODEGA",
+      "id": 5
     }
   ],
   "roles": [

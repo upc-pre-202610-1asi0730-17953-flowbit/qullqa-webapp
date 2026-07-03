@@ -85,7 +85,8 @@
     "error-business-type": "Selecciona un tipo de negocio.",
     "error-email": "Ingresa un correo válido.",
     "error-password": "La contraseña debe tener al menos 8 caracteres.",
-    "error-credentials": "Este correo ya está registrado."
+    "error-credentials": "Este correo ya está registrado.",
+    "error-submit-failed": "No se pudo crear la cuenta. Verifica tu conexión e intenta de nuevo."
   },
   "forgot-password": {
     "title": "Recuperar contraseña",

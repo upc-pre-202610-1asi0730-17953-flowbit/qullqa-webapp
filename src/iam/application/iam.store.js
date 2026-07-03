@@ -163,26 +163,28 @@ const useIamStore = defineStore('iam', () => {
      *
      * @param {string} email - User email address.
      * @param {string} password - User password (plain text for mock).
-     * @returns {void}
+     * @returns {Promise<import('../domain/model/user-account.entity.js').UserAccount>}
      */
     function signIn(email, password) {
         errors.value = [];
 
         if (!email || !password) {
             errors.value.push('sign-in.error-empty');
-            return;
+            return Promise.reject(new Error('sign-in.error-empty'));
         }
         if (!email.includes('@')) {
             errors.value.push('sign-in.error-invalid-email');
-            return;
+            return Promise.reject(new Error('sign-in.error-invalid-email'));
         }
 
-        authProvider.signIn(email, password).then(matchedResource => {
+        return authProvider.signIn(email, password).then(matchedResource => {
             currentUser.value = UserAccountAssembler.toEntityFromResource(matchedResource);
             isAuthenticated.value = true;
             persistSession(currentUser.value);
+            return currentUser.value;
         }).catch(error => {
             errors.value.push(error.message);
+            throw error;
         });
     }
 
@@ -203,7 +205,7 @@ const useIamStore = defineStore('iam', () => {
      * @param {string} payload.fullName - Full name of the user.
      * @param {string} payload.email - Email address.
      * @param {string} payload.password - Password (min 6 characters).
-     * @returns {void}
+     * @returns {Promise<import('../domain/model/user-account.entity.js').UserAccount>}
      */
     function signUp(payload) {
         errors.value = [];
@@ -220,13 +222,15 @@ const useIamStore = defineStore('iam', () => {
             businessType: payload.businessType ?? null
         };
 
-        authProvider.signUp(resource).then(createdResource => {
+        return authProvider.signUp(resource).then(createdResource => {
             const createdUser = UserAccountAssembler.toEntityFromResource(createdResource);
             currentUser.value  = createdUser;
             isAuthenticated.value = true;
             persistSession(currentUser.value);
+            return createdUser;
         }).catch(error => {
             errors.value.push(error.message);
+            throw error;
         });
     }
 
