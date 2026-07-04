@@ -20,7 +20,6 @@ import { ProductApi }               from '../infrastructure/product.api.js';
 import { ProductAssembler }         from '../infrastructure/product.assembler.js';
 import { InventoryItemAssembler }   from '../infrastructure/inventory-item.assembler.js';
 import { StockMovementAssembler }   from '../infrastructure/stock-movement.assembler.js';
-import { WarehouseStockAssembler }  from '../infrastructure/warehouse-stock.assembler.js';
 import { MovementType }             from '../domain/model/stock-movement.entity.js';
 import { ProductStatus }            from '../domain/model/product.entity.js';
 
@@ -49,9 +48,6 @@ const useProductStore = defineStore('product', () => {
 
     /** @type {import('vue').Ref<import('../domain/model/stock-movement.entity.js').StockMovement[]>} */
     const stockMovements = ref([]);
-
-    /** @type {import('vue').Ref<import('../domain/model/warehouse-stock.entity.js').WarehouseStock[]>} */
-    const warehouseStock = ref([]);
 
     /**
      * Raw batch resources (id, productId, expiration, status) across every product.
@@ -213,18 +209,6 @@ const useProductStore = defineStore('product', () => {
             .catch(error => {
                 console.error('Failed to record stock movement (stock itself was already updated):', error);
             });
-    }
-
-    /**
-     * Fetches warehouse stock records for a specific warehouse.
-     * @param {number|string} warehouseId
-     */
-    function fetchWarehouseStock(warehouseId) {
-        productApi.getWarehouseStock(warehouseId)
-            .then(response => {
-                warehouseStock.value = WarehouseStockAssembler.toEntitiesFromResponse(response);
-            })
-            .catch(error => errors.value.push(error));
     }
 
     /**
@@ -665,7 +649,6 @@ const useProductStore = defineStore('product', () => {
         products,
         inventory,
         stockMovements,
-        warehouseStock,
         batches,
         productsLoaded,
         inventoryLoaded,
@@ -684,7 +667,6 @@ const useProductStore = defineStore('product', () => {
         fetchBatches,
         fetchStockMovements,
         fetchAllStockMovements,
-        fetchWarehouseStock,
         fetchWarehousesForBusiness,
         createWarehouse,
         fetchSuppliersForBusiness,

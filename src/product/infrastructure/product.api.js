@@ -183,16 +183,6 @@ export class ProductApi extends BaseApi {
     }
 
     /**
-     * Fetches all inventory records for a specific warehouse.
-     * Used to populate the WarehouseStockView.
-     * @param {number|string} warehouseId
-     * @returns {Promise<import('axios').AxiosResponse>}
-     */
-    getWarehouseStock(warehouseId) {
-        return this.#inventoriesEndpoint.getAllByParam('warehouseId', warehouseId);
-    }
-
-    /**
      * Fetches all suppliers for a given business.
      * Used to populate the supplier dropdown in the stock intake form.
      * @param {number|string} businessId
