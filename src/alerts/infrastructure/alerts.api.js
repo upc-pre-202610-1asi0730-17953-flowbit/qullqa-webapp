@@ -41,6 +41,17 @@ export class AlertsApi extends BaseApi {
     }
 
     /**
+     * Creates a new alert record. Used to persist a live-evaluated alert
+     * (see evaluateLiveAlerts) the first time a user acts on it (acknowledge
+     * or resolve), since live-evaluated alerts don't exist in the mock until then.
+     * @param {Object} resource
+     * @returns {Promise<import('axios').AxiosResponse>}
+     */
+    createAlert(resource) {
+        return this.#alertsEndpoint.create(resource);
+    }
+
+    /**
      * Resolves an alert by patching its status to RESOLVED.
      * Business rule: only ACTIVE or SENT alerts may be resolved.
      * @param {number|string} id - Alert identifier.

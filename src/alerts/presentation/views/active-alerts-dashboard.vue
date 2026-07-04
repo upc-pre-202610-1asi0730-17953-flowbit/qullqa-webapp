@@ -23,7 +23,7 @@ const {
   expirationActiveCount
 } = toRefs(alertsStore);
 
-const { fetchAlerts, acknowledgeAlert, resolveAlert, toggleAlertRule, updateAlertRuleThreshold } = alertsStore;
+const { fetchAlerts, evaluateLiveAlerts, acknowledgeAlert, resolveAlert, toggleAlertRule, updateAlertRuleThreshold } = alertsStore;
 
 // ─── Tab state ─────────────────────────────────────────────────────────────────
 const activeTab = ref('activas');
@@ -64,10 +64,16 @@ function getSeverityConfig(severity) { return severityConfig[severity] ?? severi
 function getStatusConfig(status)     { return statusConfig[status]     ?? statusConfig.ACTIVE;     }
 
 // ─── Lifecycle ─────────────────────────────────────────────────────────────────
+/**
+ * Loads the persisted alert history and then re-evaluates which alerts are
+ * currently ACTIVE live, from real inventory/batch data — so "Por vencer"/
+ * "Vencido"/"Bajo stock" here always agrees with the same real-time state
+ * Inventario shows, instead of trusting static pre-seeded rows that drift
+ * out of sync with reality as time passes.
+ */
 onMounted(() => {
-  if (alertsLoaded.value) return;
   const businessId = iamStore.currentUser?.businessId ?? null;
-  fetchAlerts(businessId);
+  fetchAlerts(businessId).then(() => evaluateLiveAlerts(businessId));
 });
 
 // ─── Stats ─────────────────────────────────────────────────────────────────────
