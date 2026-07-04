@@ -18,7 +18,7 @@ const iamStore     = useIamStore();
 const { products, productsLoaded, inventory, stockMovements, stockMovementsLoaded, errors } = toRefs(productStore);
 const { fetchProducts, fetchInventory, fetchBatches, fetchAllStockMovements,
   addProduct, updateProduct, deleteProduct, registerStockIntake, updateMinimumStock,
-  createBatchForProduct, isProductExpiringSoon } = productStore;
+  createBatchForProduct, isProductExpiringSoon, isProductExpired } = productStore;
 
 const savingProduct  = ref(false);
 const savingIntake   = ref(false);
@@ -93,6 +93,7 @@ const statusConfig = {
   low:      { color: '#D97706', background: '#FEF3C7', icon: 'pi pi-exclamation-triangle' },
   expiring: { color: '#EA580C', background: '#FFEDD5', icon: 'pi pi-clock'                },
   critical: { color: '#DC2626', background: '#FEE2E2', icon: 'pi pi-exclamation-circle'   },
+  expired:  { color: '#7C2D12', background: '#FFE4E1', icon: 'pi pi-ban'                  },
   out:      { color: '#64748B', background: '#F1F5F9', icon: 'pi pi-times-circle'         }
 };
 
@@ -147,13 +148,17 @@ watch(activeTab, (tab) => {
  * (out/low/normal, see InventoryItem.stockStatus) with an independent
  * expiration check against active batches. A product that is both low on
  * stock and expiring soon is reported as 'critical' — the most urgent case.
+ * An already-expired batch is reported as its own 'expired' state, distinct
+ * from 'expiring' (soon, not yet expired) — this must match Alerts'
+ * EXPIRATION/EXPIRED distinction so both screens agree on the same product.
  *
  * @param {number|string} productId
- * @returns {'out'|'critical'|'low'|'expiring'|'normal'}
+ * @returns {'out'|'expired'|'critical'|'low'|'expiring'|'normal'}
  */
 function resolveProductStatus(productId) {
   const inventoryItem = productStore.getInventoryByProduct(productId);
   if (!inventoryItem || inventoryItem.currentStock === 0) return 'out';
+  if (isProductExpired(productId)) return 'expired';
 
   const isLow      = inventoryItem.isLowStock;
   const isExpiring = isProductExpiringSoon(productId);
@@ -168,6 +173,8 @@ function resolveProductStatus(productId) {
  * Checks whether a product's resolved status matches a filter/pill key.
  * 'low' and 'expiring' filters also include 'critical' products, since a
  * critical product is by definition both low on stock and expiring soon.
+ * 'expiring' also includes 'expired', so the "Por vencer" pill still shows
+ * every expiration-related product, with the row badge itself telling them apart.
  * @param {string} productStatus
  * @param {string} filterKey
  * @returns {boolean}
@@ -175,7 +182,7 @@ function resolveProductStatus(productId) {
 function statusMatchesFilter(productStatus, filterKey) {
   if (filterKey === 'all')      return true;
   if (filterKey === 'low')      return productStatus === 'low' || productStatus === 'critical';
-  if (filterKey === 'expiring') return productStatus === 'expiring' || productStatus === 'critical';
+  if (filterKey === 'expiring') return productStatus === 'expiring' || productStatus === 'critical' || productStatus === 'expired';
   return productStatus === filterKey;
 }
 
@@ -237,7 +244,7 @@ const summaryCounts = computed(() => {
     const status = resolveProductStatus(product.id);
     if (status === 'out')      counts.out      += 1;
     if (status === 'low' || status === 'critical') counts.low += 1;
-    if (status === 'expiring' || status === 'critical') counts.expiring += 1;
+    if (status === 'expiring' || status === 'critical' || status === 'expired') counts.expiring += 1;
   });
   return counts;
 });
@@ -534,6 +541,7 @@ const warehouseTableRows = computed(() => {
           <!-- Register intake (hidden on mobile, replaced by FAB) -->
           <button
               class="hidden sm:flex align-items-center gap-2 px-3 py-2 border-round-xl cursor-pointer btn-intake-outline"
+              :title="t('inventory.intake-modal-hint')"
               @click="openIntakeModal(null)"
           >
             <i class="pi pi-inbox" style="font-size: 0.9rem;"/>
@@ -1253,6 +1261,13 @@ const warehouseTableRows = computed(() => {
           </button>
         </div>
 
+        <div class="px-5 pt-2 pb-0">
+          <p class="m-0 intake-modal-hint">
+            <i class="pi pi-info-circle" style="font-size: 0.8rem; margin-right: 0.3rem;"/>
+            {{ t('inventory.intake-modal-hint') }}
+          </p>
+        </div>
+
         <div class="px-5 py-5 flex flex-column gap-4">
           <!-- Product selector -->
           <div>
@@ -1961,6 +1976,14 @@ const warehouseTableRows = computed(() => {
 .modal-field-hint {
   font-size: 0.7rem;
   color: #94A3B8;
+}
+.intake-modal-hint {
+  font-size: 0.76rem;
+  color: #64748B;
+  background-color: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 0.6rem;
+  padding: 0.6rem 0.75rem;
 }
 
 .modal-select {
