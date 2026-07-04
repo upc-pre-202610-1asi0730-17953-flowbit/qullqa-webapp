@@ -114,10 +114,17 @@ function isActiveRoute(routeName) {
 
 /**
  * Signs the current user out and navigates to the sign-in view.
+ *
+ * Uses a full browser navigation (not router.push) on purpose: an SPA-only
+ * transition leaves every other bounded context's Pinia store (products,
+ * sales, alerts, etc.) alive in memory with the previous user's data and
+ * "already loaded" flags still true, so the next account to sign in — even
+ * a different business — would see stale data until a manual hard refresh.
+ * A full reload guarantees every store starts clean, every time.
  */
 function handleSignOut() {
   iamStore.signOut();
-  router.push({ name: 'sign-in' });
+  window.location.href = router.resolve({ name: 'sign-in' }).href;
 }
 </script>
 
