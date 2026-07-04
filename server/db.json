@@ -172,6 +172,15 @@
       "status": "ACTIVE",
       "capacity": "SMALL",
       "businessId": 2
+    },
+    {
+      "name": "Almacen de tercero",
+      "code": "ABC-001",
+      "address": "Av. Los alamos 123",
+      "capacity": "MEDIUM",
+      "status": "ACTIVE",
+      "businessId": 1,
+      "id": 4
     }
   ],
   "products": [
@@ -260,6 +269,24 @@
       "description": "Backus",
       "category": "BEVERAGES",
       "basePrice": 3,
+      "status": "ACTIVE"
+    },
+    {
+      "id": 11,
+      "businessId": 1,
+      "name": "Apio",
+      "description": "Mercado Central",
+      "category": "Verduras",
+      "basePrice": 3,
+      "status": "ACTIVE"
+    },
+    {
+      "id": 12,
+      "businessId": 1,
+      "name": "Cebolla",
+      "description": "Mercado Central",
+      "category": "Verduras",
+      "basePrice": 4,
       "status": "ACTIVE"
     }
   ],
@@ -359,6 +386,22 @@
       "status": "ACTIVE",
       "inventoryId": 10,
       "id": 12
+    },
+    {
+      "productId": 11,
+      "expiration": "2026-07-20",
+      "purchasePrice": 2,
+      "status": "ACTIVE",
+      "inventoryId": 11,
+      "id": 13
+    },
+    {
+      "productId": 12,
+      "expiration": "2026-07-20",
+      "purchasePrice": 3,
+      "status": "ACTIVE",
+      "inventoryId": 12,
+      "id": 14
     }
   ],
   "inventories": [
@@ -439,6 +482,22 @@
       "warehouseId": 1,
       "minimumStock": 4,
       "stockUnit": 100
+    },
+    {
+      "productId": 11,
+      "businessId": 1,
+      "warehouseId": 2,
+      "stockUnit": 50,
+      "minimumStock": 4,
+      "id": 11
+    },
+    {
+      "productId": 12,
+      "businessId": 1,
+      "warehouseId": 4,
+      "stockUnit": 50,
+      "minimumStock": 4,
+      "id": 12
     }
   ],
   "sales": [
@@ -2760,6 +2819,28 @@
       "note": "",
       "registeredAt": "2026-07-04T07:18:22.305Z",
       "id": 44
+    },
+    {
+      "productId": 11,
+      "businessId": 1,
+      "warehouseId": 2,
+      "type": "INTAKE",
+      "quantity": 50,
+      "supplier": "",
+      "note": "",
+      "registeredAt": "2026-07-04T07:34:22.264Z",
+      "id": 45
+    },
+    {
+      "productId": 12,
+      "businessId": 1,
+      "warehouseId": 4,
+      "type": "INTAKE",
+      "quantity": 50,
+      "supplier": "",
+      "note": "",
+      "registeredAt": "2026-07-04T07:35:50.548Z",
+      "id": 46
     }
   ]
 }
