@@ -3,34 +3,40 @@ import { computed, onMounted, toRefs } from 'vue';
 import { useRouter }                   from 'vue-router';
 import { useI18n }                     from 'vue-i18n';
 import useDashboardStore               from '../../application/dashboard.store.js';
+import useAlertsStore                  from '../../../alerts/application/alerts.store.js';
 import useIamStore                     from '../../../iam/application/iam.store.js';
 import { toDateLocale }                from '../../../shared/presentation/date-locale.js';
 
 const { t, locale }  = useI18n();
 const router         = useRouter();
 const dashboardStore = useDashboardStore();
+const alertsStore    = useAlertsStore();
 const iamStore       = useIamStore();
 
 const {
   metrics, metricsLoaded,
-  alerts,  alertsLoaded,
   salesByDay, topProducts,
   errors
 } = toRefs(dashboardStore);
 
+const { alerts, alertsLoaded, expirationActiveCount } = toRefs(alertsStore);
+
 const {
   fetchDashboardMetrics,
-  fetchAlerts,
   fetchSalesByDay,
   fetchTopProducts,
   refreshMetrics
 } = dashboardStore;
 
+const { fetchAlerts, evaluateLiveAlerts } = alertsStore;
+
 onMounted(() => {
   const businessId = iamStore.currentUser?.businessId ?? null;
   if (businessId) {
     if (!metricsLoaded.value)        fetchDashboardMetrics(businessId);
-    if (!alertsLoaded.value)         fetchAlerts(businessId);
+    // Always re-evaluated live (see alerts.store.js) so this widget can never
+    // drift out of sync with the Alertas screen the way it used to.
+    fetchAlerts(businessId).then(() => evaluateLiveAlerts(businessId));
     if (!salesByDay.value.length)    fetchSalesByDay(businessId);
     if (!topProducts.value.length)   fetchTopProducts(businessId);
   }
@@ -56,12 +62,14 @@ const activeAlerts = computed(() =>
 );
 
 /**
- * Count of active EXPIRATION alerts (used in the "Por Vencer" KPI).
+ * Count of active EXPIRATION/EXPIRED alerts (used in the "Por Vencer" KPI).
+ * Reuses alerts.store.js's own expirationActiveCount so both KPIs (here and
+ * on the Alertas screen) always agree on the same number.
  * @type {import('vue').ComputedRef<number>}
  */
 const expiringCount = computed(() =>
     alertsLoaded.value
-        ? alerts.value.filter(alert => alert.type === 'EXPIRATION' && alert.status === 'ACTIVE').length
+        ? expirationActiveCount.value
         : null
 );
 

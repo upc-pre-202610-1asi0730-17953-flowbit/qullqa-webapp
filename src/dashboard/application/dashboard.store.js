@@ -1,6 +1,9 @@
 /**
  * Application service store for the Dashboard & Analytics bounded context.
- * Coordinates metrics, alerts, sales and report use cases.
+ * Coordinates metrics, sales and report use cases. Alerts are sourced
+ * directly from the Alerts bounded context's own store (see alerts.store.js's
+ * evaluateLiveAlerts), not duplicated here, so the Panel's recent-alerts
+ * widget can never drift out of sync with the Alertas screen.
  *
  * @module useDashboardStore
  */
@@ -23,13 +26,6 @@ const useDashboardStore = defineStore('dashboard', () => {
     const metrics = ref(null);
 
     /**
-     * Raw alert objects from the API (not mapped to a domain entity — alerts
-     * are consumed read-only by the dashboard and have no business mutations here).
-     * @type {import('vue').Ref<Array>}
-     */
-    const alerts = ref([]);
-
-    /**
      * Aggregated sales per weekday for the last 7 days.
      * Each entry: { dayIndex, totalAmount, barHeightPercent }. dayIndex is
      * 0=Monday..6=Sunday; the presentation layer translates it to a label
@@ -50,9 +46,6 @@ const useDashboardStore = defineStore('dashboard', () => {
 
     /** @type {import('vue').Ref<boolean>} */
     const metricsLoaded = ref(false);
-
-    /** @type {import('vue').Ref<boolean>} */
-    const alertsLoaded = ref(false);
 
     /** @type {import('vue').Ref<boolean>} */
     const reportsLoaded = ref(false);
@@ -110,19 +103,6 @@ const useDashboardStore = defineStore('dashboard', () => {
         dashboardApi.updateMetrics({ ...metrics.value, generatedAt: new Date().toISOString() })
             .then(response => {
                 metrics.value = MetricsAssembler.toEntityFromResource(response.data);
-            })
-            .catch(error => errors.value.push(error));
-    }
-
-    /**
-     * Fetches alerts for a business and stores them raw.
-     * @param {number|string} businessId
-     */
-    function fetchAlerts(businessId) {
-        dashboardApi.getAlerts(businessId)
-            .then(response => {
-                alerts.value       = response.data instanceof Array ? response.data : [];
-                alertsLoaded.value = true;
             })
             .catch(error => errors.value.push(error));
     }
@@ -333,12 +313,10 @@ const useDashboardStore = defineStore('dashboard', () => {
 
     return {
         metrics,
-        alerts,
         salesByDay,
         topProducts,
         reports,
         metricsLoaded,
-        alertsLoaded,
         reportsLoaded,
         errors,
         reportsCount,
@@ -346,7 +324,6 @@ const useDashboardStore = defineStore('dashboard', () => {
         filterReportsByType,
         fetchDashboardMetrics,
         refreshMetrics,
-        fetchAlerts,
         fetchSalesByDay,
         fetchTopProducts,
         generateReport,

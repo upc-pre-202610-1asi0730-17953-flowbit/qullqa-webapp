@@ -2,14 +2,13 @@ import { BaseApi }      from '../../shared/infrastructure/base-api.js';
 import { BaseEndpoint } from '../../shared/infrastructure/base-endpoint.js';
 
 const metricsEndpointPath   = import.meta.env.VITE_METRICS_ENDPOINT_PATH;
-const alertsEndpointPath    = import.meta.env.VITE_ALERTS_ENDPOINT_PATH;
 const salesEndpointPath     = import.meta.env.VITE_SALES_ENDPOINT_PATH;
 const saleDetailsEndpointPath = import.meta.env.VITE_SALE_DETAILS_ENDPOINT_PATH;
 const productsEndpointPath  = import.meta.env.VITE_PRODUCTS_ENDPOINT_PATH;
 
 /**
  * Infrastructure gateway for the Dashboard & Analytics bounded-context endpoints.
- * Reads metrics snapshots, alerts, sales and products to populate dashboard views.
+ * Reads metrics snapshots, sales and products to populate dashboard views.
  *
  * @class DashboardApi
  * @extends BaseApi
@@ -17,8 +16,6 @@ const productsEndpointPath  = import.meta.env.VITE_PRODUCTS_ENDPOINT_PATH;
 export class DashboardApi extends BaseApi {
     /** @type {BaseEndpoint} @private */
     #metricsEndpoint;
-    /** @type {BaseEndpoint} @private */
-    #alertsEndpoint;
     /** @type {BaseEndpoint} @private */
     #salesEndpoint;
     /** @type {BaseEndpoint} @private */
@@ -29,7 +26,6 @@ export class DashboardApi extends BaseApi {
     constructor() {
         super();
         this.#metricsEndpoint    = new BaseEndpoint(this, metricsEndpointPath);
-        this.#alertsEndpoint     = new BaseEndpoint(this, alertsEndpointPath);
         this.#salesEndpoint      = new BaseEndpoint(this, salesEndpointPath);
         this.#saleDetailsEndpoint = new BaseEndpoint(this, saleDetailsEndpointPath);
         this.#productsEndpoint   = new BaseEndpoint(this, productsEndpointPath);
@@ -51,15 +47,6 @@ export class DashboardApi extends BaseApi {
      */
     updateMetrics(resource) {
         return this.#metricsEndpoint.update(resource.id, resource);
-    }
-
-    /**
-     * Fetches all alerts for a given business.
-     * @param {number|string} businessId
-     * @returns {Promise<import('axios').AxiosResponse>}
-     */
-    getAlerts(businessId) {
-        return this.#alertsEndpoint.getAllByParam('businessId', businessId);
     }
 
     /**
