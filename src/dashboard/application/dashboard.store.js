@@ -15,10 +15,69 @@ import { computed, ref } from 'vue';
 import { DashboardApi }     from '../infrastructure/dashboard.api.js';
 import { Report, ReportType } from '../domain/model/report.entity.js';
 import { ReportFilters }      from '../domain/model/report-filters.entity.js';
-import useProductStore        from '../../product/application/product.store.js';
+import useProductStore, { parseLocalDate } from '../../product/application/product.store.js';
 import useSalesStore          from '../../sales/application/sales.store.js';
 
 const dashboardApi = new DashboardApi();
+
+/**
+ * Current-state product/inventory figures — never date-scoped, since this
+ * mock has no historical inventory snapshots to report "as of" a past date;
+ * these always reflect right-now, regardless of any report date range.
+ * @returns {{totalProducts: number, lowStockProducts: number, inventoryValue: number, stockHealthPercentage: number}}
+ */
+function currentStockMetrics() {
+    const productStore = useProductStore();
+
+    const totalProducts    = productStore.products.length;
+    const lowStockProducts = productStore.inventory.filter(item => item.isLowStock).length;
+    const inventoryValue   = productStore.inventory.reduce((sum, item) => {
+        const product = productStore.getProductById(item.productId);
+        return sum + item.currentStock * (product?.basePrice ?? 0);
+    }, 0);
+
+    return {
+        totalProducts,
+        lowStockProducts,
+        inventoryValue: Math.round(inventoryValue * 100) / 100,
+        stockHealthPercentage: totalProducts === 0
+            ? 100
+            : Math.round(((totalProducts - lowStockProducts) / totalProducts) * 100)
+    };
+}
+
+/**
+ * Sales-derived figures for PAID sales whose date falls within
+ * [startDate, endDate] (inclusive, local dates) — or all-time when either
+ * bound is omitted, which is what the Panel's own KPI cards want.
+ * @param {string} [startDate] - 'yyyy-mm-dd', inclusive.
+ * @param {string} [endDate]   - 'yyyy-mm-dd', inclusive.
+ * @returns {{totalSales: number, salesCount: number, averageSaleValue: number}}
+ */
+function salesMetricsInRange(startDate, endDate) {
+    const salesStore = useSalesStore();
+
+    const rangeStart = startDate ? parseLocalDate(startDate) : null;
+    const rangeEnd   = endDate   ? parseLocalDate(endDate)   : null;
+    if (rangeEnd) rangeEnd.setHours(23, 59, 59, 999); // inclusive through end of that day
+
+    const scopedSales = salesStore.sales.filter(sale => {
+        if (sale.status !== 'PAID') return false;
+        const saleDate = new Date(sale.date);
+        if (rangeStart && saleDate < rangeStart) return false;
+        if (rangeEnd && saleDate > rangeEnd) return false;
+        return true;
+    });
+
+    const totalSales = Math.round(scopedSales.reduce((sum, sale) => sum + sale.subtotal, 0) * 100) / 100;
+    const salesCount = scopedSales.length;
+
+    return {
+        totalSales,
+        salesCount,
+        averageSaleValue: salesCount === 0 ? 0 : Math.round((totalSales / salesCount) * 100) / 100
+    };
+}
 
 /**
  * Reactive store that exposes Dashboard & Analytics commands and queries.
@@ -48,47 +107,38 @@ const useDashboardStore = defineStore('dashboard', () => {
     const reportsCount = computed(() => reports.value.length);
 
     /**
-     * Live business metrics, computed on demand from the Product and Sales
-     * bounded contexts' own (already-loaded) state — same shape the old
-     * static /metrics snapshot had, so kpiCards and exportReport didn't need
-     * to change how they consume it, only where it comes from.
-     *
-     * Business rules (mirrors MetricsSnapshot's former getters):
-     * - lowStockProducts counts InventoryItem.isLowStock (>0 and <= minimum),
-     *   matching Inventario's own "Stock bajo" definition exactly.
-     * - inventoryValue = Σ currentStock × basePrice across all products.
-     * - totalSales/salesCount come straight from sales.store.js's own
-     *   totalRevenue/paidSalesCount, so this always agrees with what POS shows.
-     * - stockHealthPercentage: proportion of products NOT low-stock (100% when
-     *   there are no products at all — vacuously healthy).
+     * Live, all-time business metrics for the Panel's own KPI cards — same
+     * shape the old static /metrics snapshot had, so kpiCards didn't need to
+     * change how it's consumed, only where it comes from.
+     * Reports need figures scoped to a specific date range instead — see
+     * computeMetricsForFilters below, which this intentionally does NOT feed
+     * (the Panel's "Ventas totales" is meant to be cumulative, matching
+     * POS's own "Total acumulado").
      * @type {import('vue').ComputedRef<Object>}
      */
-    const liveMetrics = computed(() => {
-        const productStore = useProductStore();
-        const salesStore   = useSalesStore();
+    const liveMetrics = computed(() => ({
+        ...currentStockMetrics(),
+        ...salesMetricsInRange(),
+        generatedAt: new Date().toISOString()
+    }));
 
-        const totalProducts    = productStore.products.length;
-        const lowStockProducts = productStore.inventory.filter(item => item.isLowStock).length;
-        const inventoryValue   = productStore.inventory.reduce((sum, item) => {
-            const product = productStore.getProductById(item.productId);
-            return sum + item.currentStock * (product?.basePrice ?? 0);
-        }, 0);
-        const totalSales = salesStore.totalRevenue;
-        const salesCount = salesStore.paidSalesCount;
-
+    /**
+     * Business metrics scoped to a report's own filters — unlike liveMetrics,
+     * totalSales/salesCount/averageSaleValue here only include PAID sales
+     * whose date falls within filters.startDate–endDate (inclusive). This is
+     * what report-result.vue and exportReport must use instead of liveMetrics,
+     * otherwise a report for "last week" would silently show all-time sales
+     * totals — exactly what generated wrong CSV exports before this fix.
+     * @param {import('../domain/model/report-filters.entity.js').ReportFilters} filters
+     * @returns {Object}
+     */
+    function computeMetricsForFilters(filters) {
         return {
-            totalProducts,
-            lowStockProducts,
-            inventoryValue: Math.round(inventoryValue * 100) / 100,
-            totalSales,
-            salesCount,
-            averageSaleValue: salesCount === 0 ? 0 : Math.round((totalSales / salesCount) * 100) / 100,
-            stockHealthPercentage: totalProducts === 0
-                ? 100
-                : Math.round(((totalProducts - lowStockProducts) / totalProducts) * 100),
+            ...currentStockMetrics(),
+            ...salesMetricsInRange(filters?.startDate, filters?.endDate),
             generatedAt: new Date().toISOString()
         };
-    });
+    }
 
     // ─── Queries ──────────────────────────────────────────────────────────────
 
@@ -234,7 +284,9 @@ const useDashboardStore = defineStore('dashboard', () => {
     }
 
     /**
-     * Exports the latest report as a CSV download using the current live metrics.
+     * Exports a report as a CSV download, using metrics scoped to that
+     * report's own date range (see computeMetricsForFilters) — NOT the
+     * Panel's all-time liveMetrics, which would ignore the filters entirely.
      * Business rule: aborts with an error when the report itself isn't loaded.
      *
      * Row labels are supplied by the caller (already translated) so this
@@ -251,7 +303,7 @@ const useDashboardStore = defineStore('dashboard', () => {
             errors.value.push(new Error(`Report with id ${reportId} not found.`));
             return;
         }
-        const snapshot = liveMetrics.value;
+        const snapshot = computeMetricsForFilters(report.filters);
         const L = {
             header:            'Metric,Value',
             totalProducts:     'Total Products',
@@ -296,6 +348,7 @@ const useDashboardStore = defineStore('dashboard', () => {
         refreshMetrics,
         fetchSalesByDay,
         generateReport,
+        computeMetricsForFilters,
         exportReport
     };
 });

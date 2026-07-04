@@ -26,8 +26,8 @@ function reportTypeLabel(type) {
   return t(keys[type] ?? type);
 }
 
-const { reports, reportsLoaded, liveMetrics: metrics, errors } = toRefs(dashboardStore);
-const { exportReport } = dashboardStore;
+const { reports, reportsLoaded, errors } = toRefs(dashboardStore);
+const { exportReport, computeMetricsForFilters } = dashboardStore;
 
 /**
  * The most recently generated report (last element of the reports array).
@@ -39,6 +39,15 @@ const latestReport = computed(() => {
   if (!reports.value.length) return null;
   return reports.value[reports.value.length - 1];
 });
+
+/**
+ * Metrics scoped to the report's own date range — NOT the Panel's all-time
+ * liveMetrics, which would silently ignore the filters the user just chose.
+ * @type {import('vue').ComputedRef<Object|null>}
+ */
+const metrics = computed(() =>
+    latestReport.value ? computeMetricsForFilters(latestReport.value.filters) : null
+);
 
 /**
  * Redirects to the filters view when there are no reports to display.
