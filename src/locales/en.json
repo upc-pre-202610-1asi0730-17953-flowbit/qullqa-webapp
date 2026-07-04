@@ -207,6 +207,7 @@
     "recent-alerts": "Recent Alerts",
     "see-all": "See all",
     "no-alerts": "No active alerts",
+    "no-stock-data": "No products with stock registered yet.",
     "severity-high": "High",
     "severity-medium": "Medium",
     "severity-low": "Low",
