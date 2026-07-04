@@ -222,7 +222,7 @@ const currentUserFirstName = computed(() => {
 });
 
 /**
- * Top 3 products sorted descending by REAL current inventory stock, for the
+ * Top 5 products sorted descending by REAL current inventory stock, for the
  * "Mayor stock" panel. This used to be wired to sales quantity (how much of
  * each product had been SOLD), which produced numbers that didn't match
  * Inventario at all and even ranked out-of-stock products highly if they'd
@@ -240,7 +240,7 @@ const topStockProducts = computed(() => {
       }))
       .filter(product => product.currentStock > 0)
       .sort((a, b) => b.currentStock - a.currentStock)
-      .slice(0, 3);
+      .slice(0, 5);
 
   const maxStock = ranked[0]?.currentStock ?? 0;
   return ranked.map(product => ({
