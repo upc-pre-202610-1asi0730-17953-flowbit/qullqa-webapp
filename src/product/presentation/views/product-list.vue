@@ -422,17 +422,43 @@ function handleDeleteProduct(product) {
 
 const intakeForm = ref({ productId: '', quantity: '', supplier: '', note: '', warehouseId: '' });
 
+/**
+ * Defaults the intake warehouse to where a product's stock already lives,
+ * so leaving the selector untouched never silently moves it elsewhere —
+ * only falls back to the first warehouse for a product with no inventory
+ * record yet (shouldn't normally happen, since every product gets one).
+ * @param {number|string} productId
+ * @returns {string}
+ */
+function resolveWarehouseIdForProduct(productId) {
+  const inventoryItem = productStore.getInventoryByProduct(productId);
+  if (inventoryItem && inventoryItem.warehouseId) return String(inventoryItem.warehouseId);
+  return warehouses.value[0] ? String(warehouses.value[0].id) : '';
+}
+
 function openIntakeModal(product) {
   intakeTargetProduct.value = product;
+  const initialProductId = product ? String(product.id) : (products.value[0] ? String(products.value[0].id) : '');
   intakeForm.value = {
-    productId:   product ? String(product.id) : (products.value[0] ? String(products.value[0].id) : ''),
+    productId:   initialProductId,
     quantity:    '',
     supplier:    '',
     note:        '',
-    warehouseId: warehouses.value[0] ? String(warehouses.value[0].id) : ''
+    warehouseId: resolveWarehouseIdForProduct(initialProductId)
   };
   showIntakeModal.value = true;
 }
+
+/**
+ * Keeps the warehouse selector in sync when the admin picks a different
+ * product from the dropdown (the generic "Registrar ingreso" entry point,
+ * not tied to one product's row), so it still defaults to that product's
+ * real current warehouse instead of staying on whatever was selected before.
+ */
+watch(() => intakeForm.value.productId, (newProductId) => {
+  if (!showIntakeModal.value || !newProductId) return;
+  intakeForm.value.warehouseId = resolveWarehouseIdForProduct(newProductId);
+});
 
 function saveIntake() {
   const quantity = parseInt(intakeForm.value.quantity);
@@ -525,6 +551,42 @@ const warehouseTableRows = computed(() => {
       .map(item => ({ item, product: products.value.find(p => p.id === item.productId) }))
       .filter(row => row.product);
 });
+
+// ── New warehouse modal ─────────────────────────────────────────────────────
+
+const showWarehouseModal = ref(false);
+const savingWarehouse    = ref(false);
+const warehouseForm      = ref({ name: '', code: '', address: '', capacity: 'MEDIUM' });
+
+function openWarehouseModal() {
+  warehouseForm.value = { name: '', code: '', address: '', capacity: 'MEDIUM' };
+  showWarehouseModal.value = true;
+}
+
+function saveWarehouse() {
+  const name = warehouseForm.value.name.trim();
+  if (!name) return;
+
+  const businessId = iamStore.currentUser?.businessId ?? null;
+  savingWarehouse.value = true;
+
+  productStore.createWarehouse({
+    name,
+    code:      warehouseForm.value.code.trim(),
+    address:   warehouseForm.value.address.trim(),
+    capacity:  warehouseForm.value.capacity,
+    status:    'ACTIVE',
+    businessId
+  })
+      .then(createdWarehouse => {
+        warehouses.value.push(createdWarehouse);
+        selectedWarehouseKey.value = createdWarehouse.id;
+        showWarehouseModal.value = false;
+      })
+      .finally(() => {
+        savingWarehouse.value = false;
+      });
+}
 </script>
 
 <template>
@@ -1027,6 +1089,16 @@ const warehouseTableRows = computed(() => {
     ═══════════════════════════════════════════════════════════════ -->
     <div v-if="activeTab === 'warehouse'" style="display: flex; flex-direction: column; gap: 1rem;">
 
+      <div class="flex justify-content-end">
+        <button
+            class="flex align-items-center gap-2 px-3 py-2 border-round-xl border-none cursor-pointer btn-primary"
+            @click="openWarehouseModal"
+        >
+          <i class="pi pi-plus" style="font-size: 0.85rem;"/>
+          {{ t('inventory.btn-new-warehouse') }}
+        </button>
+      </div>
+
       <!-- Warehouse summary cards — double as filter buttons for the table below -->
       <div class="stat-grid">
         <button
@@ -1310,6 +1382,66 @@ const warehouseTableRows = computed(() => {
             <button class="flex-1 py-2 border-round-xl border-none cursor-pointer btn-intake-confirm" :disabled="savingIntake" @click="saveIntake">
               <i v-if="savingIntake" class="pi pi-spin pi-spinner" style="margin-right: 0.4rem;"/>
               {{ savingIntake ? t('inventory.modal-saving') : t('inventory.intake-btn') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         MODAL: NEW WAREHOUSE
+    ═══════════════════════════════════════════════════════════════ -->
+    <div
+        v-if="showWarehouseModal"
+        class="fixed inset-0 z-50 flex align-items-end sm:align-items-center justify-content-center modal-overlay"
+        @click.self="showWarehouseModal = false"
+    >
+      <div class="w-full border-round-t-2xl sm:border-round-2xl modal-container-sm">
+        <div class="flex align-items-center justify-content-between px-5 py-4 modal-header">
+          <div class="flex align-items-center gap-3">
+            <div class="flex align-items-center justify-content-center border-round-lg modal-icon-wrap" style="background: linear-gradient(135deg, #E0F2FE, #BAE6FD);">
+              <i class="pi pi-building" style="color: #0E7490; font-size: 0.95rem;"/>
+            </div>
+            <p class="m-0 modal-title">{{ t('inventory.warehouse-modal-title') }}</p>
+          </div>
+          <button class="p-2 border-round-lg border-none cursor-pointer btn-modal-close" @click="showWarehouseModal = false">
+            <i class="pi pi-times" style="font-size: 1rem;"/>
+          </button>
+        </div>
+
+        <div class="px-5 py-5 flex flex-column gap-4">
+          <div>
+            <label class="modal-label">{{ t('inventory.warehouse-field-name') }} *</label>
+            <input v-model="warehouseForm.name" :placeholder="t('inventory.warehouse-field-name-placeholder')" class="modal-input"/>
+          </div>
+          <div>
+            <label class="modal-label">{{ t('inventory.warehouse-field-code') }}</label>
+            <input v-model="warehouseForm.code" :placeholder="t('inventory.warehouse-field-code-placeholder')" class="modal-input"/>
+          </div>
+          <div>
+            <label class="modal-label">{{ t('inventory.warehouse-field-address') }}</label>
+            <input v-model="warehouseForm.address" :placeholder="t('inventory.warehouse-field-address-placeholder')" class="modal-input"/>
+          </div>
+          <div>
+            <label class="modal-label">{{ t('inventory.warehouse-field-capacity') }}</label>
+            <select v-model="warehouseForm.capacity" class="modal-input modal-select">
+              <option value="SMALL">{{ t('inventory.warehouse-capacity-small') }}</option>
+              <option value="MEDIUM">{{ t('inventory.warehouse-capacity-medium') }}</option>
+              <option value="LARGE">{{ t('inventory.warehouse-capacity-large') }}</option>
+            </select>
+          </div>
+
+          <div class="flex gap-3">
+            <button class="flex-1 py-2 border-round-xl cursor-pointer btn-modal-cancel" :disabled="savingWarehouse" @click="showWarehouseModal = false">
+              {{ t('inventory.modal-cancel') }}
+            </button>
+            <button
+                class="flex-1 py-2 border-round-xl border-none cursor-pointer btn-primary"
+                :disabled="savingWarehouse || !warehouseForm.name.trim()"
+                @click="saveWarehouse"
+            >
+              <i v-if="savingWarehouse" class="pi pi-spin pi-spinner" style="margin-right: 0.4rem;"/>
+              {{ savingWarehouse ? t('inventory.modal-saving') : t('inventory.warehouse-btn-create') }}
             </button>
           </div>
         </div>
