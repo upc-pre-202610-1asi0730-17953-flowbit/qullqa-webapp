@@ -186,11 +186,12 @@
     },
     {
       "id": 2,
+      "businessId": 1,
       "name": "Arroz Costeño Extra 5kg",
       "description": "Arroz premium grano largo",
       "category": "GRAINS",
-      "businessId": 1,
-      "basePrice": 26.9
+      "basePrice": 26.9,
+      "status": "ACTIVE"
     },
     {
       "id": 3,
@@ -272,12 +273,12 @@
       "id": 1
     },
     {
-      "id": 2,
-      "expiration": "2026-06-30",
+      "productId": 2,
+      "expiration": "2026-07-25",
       "purchasePrice": 12,
       "status": "ACTIVE",
-      "productId": 2,
-      "inventoryId": 2
+      "inventoryId": 2,
+      "id": 2
     },
     {
       "id": 3,
@@ -337,7 +338,7 @@
     },
     {
       "productId": 8,
-      "expiration": "2026-06-25",
+      "expiration": "2026-07-05",
       "purchasePrice": 0.5,
       "status": "ACTIVE",
       "inventoryId": 8,
@@ -345,7 +346,7 @@
     },
     {
       "productId": 9,
-      "expiration": "2026-06-25",
+      "expiration": "2026-07-25",
       "purchasePrice": 4,
       "status": "ACTIVE",
       "inventoryId": 9,
@@ -374,8 +375,8 @@
       "productId": 2,
       "businessId": 1,
       "warehouseId": 1,
-      "minimumStock": 0,
-      "stockUnit": 74
+      "stockUnit": 74,
+      "minimumStock": 0
     },
     {
       "id": 3,
@@ -420,16 +421,16 @@
       "productId": 8,
       "businessId": 1,
       "warehouseId": 1,
-      "minimumStock": 5,
-      "stockUnit": 50
+      "stockUnit": 50,
+      "minimumStock": 5
     },
     {
       "id": 9,
       "productId": 9,
       "businessId": 1,
       "warehouseId": 1,
-      "minimumStock": 4,
-      "stockUnit": 3
+      "stockUnit": 3,
+      "minimumStock": 4
     },
     {
       "id": 10,
@@ -1420,6 +1421,16 @@
       "description": "Reposición bebidas",
       "supplierId": 5,
       "businessId": 1
+    },
+    {
+      "businessId": 1,
+      "supplierId": 5,
+      "date": "2026-07-04T04:52:10.829Z",
+      "expectedDate": "2026-07-10",
+      "status": "PENDING",
+      "currency": "PEN",
+      "description": "Entrega en almacen principal",
+      "id": 7
     }
   ],
   "purchaseDetails": [
@@ -1502,6 +1513,16 @@
       "deliveryTrackingNum": "TRK-2026-0008",
       "productId": 4,
       "purchaseId": 6
+    },
+    {
+      "purchaseId": 7,
+      "productId": 10,
+      "quantity": 50,
+      "unitPrice": 2,
+      "discount": 0,
+      "deliveryStatus": "PENDING",
+      "deliveryTrackingNum": "",
+      "id": 9
     }
   ],
   "alerts": [
@@ -1509,15 +1530,15 @@
       "id": 1,
       "type": "OUT_OF_STOCK",
       "severity": "HIGH",
-      "message": "Amoxicilina 500mg sin stock — 0 unidades disponibles",
+      "message": "Lechuga sin stock — 0 unidades disponibles",
       "date": "2026-06-04T09:15:00Z",
       "status": "ACTIVE",
-      "productId": 6,
-      "productName": "Amoxicilina 500mg",
-      "batchId": 6,
+      "productId": 10,
+      "productName": "Lechuga",
+      "batchId": 12,
       "businessId": 1,
       "currentStock": 0,
-      "minStock": 30,
+      "minStock": 4,
       "daysToExpiry": null,
       "notified": true,
       "notifiedAt": "2026-06-04T09:15:00Z",
@@ -1527,91 +1548,55 @@
       "id": 2,
       "type": "EXPIRED",
       "severity": "HIGH",
-      "message": "Lote de Gaseosa Inca Kola vencido desde 2026-06-03",
-      "date": "2026-06-04T08:00:00Z",
+      "message": "Lote de Agua San Carlos 1L vencido desde 2026-06-25",
+      "date": "2026-06-26T08:00:00Z",
       "status": "ACTIVE",
-      "productId": 4,
-      "productName": "Gaseosa Inca Kola 1.5L",
-      "batchId": 4,
+      "productId": 8,
+      "productName": "Agua San Carlos 1L",
+      "batchId": 10,
       "businessId": 1,
       "currentStock": null,
       "minStock": null,
       "daysToExpiry": -1,
       "notified": true,
-      "notifiedAt": "2026-06-04T08:00:00Z",
+      "notifiedAt": "2026-06-26T08:00:00Z",
       "resolvedAt": ""
     },
     {
       "id": 3,
       "type": "LOW_STOCK",
       "severity": "HIGH",
-      "message": "Stock de Amoxicilina 500mg por debajo del mínimo (8 unidades)",
+      "message": "Stock de Platanos Isla por debajo del mínimo (3 unidades)",
       "date": "2026-06-03T14:30:00Z",
       "status": "ACTIVE",
-      "productId": 6,
-      "productName": "Amoxicilina 500mg",
-      "batchId": 6,
+      "productId": 9,
+      "productName": "Platanos Isla",
+      "batchId": 11,
       "businessId": 1,
-      "currentStock": 8,
-      "minStock": 30,
+      "currentStock": 3,
+      "minStock": 4,
       "daysToExpiry": null,
       "notified": true,
       "notifiedAt": "2026-06-03T14:30:00Z",
       "resolvedAt": ""
     },
     {
-      "id": 4,
-      "type": "EXPIRATION",
-      "severity": "HIGH",
-      "message": "Lote de Amoxicilina 500mg vence en 2 días (2026-06-06)",
-      "date": "2026-06-03T10:00:00Z",
-      "status": "ACTIVE",
-      "productId": 6,
-      "productName": "Amoxicilina 500mg",
-      "batchId": 6,
-      "businessId": 1,
-      "currentStock": null,
-      "minStock": null,
-      "daysToExpiry": 2,
-      "notified": true,
-      "notifiedAt": "2026-06-03T10:00:00Z",
-      "resolvedAt": ""
-    },
-    {
-      "id": 5,
-      "type": "EXPIRATION",
-      "severity": "HIGH",
-      "message": "Lote de Paracetamol 500mg vence en 4 días (2026-06-08)",
-      "date": "2026-06-02T16:20:00Z",
-      "status": "ACKNOWLEDGED",
-      "productId": 5,
-      "productName": "Paracetamol 500mg",
-      "batchId": 5,
-      "businessId": 1,
-      "currentStock": null,
-      "minStock": null,
-      "daysToExpiry": 4,
-      "notified": true,
-      "notifiedAt": "2026-06-02T16:20:00Z",
-      "resolvedAt": ""
-    },
-    {
       "id": 6,
+      "businessId": 1,
+      "productId": 2,
+      "batchId": 2,
+      "productName": "Arroz Costeño Extra 5kg",
       "type": "LOW_STOCK",
       "severity": "MEDIUM",
       "message": "Stock de Arroz Costeño bajo (20 unidades, mínimo: 24)",
+      "status": "RESOLVED",
       "date": "2026-06-02T11:45:00Z",
-      "status": "ACKNOWLEDGED",
-      "productId": 2,
-      "productName": "Arroz Costeño 1kg",
-      "batchId": 2,
-      "businessId": 1,
       "currentStock": 20,
       "minStock": 24,
       "daysToExpiry": null,
       "notified": false,
       "notifiedAt": "",
-      "resolvedAt": ""
+      "resolvedAt": "2026-07-04T03:03:44.357Z"
     },
     {
       "id": 7,
@@ -1621,7 +1606,7 @@
       "date": "2026-05-31T09:00:00Z",
       "status": "RESOLVED",
       "productId": 3,
-      "productName": "Aceite Primor 1L",
+      "productName": "Aceite Vegetal Primor 1L",
       "batchId": 3,
       "businessId": 1,
       "currentStock": null,
@@ -1879,6 +1864,35 @@
       "purchaseDetailId": null,
       "totalWeightValue": 90,
       "totalWeightUnit": "kg"
+    },
+    {
+      "trackingNumber": "TRK-2026-4217",
+      "orderId": "OC-0007",
+      "supplierName": "Distribuidora Norte SRL",
+      "origin": "Av. Abancay 275",
+      "destination": "Av. Los Alamos",
+      "driverName": "Frank",
+      "driverPhone": "954367281",
+      "vehicle": "Carro Hyundai",
+      "licensePlate": "PER-234",
+      "status": "REGISTERED",
+      "registeredAt": "2026-07-04T04:54:54.217Z",
+      "estimatedArrival": "2026-06-05",
+      "completedAt": null,
+      "currentLabel": "Av. Abancay 275",
+      "currentLatitude": -12.0453,
+      "currentLongitude": -77.0311,
+      "products": [
+        {
+          "productId": 10,
+          "quantity": 50
+        }
+      ],
+      "totalWeightValue": 60,
+      "totalWeightUnit": "kg",
+      "businessId": 1,
+      "purchaseDetailId": 9,
+      "id": 8
     }
   ],
   "waypoints": [
@@ -2101,6 +2115,72 @@
       "reached": false,
       "sequenceOrder": 3,
       "id": 20
+    },
+    {
+      "deliveryId": 8,
+      "label": "Salida — Av. Test 123, Lima",
+      "district": "Lima",
+      "latitude": -12.0453,
+      "longitude": -77.0311,
+      "timestamp": "2026-07-04T04:41:34.241Z",
+      "reached": true,
+      "sequenceOrder": 1,
+      "id": 21
+    },
+    {
+      "deliveryId": 8,
+      "label": "Destino — Jr. Destino 456, Lima",
+      "district": "Lima",
+      "latitude": -11.9944,
+      "longitude": -77.003,
+      "timestamp": null,
+      "reached": false,
+      "sequenceOrder": 3,
+      "id": 22
+    },
+    {
+      "deliveryId": 8,
+      "label": "En ruta",
+      "district": "—",
+      "latitude": -12.07,
+      "longitude": -77.02,
+      "timestamp": null,
+      "reached": false,
+      "sequenceOrder": 2,
+      "id": 23
+    },
+    {
+      "deliveryId": 8,
+      "label": "Salida — Av. Abancay 275",
+      "district": "Lima",
+      "latitude": -12.0453,
+      "longitude": -77.0311,
+      "timestamp": "2026-07-04T04:54:54.217Z",
+      "reached": true,
+      "sequenceOrder": 1,
+      "id": 24
+    },
+    {
+      "deliveryId": 8,
+      "label": "En ruta",
+      "district": "—",
+      "latitude": -12.07,
+      "longitude": -77.02,
+      "timestamp": null,
+      "reached": false,
+      "sequenceOrder": 2,
+      "id": 25
+    },
+    {
+      "deliveryId": 8,
+      "label": "Destino — Av. Los Alamos",
+      "district": "Lima",
+      "latitude": -11.9944,
+      "longitude": -77.003,
+      "timestamp": null,
+      "reached": false,
+      "sequenceOrder": 3,
+      "id": 26
     }
   ],
   "stockMovements": [
