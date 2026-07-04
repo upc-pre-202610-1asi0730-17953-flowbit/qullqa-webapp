@@ -8,7 +8,7 @@ import useSalesStore      from '../../application/sales.store.js';
 import useProductStore    from '../../../product/application/product.store.js';
 import useIamStore        from '../../../iam/application/iam.store.js';
 import { PaymentMethod }  from '../../domain/model/sale.entity.js';
-import { ProductCategory } from '../../../product/domain/model/product.entity.js';
+import { isCustomCategory, orderedCategoryOptions } from '../../../product/presentation/category-options.js';
 
 /**
  * POS screen view for the Sales & POS Management bounded context.
@@ -68,14 +68,18 @@ const isSubmitting = ref(false);
 // ─── Category filter config ─────────────────────────────────────────────────
 
 /**
- * Category filter pills: the first entry is "All", followed by each ProductCategory value.
- * @type {import('vue').ComputedRef<Array<{value: string, labelKey: string}>>}
+ * Category filter pills: "All", then the fixed categories, then any custom
+ * category currently in use (see product-list.vue's category-options.js),
+ * with OTHER always last. Custom categories have no i18n key, so they're
+ * shown verbatim via `label` instead of being translated via `labelKey`.
+ * @type {import('vue').ComputedRef<Array<{value: string, labelKey: string|null, label: string|null}>>}
  */
 const categoryFilters = computed(() => [
-  { value: 'ALL', labelKey: 'pos.category-all' },
-  ...Object.values(ProductCategory).map(category => ({
+  { value: 'ALL', labelKey: 'pos.category-all', label: null },
+  ...orderedCategoryOptions(productStore.products).map(category => ({
     value:    category,
-    labelKey: `pos.category-${category.toLowerCase()}`
+    labelKey: isCustomCategory(category) ? null : `pos.category-${category.toLowerCase()}`,
+    label:    isCustomCategory(category) ? category : null
   }))
 ]);
 
@@ -238,9 +242,9 @@ function openPaymentModal() {
 /**
  * Handles the confirm event from PaymentModal.
  * Persists the sale and shows the success modal on success.
- * @param {{ paymentMethod: string, cashGiven: number }} payload
+ * @param {{ paymentMethod: string, cashGiven: number, customerId: number|null }} payload
  */
-async function handlePaymentConfirm({ paymentMethod }) {
+async function handlePaymentConfirm({ paymentMethod, customerId }) {
   if (isSubmitting.value) return;
 
   isSubmitting.value    = true;
@@ -250,7 +254,7 @@ async function handlePaymentConfirm({ paymentMethod }) {
 
   const result = await salesStore.confirmSale({
     paymentMethod: paymentMethod,
-    customerId:    null,
+    customerId:    customerId ?? null,
     description:   ''
   });
 
@@ -322,6 +326,7 @@ onMounted(() => {
   if (!productStore.productsLoaded)  productStore.fetchProducts(businessId);
   if (!productStore.inventoryLoaded) productStore.fetchInventory(businessId);
   if (!salesStore.currentSale)       salesStore.startNewSale(businessId);
+  if (!salesStore.customersLoaded)   salesStore.fetchCustomers(businessId);
 });
 </script>
 
@@ -369,7 +374,7 @@ onMounted(() => {
                         }"
               @click="activeCategory = filter.value"
           >
-            {{ t(filter.labelKey) }}
+            {{ filter.label ?? t(filter.labelKey) }}
           </button>
         </div>
       </div>
@@ -547,6 +552,7 @@ onMounted(() => {
     <payment-modal
         v-if="showPaymentModal"
         :total="cartTotal"
+        :customers="salesStore.customers"
         @confirm="handlePaymentConfirm"
         @cancel="showPaymentModal = false"
     />
