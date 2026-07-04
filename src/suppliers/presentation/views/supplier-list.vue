@@ -4,12 +4,17 @@ import { useI18n }         from 'vue-i18n';
 import { useToast }        from 'primevue/usetoast';
 import useSupplierStore    from '../../application/supplier.store.js';
 import useIamStore         from '../../../iam/application/iam.store.js';
-import { Supplier, SupplierCategory, SupplierStatus } from '../../domain/model/supplier.entity.js';
+import useProductStore     from '../../../product/application/product.store.js';
+import { Supplier, SupplierStatus } from '../../domain/model/supplier.entity.js';
+import { ProductCategory } from '../../../product/domain/model/product.entity.js';
+import { isCustomCategory, orderedCategoryOptionsFromValues, filterableCategoryOptionsFromValues }
+    from '../../../product/presentation/category-options.js';
 
 const { t }         = useI18n();
 const toast         = useToast();
 const supplierStore = useSupplierStore();
 const iamStore      = useIamStore();
+const productStore  = useProductStore();
 
 const { suppliers, suppliersLoaded, errors } = toRefs(supplierStore);
 const { fetchSuppliers, addSupplier, updateSupplier, deactivateSupplier } = supplierStore;
@@ -33,14 +38,15 @@ const detailSupplier     = ref(null);
 const deactTarget        = ref(null);
 
 const supplierModalForm = ref({
-  name:          '',
-  lastName:      '',
-  ruc:           '',
-  contactPerson: '',
-  phone:         '',
-  email:         '',
-  address:       '',
-  category:      SupplierCategory.GENERAL
+  name:           '',
+  lastName:       '',
+  ruc:            '',
+  contactPerson:  '',
+  phone:          '',
+  email:          '',
+  address:        '',
+  category:       ProductCategory.OTHER,
+  customCategory: ''
 });
 
 const supplierModalErrors = ref({
@@ -50,35 +56,85 @@ const supplierModalErrors = ref({
 });
 
 // ─── Category options ──────────────────────────────────────────────────────────
+// A supplier's category shares the same taxonomy as Product & Inventory
+// Management (see product/presentation/category-options.js) instead of a
+// separate fixed enum — a supplier's category represents what kind of
+// products it supplies, so the options offered here are exactly the
+// categories the business already manages for its own products, plus any
+// custom category a previous supplier already introduced via "Otros" (so
+// that one sticks around and is reusable, same as it does for products).
 
-const categoryKeys = Object.values(SupplierCategory);
+/**
+ * Every category value currently in use by this business, combining its
+ * products and its suppliers, deduplicated. Feeds both the filter dropdown
+ * and the create/edit modal.
+ * @type {import('vue').ComputedRef<string[]>}
+ */
+const usedCategoryValues = computed(() => [
+  ...productStore.products.map(product => product.category),
+  ...suppliers.value.map(supplier => supplier.category)
+]);
+
+/**
+ * Filter dropdown options: only categories actually in use (fixed or
+ * custom). OTHER is excluded — it's a form trigger for creating a new
+ * category, never a real persisted value, so filtering by it would always
+ * return zero suppliers.
+ * @type {import('vue').ComputedRef<string[]>}
+ */
+const categoryFilterOptions = computed(() => filterableCategoryOptionsFromValues(usedCategoryValues.value));
+
+/**
+ * Category options for the create/edit supplier modal — same list as the
+ * filter, plus OTHER last, so an admin can also create a brand-new category
+ * from this form.
+ * @type {import('vue').ComputedRef<string[]>}
+ */
+const categoryModalOptions = computed(() => orderedCategoryOptionsFromValues(usedCategoryValues.value));
+
+/**
+ * Translated label for a supplier category, reusing the same pos.category-*
+ * keys already defined for Product & Inventory / POS so the wording stays
+ * consistent across bounded contexts. Categories outside the fixed
+ * ProductCategory enum are custom labels typed in via "Otros" — those have
+ * no i18n key, so they're shown verbatim instead of rendering a raw
+ * untranslated key on screen.
+ * @param {string} category
+ * @returns {string}
+ */
+function categoryLabel(category) {
+  if (isCustomCategory(category)) return category;
+  return t(`pos.category-${category.toLowerCase()}`);
+}
 
 const categoryColorMap = {
-  BEVERAGES: { background: '#CFFAFE', color: '#0E7490' },
-  GROCERIES: { background: '#FEF9C3', color: '#A16207' },
   DAIRY:     { background: '#DBEAFE', color: '#1D4ED8' },
+  GRAINS:    { background: '#FEF9C3', color: '#A16207' },
+  OILS:      { background: '#D1FAE5', color: '#065F46' },
+  BEVERAGES: { background: '#CFFAFE', color: '#0E7490' },
   CLEANING:  { background: '#EDE9FE', color: '#6D28D9' },
-  PHARMACY:  { background: '#FFE4E6', color: '#BE123C' },
-  SNACKS:    { background: '#D1FAE5', color: '#065F46' },
-  FRESH:     { background: '#DCFCE7', color: '#16A34A' },
-  GENERAL:   { background: '#F1F5F9', color: '#475569' }
+  MEDICINE:  { background: '#FFE4E6', color: '#BE123C' },
+  OTHER:     { background: '#F1F5F9', color: '#475569' }
 };
 
 /**
- * Returns the color pair for a given supplier category.
+ * Returns the color pair for a given supplier category. Falls back to
+ * OTHER's neutral color for custom labels and for any legacy category value
+ * that predates the shared-with-Product taxonomy.
  * @param {string} category
  * @returns {{ background: string, color: string }}
  */
 function getCategoryColor(category) {
-  return categoryColorMap[category] ?? categoryColorMap.GENERAL;
+  return categoryColorMap[category] ?? categoryColorMap.OTHER;
 }
 
 // ─── Lifecycle ─────────────────────────────────────────────────────────────────
 
 onMounted(() => {
   const businessId = iamStore.currentUser?.businessId ?? null;
-  if (businessId && !suppliersLoaded.value) {
-    fetchSuppliers(businessId);
+  if (businessId) {
+    if (!suppliersLoaded.value) fetchSuppliers(businessId);
+    if (!productStore.productsLoaded) productStore.fetchProducts(businessId);
   }
 });
 
@@ -106,34 +162,39 @@ function openCreateSupplierModal() {
   editingSupplier.value    = null;
   supplierModalErrors.value = { name: '', ruc: '', phone: '' };
   supplierModalForm.value   = {
-    name:          '',
-    lastName:      '',
-    ruc:           '',
-    contactPerson: '',
-    phone:         '',
-    email:         '',
-    address:       '',
-    category:      SupplierCategory.GENERAL
+    name:           '',
+    lastName:       '',
+    ruc:            '',
+    contactPerson:  '',
+    phone:          '',
+    email:          '',
+    address:        '',
+    category:       ProductCategory.OTHER,
+    customCategory: ''
   };
   showSupplierModal.value = true;
 }
 
 /**
  * Opens the supplier edit modal pre-filled with the given supplier's data.
+ * A supplier's existing category (fixed or custom) is already one of the
+ * dropdown's own options (see categoryModalOptions), so it's selected
+ * directly — customCategory only fills in if the admin picks "Otros" again.
  * @param {import('../../domain/model/supplier.entity.js').Supplier} supplier
  */
 function openEditSupplierModal(supplier) {
   editingSupplier.value    = supplier;
   supplierModalErrors.value = { name: '', ruc: '', phone: '' };
   supplierModalForm.value   = {
-    name:          supplier.name,
-    lastName:      supplier.lastName,
-    ruc:           supplier.ruc,
-    contactPerson: supplier.contactPerson,
-    phone:         supplier.phone,
-    email:         supplier.email,
-    address:       supplier.address,
-    category:      supplier.category
+    name:           supplier.name,
+    lastName:       supplier.lastName,
+    ruc:            supplier.ruc,
+    contactPerson:  supplier.contactPerson,
+    phone:          supplier.phone,
+    email:          supplier.email,
+    address:        supplier.address,
+    category:       supplier.category,
+    customCategory: ''
   };
   showDetailModal.value   = false;
   showSupplierModal.value = true;
@@ -172,7 +233,17 @@ function validateSupplierForm() {
 function submitSupplierModal() {
   if (!validateSupplierForm()) return;
 
-  const businessId     = iamStore.currentUser?.businessId ?? null;
+  const businessId = iamStore.currentUser?.businessId ?? null;
+
+  // When "Otros" is picked and a label is typed in, that label becomes the
+  // real category instead of the generic OTHER — same rule as Product &
+  // Inventory Management, effectively letting admins create new categories
+  // on the fly (see openCreateSupplierModal/categoryModalOptions above).
+  const customCategory = supplierModalForm.value.customCategory.trim();
+  const resolvedCategory = supplierModalForm.value.category === ProductCategory.OTHER && customCategory
+      ? customCategory
+      : supplierModalForm.value.category;
+
   const supplierEntity = new Supplier({
     id:            editingSupplier.value ? editingSupplier.value.id : null,
     businessId:    businessId,
@@ -183,7 +254,7 @@ function submitSupplierModal() {
     phone:         supplierModalForm.value.phone.trim(),
     email:         supplierModalForm.value.email.trim(),
     address:       supplierModalForm.value.address.trim(),
-    category:      supplierModalForm.value.category,
+    category:      resolvedCategory,
     status:        editingSupplier.value
         ? editingSupplier.value.status
         : SupplierStatus.ACTIVE,
@@ -294,11 +365,11 @@ function formatCurrency(amount) {
         <select v-model="selectedCategory" class="supplier-list-category-select">
           <option value="ALL">{{ t('suppliers.filter-all') }}</option>
           <option
-              v-for="categoryKey in categoryKeys"
+              v-for="categoryKey in categoryFilterOptions"
               :key="categoryKey"
               :value="categoryKey"
           >
-            {{ t(`suppliers.category-${categoryKey.toLowerCase()}`) }}
+            {{ categoryLabel(categoryKey) }}
           </option>
         </select>
         <button class="supplier-list-btn-add" @click="openCreateSupplierModal">
@@ -368,7 +439,7 @@ function formatCurrency(amount) {
                                     color:           getCategoryColor(supplier.category).color
                                 }"
                             >
-                                {{ t(`suppliers.category-${supplier.category.toLowerCase()}`) }}
+                                {{ categoryLabel(supplier.category) }}
                             </span>
           </td>
 
@@ -432,7 +503,7 @@ function formatCurrency(amount) {
                             color:           getCategoryColor(supplier.category).color
                         }"
           >
-                        {{ t(`suppliers.category-${supplier.category.toLowerCase()}`) }}
+                        {{ categoryLabel(supplier.category) }}
                     </span>
           <i
               class="pi pi-chevron-down supplier-list-chevron"
@@ -538,13 +609,24 @@ function formatCurrency(amount) {
               <label class="supplier-modal-label">{{ t('suppliers.modal-field-category') }}</label>
               <select v-model="supplierModalForm.category" class="supplier-modal-select">
                 <option
-                    v-for="categoryKey in categoryKeys"
+                    v-for="categoryKey in categoryModalOptions"
                     :key="categoryKey"
                     :value="categoryKey"
                 >
-                  {{ t(`suppliers.category-${categoryKey.toLowerCase()}`) }}
+                  {{ categoryLabel(categoryKey) }}
                 </option>
               </select>
+            </div>
+
+            <!-- Custom category (only shown when "Otros" is selected) -->
+            <div v-if="supplierModalForm.category === 'OTHER'" class="supplier-modal-field">
+              <label class="supplier-modal-label">{{ t('suppliers.modal-field-custom-category') }}</label>
+              <input
+                  v-model="supplierModalForm.customCategory"
+                  class="supplier-modal-input"
+                  :placeholder="t('suppliers.modal-field-custom-category-placeholder')"
+              />
+              <p class="supplier-modal-field-hint">{{ t('suppliers.modal-field-custom-category-hint') }}</p>
             </div>
 
             <!-- Contact person -->
@@ -638,7 +720,7 @@ function formatCurrency(amount) {
                                     color:           getCategoryColor(detailSupplier.category).color
                                 }"
               >
-                                {{ t(`suppliers.category-${detailSupplier.category.toLowerCase()}`) }}
+                                {{ categoryLabel(detailSupplier.category) }}
                             </span>
             </div>
           </div>
@@ -1241,6 +1323,12 @@ function formatCurrency(amount) {
 .supplier-modal-error-msg {
   font-size: 0.72rem;
   color:     #EF4444;
+  margin:    0;
+}
+
+.supplier-modal-field-hint {
+  font-size: 0.7rem;
+  color:     #94A3B8;
   margin:    0;
 }
 
