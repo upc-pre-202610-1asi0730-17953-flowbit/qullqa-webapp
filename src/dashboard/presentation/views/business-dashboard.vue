@@ -5,6 +5,7 @@ import { useI18n }                     from 'vue-i18n';
 import useDashboardStore               from '../../application/dashboard.store.js';
 import useAlertsStore                  from '../../../alerts/application/alerts.store.js';
 import useProductStore                 from '../../../product/application/product.store.js';
+import useSalesStore                   from '../../../sales/application/sales.store.js';
 import useIamStore                     from '../../../iam/application/iam.store.js';
 import { toDateLocale }                from '../../../shared/presentation/date-locale.js';
 
@@ -13,36 +14,45 @@ const router         = useRouter();
 const dashboardStore = useDashboardStore();
 const alertsStore    = useAlertsStore();
 const productStore   = useProductStore();
+const salesStore     = useSalesStore();
 const iamStore       = useIamStore();
 
 const {
-  metrics, metricsLoaded,
+  liveMetrics,
   salesByDay,
   errors
 } = toRefs(dashboardStore);
 
 const { alerts, alertsLoaded, expirationActiveCount } = toRefs(alertsStore);
 
-const {
-  fetchDashboardMetrics,
-  fetchSalesByDay,
-  refreshMetrics
-} = dashboardStore;
+const { fetchSalesByDay, refreshMetrics } = dashboardStore;
 
 const { fetchAlerts, evaluateLiveAlerts } = alertsStore;
 
 onMounted(() => {
   const businessId = iamStore.currentUser?.businessId ?? null;
   if (businessId) {
-    if (!metricsLoaded.value)        fetchDashboardMetrics(businessId);
     // Always re-evaluated live (see alerts.store.js) so this widget can never
     // drift out of sync with the Alertas screen the way it used to.
     fetchAlerts(businessId).then(() => evaluateLiveAlerts(businessId));
-    if (!salesByDay.value.length)    fetchSalesByDay(businessId);
-    if (!productStore.productsLoaded)  productStore.fetchProducts(businessId);
-    if (!productStore.inventoryLoaded) productStore.fetchInventory(businessId);
+    if (!salesByDay.value.length)       fetchSalesByDay(businessId);
+    if (!productStore.productsLoaded)   productStore.fetchProducts(businessId);
+    if (!productStore.inventoryLoaded)  productStore.fetchInventory(businessId);
+    if (!salesStore.salesLoaded)        salesStore.fetchSales(businessId);
   }
 });
+
+/**
+ * Re-fetches everything the Panel shows from the server: products/inventory/
+ * sales (liveMetrics + Mayor stock), the weekly chart and the live alerts.
+ */
+function handleRefresh() {
+  const businessId = iamStore.currentUser?.businessId ?? null;
+  if (!businessId) return;
+  refreshMetrics(businessId);
+  fetchSalesByDay(businessId);
+  fetchAlerts(businessId).then(() => evaluateLiveAlerts(businessId));
+}
 
 // ─── Navigation ────────────────────────────────────────────────────────────
 
@@ -78,6 +88,15 @@ const expiringCount = computed(() =>
 // ─── KPI card definitions ──────────────────────────────────────────────────
 
 /**
+ * Whether the real data liveMetrics is computed from has loaded at least
+ * once — used to show a loading state instead of a misleading "0" flash.
+ * @type {import('vue').ComputedRef<boolean>}
+ */
+const metricsReady = computed(() =>
+    productStore.productsLoaded && productStore.inventoryLoaded && salesStore.salesLoaded
+);
+
+/**
  * The six KPI cards rendered in the top grid.
  * Each card reads from the loaded metrics / alerts state.
  * @type {import('vue').ComputedRef<Array>}
@@ -85,7 +104,7 @@ const expiringCount = computed(() =>
 const kpiCards = computed(() => [
   {
     labelKey:   'dashboard.total-products',
-    value:      metricsLoaded.value && metrics.value ? metrics.value.totalProducts : null,
+    value:      metricsReady.value ? liveMetrics.value.totalProducts : null,
     icon:       'pi pi-box',
     iconColor:  '#0E7490',
     iconBg:     '#E0F2FE',
@@ -93,7 +112,7 @@ const kpiCards = computed(() => [
   },
   {
     labelKey:   'dashboard.low-stock',
-    value:      metricsLoaded.value && metrics.value ? metrics.value.lowStockProducts : null,
+    value:      metricsReady.value ? liveMetrics.value.lowStockProducts : null,
     icon:       'pi pi-exclamation-triangle',
     iconColor:  '#F97316',
     iconBg:     '#FFEDD5',
@@ -109,7 +128,7 @@ const kpiCards = computed(() => [
   },
   {
     labelKey:    'dashboard.inventory-value',
-    value:       metricsLoaded.value && metrics.value ? formatCurrency(metrics.value.inventoryValue) : null,
+    value:       metricsReady.value ? formatCurrency(liveMetrics.value.inventoryValue) : null,
     icon:        'pi pi-warehouse',
     iconColor:   '#22C55E',
     iconBg:      '#DCFCE7',
@@ -117,7 +136,7 @@ const kpiCards = computed(() => [
   },
   {
     labelKey:   'dashboard.total-sales',
-    value:      metricsLoaded.value && metrics.value ? formatCurrency(metrics.value.totalSales) : null,
+    value:      metricsReady.value ? formatCurrency(liveMetrics.value.totalSales) : null,
     icon:       'pi pi-shopping-cart',
     iconColor:  '#6366F1',
     iconBg:     '#EEF2FF',
@@ -125,7 +144,7 @@ const kpiCards = computed(() => [
   },
   {
     labelKey:   'dashboard.stock-health',
-    value:      metricsLoaded.value && metrics.value ? (metrics.value.stockHealthPercentage + '%') : null,
+    value:      metricsReady.value ? (liveMetrics.value.stockHealthPercentage + '%') : null,
     icon:       'pi pi-heart',
     iconColor:  '#0E7490',
     iconBg:     '#CFFAFE',
@@ -331,7 +350,7 @@ const quickActions = computed(() => [
         <button
             class="refresh-btn"
             :title="t('dashboard.refresh')"
-            @click="refreshMetrics"
+            @click="handleRefresh"
         >
           <i class="pi pi-refresh"/>
         </button>

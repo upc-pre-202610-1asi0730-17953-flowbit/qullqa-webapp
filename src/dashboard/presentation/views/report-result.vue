@@ -26,7 +26,7 @@ function reportTypeLabel(type) {
   return t(keys[type] ?? type);
 }
 
-const { reports, reportsLoaded, metrics, errors } = toRefs(dashboardStore);
+const { reports, reportsLoaded, liveMetrics: metrics, errors } = toRefs(dashboardStore);
 const { exportReport } = dashboardStore;
 
 /**

@@ -1,18 +1,22 @@
 /**
  * Application service store for the Dashboard & Analytics bounded context.
- * Coordinates metrics, sales and report use cases. Alerts are sourced
- * directly from the Alerts bounded context's own store (see alerts.store.js's
- * evaluateLiveAlerts), not duplicated here, so the Panel's recent-alerts
- * widget can never drift out of sync with the Alertas screen.
+ * Coordinates sales and report use cases. KPIs are computed live from the
+ * Product and Sales bounded contexts' own stores (see liveMetrics below)
+ * instead of a static pre-seeded snapshot — that snapshot never changed as
+ * real products/inventory/sales did, so every KPI reading it (total
+ * products, inventory value, total sales, stock health) was stale by
+ * construction. Alerts are likewise sourced directly from the Alerts
+ * bounded context's own store (see alerts.store.js's evaluateLiveAlerts).
  *
  * @module useDashboardStore
  */
 import { defineStore }  from 'pinia';
 import { computed, ref } from 'vue';
 import { DashboardApi }     from '../infrastructure/dashboard.api.js';
-import { MetricsAssembler } from '../infrastructure/metrics-snapshot.assembler.js';
 import { Report, ReportType } from '../domain/model/report.entity.js';
 import { ReportFilters }      from '../domain/model/report-filters.entity.js';
+import useProductStore        from '../../product/application/product.store.js';
+import useSalesStore          from '../../sales/application/sales.store.js';
 
 const dashboardApi = new DashboardApi();
 
@@ -21,9 +25,6 @@ const dashboardApi = new DashboardApi();
  * @returns {Object} Store state and actions.
  */
 const useDashboardStore = defineStore('dashboard', () => {
-
-    /** @type {import('vue').Ref<import('../domain/model/metrics-snapshot.entity.js').MetricsSnapshot|null>} */
-    const metrics = ref(null);
 
     /**
      * Aggregated sales per weekday for the last 7 days.
@@ -38,9 +39,6 @@ const useDashboardStore = defineStore('dashboard', () => {
     const reports = ref([]);
 
     /** @type {import('vue').Ref<boolean>} */
-    const metricsLoaded = ref(false);
-
-    /** @type {import('vue').Ref<boolean>} */
     const reportsLoaded = ref(false);
 
     /** @type {import('vue').Ref<Error[]>} */
@@ -48,6 +46,49 @@ const useDashboardStore = defineStore('dashboard', () => {
 
     /** @type {import('vue').ComputedRef<number>} */
     const reportsCount = computed(() => reports.value.length);
+
+    /**
+     * Live business metrics, computed on demand from the Product and Sales
+     * bounded contexts' own (already-loaded) state — same shape the old
+     * static /metrics snapshot had, so kpiCards and exportReport didn't need
+     * to change how they consume it, only where it comes from.
+     *
+     * Business rules (mirrors MetricsSnapshot's former getters):
+     * - lowStockProducts counts InventoryItem.isLowStock (>0 and <= minimum),
+     *   matching Inventario's own "Stock bajo" definition exactly.
+     * - inventoryValue = Σ currentStock × basePrice across all products.
+     * - totalSales/salesCount come straight from sales.store.js's own
+     *   totalRevenue/paidSalesCount, so this always agrees with what POS shows.
+     * - stockHealthPercentage: proportion of products NOT low-stock (100% when
+     *   there are no products at all — vacuously healthy).
+     * @type {import('vue').ComputedRef<Object>}
+     */
+    const liveMetrics = computed(() => {
+        const productStore = useProductStore();
+        const salesStore   = useSalesStore();
+
+        const totalProducts    = productStore.products.length;
+        const lowStockProducts = productStore.inventory.filter(item => item.isLowStock).length;
+        const inventoryValue   = productStore.inventory.reduce((sum, item) => {
+            const product = productStore.getProductById(item.productId);
+            return sum + item.currentStock * (product?.basePrice ?? 0);
+        }, 0);
+        const totalSales = salesStore.totalRevenue;
+        const salesCount = salesStore.paidSalesCount;
+
+        return {
+            totalProducts,
+            lowStockProducts,
+            inventoryValue: Math.round(inventoryValue * 100) / 100,
+            totalSales,
+            salesCount,
+            averageSaleValue: salesCount === 0 ? 0 : Math.round((totalSales / salesCount) * 100) / 100,
+            stockHealthPercentage: totalProducts === 0
+                ? 100
+                : Math.round(((totalProducts - lowStockProducts) / totalProducts) * 100),
+            generatedAt: new Date().toISOString()
+        };
+    });
 
     // ─── Queries ──────────────────────────────────────────────────────────────
 
@@ -74,30 +115,18 @@ const useDashboardStore = defineStore('dashboard', () => {
     // ─── Commands ─────────────────────────────────────────────────────────────
 
     /**
-     * Fetches and stores the metrics snapshot for a business.
+     * Re-fetches the real product, inventory and sales data liveMetrics is
+     * computed from, so the "refresh" button picks up anything that changed
+     * on the server since this session last loaded it (e.g. edited directly
+     * in the mock, or from another tab) instead of just touching a timestamp.
      * @param {number|string} businessId
      */
-    function fetchDashboardMetrics(businessId) {
-        dashboardApi.getDashboardMetrics(businessId)
-            .then(response => {
-                const snapshots = MetricsAssembler.toEntitiesFromResponse(response);
-                metrics.value       = snapshots.length > 0 ? snapshots[0] : null;
-                metricsLoaded.value = true;
-            })
-            .catch(error => errors.value.push(error));
-    }
-
-    /**
-     * Simulates a metrics refresh by updating the generatedAt timestamp via PUT.
-     * Business rule: only operates when a snapshot is already loaded.
-     */
-    function refreshMetrics() {
-        if (!metrics.value) return;
-        dashboardApi.updateMetrics({ ...metrics.value, generatedAt: new Date().toISOString() })
-            .then(response => {
-                metrics.value = MetricsAssembler.toEntityFromResource(response.data);
-            })
-            .catch(error => errors.value.push(error));
+    function refreshMetrics(businessId) {
+        const productStore = useProductStore();
+        const salesStore   = useSalesStore();
+        productStore.fetchProducts(businessId);
+        productStore.fetchInventory(businessId);
+        salesStore.fetchSales(businessId);
     }
 
     /**
@@ -205,8 +234,8 @@ const useDashboardStore = defineStore('dashboard', () => {
     }
 
     /**
-     * Exports the latest report as a CSV download using the current metrics snapshot.
-     * Business rule: aborts with an error when metrics or the report are not loaded.
+     * Exports the latest report as a CSV download using the current live metrics.
+     * Business rule: aborts with an error when the report itself isn't loaded.
      *
      * Row labels are supplied by the caller (already translated) so this
      * application-layer function stays locale-agnostic — same DDD principle
@@ -222,11 +251,7 @@ const useDashboardStore = defineStore('dashboard', () => {
             errors.value.push(new Error(`Report with id ${reportId} not found.`));
             return;
         }
-        if (!metrics.value) {
-            errors.value.push(new Error('Cannot export report: no metrics snapshot is loaded.'));
-            return;
-        }
-        const snapshot = metrics.value;
+        const snapshot = liveMetrics.value;
         const L = {
             header:            'Metric,Value',
             totalProducts:     'Total Products',
@@ -260,16 +285,14 @@ const useDashboardStore = defineStore('dashboard', () => {
     }
 
     return {
-        metrics,
+        liveMetrics,
         salesByDay,
         reports,
-        metricsLoaded,
         reportsLoaded,
         errors,
         reportsCount,
         getReportById,
         filterReportsByType,
-        fetchDashboardMetrics,
         refreshMetrics,
         fetchSalesByDay,
         generateReport,

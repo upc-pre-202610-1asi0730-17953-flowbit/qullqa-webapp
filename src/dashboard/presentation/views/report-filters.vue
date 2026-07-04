@@ -1,17 +1,35 @@
 <script setup>
-import { ref }           from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRouter }     from 'vue-router';
 import { useI18n }       from 'vue-i18n';
 import useDashboardStore from '../../application/dashboard.store.js';
+import useProductStore   from '../../../product/application/product.store.js';
+import useSalesStore     from '../../../sales/application/sales.store.js';
 import useIamStore       from '../../../iam/application/iam.store.js';
 import { ReportType }    from '../../domain/model/report.entity.js';
 
 const { t }          = useI18n();
 const router         = useRouter();
 const dashboardStore = useDashboardStore();
+const productStore   = useProductStore();
+const salesStore     = useSalesStore();
 const iamStore       = useIamStore();
 
 const { errors, generateReport } = dashboardStore;
+
+/**
+ * Ensures the real product/inventory/sales data liveMetrics is computed from
+ * is loaded even when this screen is reached without ever visiting the Panel
+ * first (e.g. a direct link or a page refresh) — otherwise the generated
+ * report would silently show all zeros instead of real business metrics.
+ */
+onMounted(() => {
+  const businessId = iamStore.currentUser?.businessId ?? null;
+  if (!businessId) return;
+  if (!productStore.productsLoaded)  productStore.fetchProducts(businessId);
+  if (!productStore.inventoryLoaded) productStore.fetchInventory(businessId);
+  if (!salesStore.salesLoaded)       salesStore.fetchSales(businessId);
+});
 
 /** @type {import('vue').Ref<string>} */
 const validationError = ref('');

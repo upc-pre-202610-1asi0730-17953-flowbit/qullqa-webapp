@@ -1,20 +1,17 @@
 import { BaseApi }      from '../../shared/infrastructure/base-api.js';
 import { BaseEndpoint } from '../../shared/infrastructure/base-endpoint.js';
 
-const metricsEndpointPath   = import.meta.env.VITE_METRICS_ENDPOINT_PATH;
 const salesEndpointPath     = import.meta.env.VITE_SALES_ENDPOINT_PATH;
 const saleDetailsEndpointPath = import.meta.env.VITE_SALE_DETAILS_ENDPOINT_PATH;
 
 /**
  * Infrastructure gateway for the Dashboard & Analytics bounded-context endpoints.
- * Reads metrics snapshots and sales to populate dashboard views.
+ * Reads sales to populate the weekly-revenue chart.
  *
  * @class DashboardApi
  * @extends BaseApi
  */
 export class DashboardApi extends BaseApi {
-    /** @type {BaseEndpoint} @private */
-    #metricsEndpoint;
     /** @type {BaseEndpoint} @private */
     #salesEndpoint;
     /** @type {BaseEndpoint} @private */
@@ -22,27 +19,8 @@ export class DashboardApi extends BaseApi {
 
     constructor() {
         super();
-        this.#metricsEndpoint    = new BaseEndpoint(this, metricsEndpointPath);
         this.#salesEndpoint      = new BaseEndpoint(this, salesEndpointPath);
         this.#saleDetailsEndpoint = new BaseEndpoint(this, saleDetailsEndpointPath);
-    }
-
-    /**
-     * Fetches the metrics snapshot for a given business.
-     * @param {number|string} businessId
-     * @returns {Promise<import('axios').AxiosResponse>}
-     */
-    getDashboardMetrics(businessId) {
-        return this.#metricsEndpoint.getAllByParam('businessId', businessId);
-    }
-
-    /**
-     * Updates a metrics snapshot (used to simulate refresh).
-     * @param {Object} resource - Must include id.
-     * @returns {Promise<import('axios').AxiosResponse>}
-     */
-    updateMetrics(resource) {
-        return this.#metricsEndpoint.update(resource.id, resource);
     }
 
     /**
