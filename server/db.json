@@ -256,10 +256,10 @@
     {
       "id": 10,
       "businessId": 1,
-      "name": "Lechuga",
-      "description": "Mercado Mayorista",
-      "category": "Verdura",
-      "basePrice": 5,
+      "name": "Free tea",
+      "description": "Backus",
+      "category": "BEVERAGES",
+      "basePrice": 3,
       "status": "ACTIVE"
     }
   ],
@@ -354,7 +354,7 @@
     },
     {
       "productId": 10,
-      "expiration": "2026-07-26",
+      "expiration": "2026-12-12",
       "purchasePrice": 2,
       "status": "ACTIVE",
       "inventoryId": 10,
@@ -368,7 +368,7 @@
       "businessId": 1,
       "warehouseId": 1,
       "minimumStock": 0,
-      "stockUnit": 290
+      "stockUnit": 289
     },
     {
       "id": 2,
@@ -376,7 +376,7 @@
       "businessId": 1,
       "warehouseId": 1,
       "minimumStock": 0,
-      "stockUnit": 71
+      "stockUnit": 70
     },
     {
       "id": 3,
@@ -414,7 +414,7 @@
       "businessId": 1,
       "warehouseId": 1,
       "minimumStock": 10,
-      "stockUnit": 96
+      "stockUnit": 95
     },
     {
       "id": 8,
@@ -438,7 +438,7 @@
       "businessId": 1,
       "warehouseId": 1,
       "minimumStock": 4,
-      "stockUnit": 0
+      "stockUnit": 100
     }
   ],
   "sales": [
@@ -831,6 +831,17 @@
       "description": "",
       "currency": "PEN",
       "id": 37
+    },
+    {
+      "businessId": 1,
+      "customerId": 1,
+      "status": "PAID",
+      "totalAmount": 36.4,
+      "paymentMethod": "YAPE",
+      "date": "2026-07-04T07:12:01.433Z",
+      "description": "",
+      "currency": "PEN",
+      "id": 38
     }
   ],
   "saleDetails": [
@@ -1369,6 +1380,30 @@
       "unitPrice": 1,
       "discount": 0,
       "id": 67
+    },
+    {
+      "saleId": 38,
+      "productId": 1,
+      "quantity": 1,
+      "unitPrice": 4.5,
+      "discount": 0,
+      "id": 68
+    },
+    {
+      "saleId": 38,
+      "productId": 2,
+      "quantity": 1,
+      "unitPrice": 26.9,
+      "discount": 0,
+      "id": 69
+    },
+    {
+      "saleId": 38,
+      "productId": 7,
+      "quantity": 1,
+      "unitPrice": 5,
+      "discount": 0,
+      "id": 70
     }
   ],
   "customers": [
@@ -1568,6 +1603,16 @@
       "currency": "PEN",
       "description": "Entrega en almacen principal",
       "id": 7
+    },
+    {
+      "businessId": 1,
+      "supplierId": 1,
+      "date": "2026-07-04T06:52:22.814Z",
+      "expectedDate": "2026-07-06",
+      "status": "PENDING",
+      "currency": "PEN",
+      "description": "",
+      "id": 8
     }
   ],
   "purchaseDetails": [
@@ -1660,6 +1705,16 @@
       "deliveryStatus": "PENDING",
       "deliveryTrackingNum": "",
       "id": 9
+    },
+    {
+      "purchaseId": 8,
+      "productId": 1,
+      "quantity": 50,
+      "unitPrice": 5,
+      "discount": 0,
+      "deliveryStatus": "PENDING",
+      "deliveryTrackingNum": "",
+      "id": 10
     }
   ],
   "alerts": [
@@ -2627,6 +2682,84 @@
       "quantity": 1,
       "registeredAt": "2026-07-04T06:25:50.544Z",
       "id": 36
+    },
+    {
+      "productId": 1,
+      "businessId": 1,
+      "warehouseId": 1,
+      "type": "SALE",
+      "quantity": 1,
+      "registeredAt": "2026-07-04T07:04:05.544Z",
+      "id": 37
+    },
+    {
+      "productId": 10,
+      "businessId": 1,
+      "warehouseId": 1,
+      "type": "INTAKE",
+      "quantity": 50,
+      "supplier": "",
+      "note": "",
+      "registeredAt": "2026-07-04T07:11:12.330Z",
+      "id": 38
+    },
+    {
+      "productId": 10,
+      "businessId": 1,
+      "warehouseId": 1,
+      "type": "INTAKE",
+      "quantity": 50,
+      "supplier": "Backus",
+      "note": "",
+      "registeredAt": "2026-07-04T07:11:53.866Z",
+      "id": 39
+    },
+    {
+      "productId": 1,
+      "businessId": 1,
+      "warehouseId": 1,
+      "type": "SALE",
+      "quantity": 1,
+      "registeredAt": "2026-07-04T07:12:08.059Z",
+      "id": 40
+    },
+    {
+      "productId": 2,
+      "businessId": 1,
+      "warehouseId": 1,
+      "type": "SALE",
+      "quantity": 1,
+      "registeredAt": "2026-07-04T07:12:08.066Z",
+      "id": 41
+    },
+    {
+      "productId": 1,
+      "businessId": 1,
+      "warehouseId": 1,
+      "type": "SALE",
+      "quantity": 1,
+      "registeredAt": "2026-07-04T07:12:08.059Z",
+      "id": 42
+    },
+    {
+      "productId": 7,
+      "businessId": 1,
+      "warehouseId": 1,
+      "type": "SALE",
+      "quantity": 1,
+      "registeredAt": "2026-07-04T07:12:08.068Z",
+      "id": 43
+    },
+    {
+      "productId": 11,
+      "businessId": 1,
+      "warehouseId": 2,
+      "type": "INTAKE",
+      "quantity": 10,
+      "supplier": "",
+      "note": "",
+      "registeredAt": "2026-07-04T07:18:22.305Z",
+      "id": 44
     }
   ]
 }
