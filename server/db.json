@@ -49,16 +49,15 @@
       "createdAt": "2025-04-10T11:00:00Z"
     },
     {
-      "name": "Test",
-      "lastName": "Usuario",
-      "email": "testuser1783050269745@qullqa.com",
-      "password": "password123",
+      "id": 7,
+      "name": "Julian",
+      "lastName": "David",
+      "email": "juliancito@qullqa.com",
+      "businessId": 4,
       "status": "ACTIVE",
       "roleId": 1,
-      "businessId": null,
-      "businessName": "Bodega Test QA",
-      "businessType": "BODEGA",
-      "id": 5
+      "phone": "",
+      "password": "contrasenia12345"
     }
   ],
   "roles": [
@@ -93,6 +92,15 @@
       "ruc": "20987654321",
       "planId": 1,
       "userId": 2
+    },
+    {
+      "name": "Bodega Juliancito",
+      "type": "BODEGA",
+      "address": "",
+      "ruc": "",
+      "planId": 1,
+      "userId": 7,
+      "id": 4
     }
   ],
   "plans": [
@@ -181,6 +189,15 @@
       "status": "ACTIVE",
       "businessId": 1,
       "id": 4
+    },
+    {
+      "name": "Almacén Principal",
+      "code": "ALM-001",
+      "address": "",
+      "capacity": "MEDIUM",
+      "status": "ACTIVE",
+      "businessId": 4,
+      "id": 6
     }
   ],
   "products": [
@@ -287,6 +304,15 @@
       "description": "Mercado Central",
       "category": "Verduras",
       "basePrice": 4,
+      "status": "ACTIVE"
+    },
+    {
+      "id": 13,
+      "businessId": 4,
+      "name": "Coca Cola 1.5L",
+      "description": "Backus",
+      "category": "BEVERAGES",
+      "basePrice": 5,
       "status": "ACTIVE"
     }
   ],
@@ -402,6 +428,14 @@
       "status": "ACTIVE",
       "inventoryId": 12,
       "id": 14
+    },
+    {
+      "productId": 13,
+      "expiration": "2026-07-30",
+      "purchasePrice": 4,
+      "status": "ACTIVE",
+      "inventoryId": 13,
+      "id": 15
     }
   ],
   "inventories": [
@@ -498,6 +532,14 @@
       "stockUnit": 50,
       "minimumStock": 4,
       "id": 12
+    },
+    {
+      "id": 13,
+      "productId": 13,
+      "businessId": 4,
+      "warehouseId": 6,
+      "minimumStock": 5,
+      "stockUnit": 99
     }
   ],
   "sales": [
@@ -901,6 +943,17 @@
       "description": "",
       "currency": "PEN",
       "id": 38
+    },
+    {
+      "businessId": 4,
+      "customerId": null,
+      "status": "PAID",
+      "totalAmount": 5,
+      "paymentMethod": "YAPE",
+      "date": "2026-07-04T23:35:20.942Z",
+      "description": "",
+      "currency": "PEN",
+      "id": 39
     }
   ],
   "saleDetails": [
@@ -1463,6 +1516,14 @@
       "unitPrice": 5,
       "discount": 0,
       "id": 70
+    },
+    {
+      "saleId": 39,
+      "productId": 13,
+      "quantity": 1,
+      "unitPrice": 5,
+      "discount": 0,
+      "id": 71
     }
   ],
   "customers": [
@@ -1594,6 +1655,20 @@
       "contactPerson": "Miguel Torres",
       "category": "GROCERIES",
       "since": "2023-01-15"
+    },
+    {
+      "id": 6,
+      "businessId": 4,
+      "name": "El sol",
+      "lastName": "SAC",
+      "ruc": "09876543210",
+      "email": "juan@proveedor.com",
+      "phone": "123455",
+      "address": "Av Abancay",
+      "contactPerson": "juan",
+      "category": "BEVERAGES",
+      "status": "INACTIVE",
+      "since": "2026-07-04"
     }
   ],
   "purchases": [
@@ -1920,11 +1995,11 @@
       "driverPhone": "987-321-654",
       "vehicle": "Camión Mercedes",
       "licensePlate": "ABC-123",
-      "status": "IN_TRANSIT",
+      "status": "COMPLETED",
       "registeredAt": "2026-05-08T08:00:00Z",
       "estimatedArrival": "2026-05-08T12:00:00Z",
-      "completedAt": null,
-      "currentLabel": "Av. Universitaria, tramo norte",
+      "completedAt": "2026-07-04T23:37:14.715Z",
+      "currentLabel": "Av. Universitaria 2341, Los Olivos",
       "currentLatitude": -12.03,
       "currentLongitude": -77.05,
       "products": [
@@ -1933,10 +2008,10 @@
           "quantity": 200
         }
       ],
-      "businessId": 1,
-      "purchaseDetailId": 4,
       "totalWeightValue": 220,
-      "totalWeightUnit": "kg"
+      "totalWeightUnit": "kg",
+      "businessId": 1,
+      "purchaseDetailId": 4
     },
     {
       "id": 2,
@@ -2841,6 +2916,37 @@
       "note": "",
       "registeredAt": "2026-07-04T07:35:50.548Z",
       "id": 46
+    },
+    {
+      "productId": 13,
+      "businessId": 4,
+      "warehouseId": 6,
+      "type": "INTAKE",
+      "quantity": 50,
+      "supplier": "",
+      "note": "",
+      "registeredAt": "2026-07-04T23:12:29.837Z",
+      "id": 47
+    },
+    {
+      "productId": 13,
+      "businessId": 4,
+      "warehouseId": 6,
+      "type": "SALE",
+      "quantity": 1,
+      "registeredAt": "2026-07-04T23:35:31.340Z",
+      "id": 48
+    },
+    {
+      "productId": 13,
+      "businessId": 4,
+      "warehouseId": 6,
+      "type": "INTAKE",
+      "quantity": 50,
+      "supplier": "Backus",
+      "note": "",
+      "registeredAt": "2026-07-04T23:35:44.804Z",
+      "id": 49
     }
   ]
 }
