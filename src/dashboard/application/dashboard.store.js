@@ -34,13 +34,6 @@ const useDashboardStore = defineStore('dashboard', () => {
      */
     const salesByDay = ref([]);
 
-    /**
-     * Top 3 products by quantity sold.
-     * Each entry: { productId, productName, totalQuantity, totalRevenue }.
-     * @type {import('vue').Ref<Array>}
-     */
-    const topProducts = ref([]);
-
     /** @type {import('vue').Ref<Array>} */
     const reports = ref([]);
 
@@ -108,12 +101,11 @@ const useDashboardStore = defineStore('dashboard', () => {
     }
 
     /**
-     * Fetches sales and sale details for a business, then computes:
-     *  1. salesByDay  — PAID sales aggregated by weekday for the last 7 calendar days.
-     *  2. topProducts — top 3 products by total quantity across all PAID sales.
+     * Fetches sales and sale details for a business, then computes salesByDay
+     * — PAID sales aggregated by weekday for the last 7 calendar days.
      *
      * Business rules:
-     * - Only sales with status === 'PAID' contribute to revenue and quantity totals.
+     * - Only sales with status === 'PAID' contribute to revenue totals.
      * - Revenue per sale detail = quantity × unitPrice × (1 - discount), discount
      *   being a decimal fraction (0–1), matching SaleDetail.lineTotal.
      * - barHeightPercent is scaled so the day with maximum revenue = 100%.
@@ -122,13 +114,9 @@ const useDashboardStore = defineStore('dashboard', () => {
      * @param {number|string} businessId
      */
     function fetchSalesByDay(businessId) {
-        Promise.all([
-            dashboardApi.getSales(businessId),
-            dashboardApi.getProducts(businessId)
-        ])
-            .then(([salesResponse, productsResponse]) => {
-                const allSales    = salesResponse.data   instanceof Array ? salesResponse.data   : [];
-                const allProducts = productsResponse.data instanceof Array ? productsResponse.data : [];
+        dashboardApi.getSales(businessId)
+            .then(salesResponse => {
+                const allSales = salesResponse.data instanceof Array ? salesResponse.data : [];
 
                 // Filter to PAID sales belonging to this business
                 const paidSales = allSales.filter(sale => sale.status === 'PAID');
@@ -141,15 +129,11 @@ const useDashboardStore = defineStore('dashboard', () => {
                 );
 
                 return Promise.all(detailPromises).then(detailArrays => ({
-                    allProducts,
                     paidSales,
                     allDetails: detailArrays.flat()
                 }));
             })
-            .then(({ allProducts, paidSales, allDetails }) => {
-                // Only details that belong to paid sales
-                const paidDetails = allDetails;
-
+            .then(({ paidSales, allDetails }) => {
                 // ── salesByDay computation ──────────────────────────────────
                 // Build a map of the last 7 calendar days: key = 'YYYY-MM-DD', value = { dayIndex, totalAmount }
                 const today = new Date();
@@ -195,44 +179,8 @@ const useDashboardStore = defineStore('dashboard', () => {
                         ? Math.round((entry.totalAmount / maxAmount) * 100)
                         : 0
                 }));
-
-                // ── topProducts computation ─────────────────────────────────
-                // Aggregate quantity and revenue per productId across all paid details
-                const productAggregation = new Map();
-
-                paidDetails.forEach(detail => {
-                    const existing = productAggregation.get(detail.productId) ?? { totalQuantity: 0, totalRevenue: 0 };
-                    const lineRevenue = detail.quantity * detail.unitPrice * (1 - (detail.discount ?? 0));
-                    productAggregation.set(detail.productId, {
-                        totalQuantity: existing.totalQuantity + detail.quantity,
-                        totalRevenue:  Math.round((existing.totalRevenue + lineRevenue) * 100) / 100
-                    });
-                });
-
-                // Join with product names, sort by quantity descending, take top 3
-                topProducts.value = Array.from(productAggregation.entries())
-                    .map(([productId, aggregation]) => {
-                        const product = allProducts.find(productItem => productItem.id === productId);
-                        return {
-                            productId,
-                            productName:   product ? product.name : `Producto #${productId}`,
-                            totalQuantity: aggregation.totalQuantity,
-                            totalRevenue:  aggregation.totalRevenue
-                        };
-                    })
-                    .sort((firstEntry, secondEntry) => secondEntry.totalQuantity - firstEntry.totalQuantity)
-                    .slice(0, 3);
             })
             .catch(error => errors.value.push(error));
-    }
-
-    /**
-     * Alias kept for symmetry with the diagram — delegates to fetchSalesByDay
-     * which already computes topProducts in the same Promise.all call.
-     * @param {number|string} businessId
-     */
-    function fetchTopProducts(businessId) {
-        if (!salesByDay.value.length) fetchSalesByDay(businessId);
     }
 
     /**
@@ -314,7 +262,6 @@ const useDashboardStore = defineStore('dashboard', () => {
     return {
         metrics,
         salesByDay,
-        topProducts,
         reports,
         metricsLoaded,
         reportsLoaded,
@@ -325,7 +272,6 @@ const useDashboardStore = defineStore('dashboard', () => {
         fetchDashboardMetrics,
         refreshMetrics,
         fetchSalesByDay,
-        fetchTopProducts,
         generateReport,
         exportReport
     };

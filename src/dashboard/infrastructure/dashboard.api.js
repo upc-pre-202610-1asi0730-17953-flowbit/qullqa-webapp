@@ -4,11 +4,10 @@ import { BaseEndpoint } from '../../shared/infrastructure/base-endpoint.js';
 const metricsEndpointPath   = import.meta.env.VITE_METRICS_ENDPOINT_PATH;
 const salesEndpointPath     = import.meta.env.VITE_SALES_ENDPOINT_PATH;
 const saleDetailsEndpointPath = import.meta.env.VITE_SALE_DETAILS_ENDPOINT_PATH;
-const productsEndpointPath  = import.meta.env.VITE_PRODUCTS_ENDPOINT_PATH;
 
 /**
  * Infrastructure gateway for the Dashboard & Analytics bounded-context endpoints.
- * Reads metrics snapshots, sales and products to populate dashboard views.
+ * Reads metrics snapshots and sales to populate dashboard views.
  *
  * @class DashboardApi
  * @extends BaseApi
@@ -20,15 +19,12 @@ export class DashboardApi extends BaseApi {
     #salesEndpoint;
     /** @type {BaseEndpoint} @private */
     #saleDetailsEndpoint;
-    /** @type {BaseEndpoint} @private */
-    #productsEndpoint;
 
     constructor() {
         super();
         this.#metricsEndpoint    = new BaseEndpoint(this, metricsEndpointPath);
         this.#salesEndpoint      = new BaseEndpoint(this, salesEndpointPath);
         this.#saleDetailsEndpoint = new BaseEndpoint(this, saleDetailsEndpointPath);
-        this.#productsEndpoint   = new BaseEndpoint(this, productsEndpointPath);
     }
 
     /**
@@ -60,21 +56,12 @@ export class DashboardApi extends BaseApi {
 
     /**
      * Fetches the sale detail lines belonging to a single sale.
-     * Used to compute top products by quantity and revenue, scoped one sale
-     * at a time so no other business's sale-line data is ever requested.
+     * Used to compute revenue per weekday, scoped one sale at a time so no
+     * other business's sale-line data is ever requested.
      * @param {number|string} saleId
      * @returns {Promise<import('axios').AxiosResponse>}
      */
     getSaleDetailsBySale(saleId) {
         return this.#saleDetailsEndpoint.getAllByParam('saleId', saleId);
-    }
-
-    /**
-     * Fetches all products for a given business.
-     * @param {number|string} businessId
-     * @returns {Promise<import('axios').AxiosResponse>}
-     */
-    getProducts(businessId) {
-        return this.#productsEndpoint.getAllByParam('businessId', businessId);
     }
 }

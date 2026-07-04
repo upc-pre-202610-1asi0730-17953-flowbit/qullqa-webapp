@@ -4,6 +4,7 @@ import { useRouter }                   from 'vue-router';
 import { useI18n }                     from 'vue-i18n';
 import useDashboardStore               from '../../application/dashboard.store.js';
 import useAlertsStore                  from '../../../alerts/application/alerts.store.js';
+import useProductStore                 from '../../../product/application/product.store.js';
 import useIamStore                     from '../../../iam/application/iam.store.js';
 import { toDateLocale }                from '../../../shared/presentation/date-locale.js';
 
@@ -11,11 +12,12 @@ const { t, locale }  = useI18n();
 const router         = useRouter();
 const dashboardStore = useDashboardStore();
 const alertsStore    = useAlertsStore();
+const productStore   = useProductStore();
 const iamStore       = useIamStore();
 
 const {
   metrics, metricsLoaded,
-  salesByDay, topProducts,
+  salesByDay,
   errors
 } = toRefs(dashboardStore);
 
@@ -24,7 +26,6 @@ const { alerts, alertsLoaded, expirationActiveCount } = toRefs(alertsStore);
 const {
   fetchDashboardMetrics,
   fetchSalesByDay,
-  fetchTopProducts,
   refreshMetrics
 } = dashboardStore;
 
@@ -38,7 +39,8 @@ onMounted(() => {
     // drift out of sync with the Alertas screen the way it used to.
     fetchAlerts(businessId).then(() => evaluateLiveAlerts(businessId));
     if (!salesByDay.value.length)    fetchSalesByDay(businessId);
-    if (!topProducts.value.length)   fetchTopProducts(businessId);
+    if (!productStore.productsLoaded)  productStore.fetchProducts(businessId);
+    if (!productStore.inventoryLoaded) productStore.fetchInventory(businessId);
   }
 });
 
@@ -220,17 +222,30 @@ const currentUserFirstName = computed(() => {
 });
 
 /**
- * Top 3 products sorted descending by stock quantity for the "Mayor stock" panel.
- * stockPercent is relative to the highest-quantity item (max badge = +12%).
+ * Top 3 products sorted descending by REAL current inventory stock, for the
+ * "Mayor stock" panel. This used to be wired to sales quantity (how much of
+ * each product had been SOLD), which produced numbers that didn't match
+ * Inventario at all and even ranked out-of-stock products highly if they'd
+ * sold well in the past — it's now sourced from the same InventoryItem data
+ * Inventario itself uses, so the numbers always agree.
+ * stockPercent is each product's stock relative to the highest-stocked item.
  * @type {import('vue').ComputedRef<Array>}
  */
 const topStockProducts = computed(() => {
-  if (!topProducts.value.length) return [];
-  const sorted = [...topProducts.value].sort((a, b) => b.totalQuantity - a.totalQuantity);
-  const maxQty = sorted[0].totalQuantity;
-  return sorted.slice(0, 3).map(product => ({
+  const ranked = productStore.products
+      .map(product => ({
+        productId:    product.id,
+        productName:  product.name,
+        currentStock: productStore.getInventoryByProduct(product.id)?.currentStock ?? 0
+      }))
+      .filter(product => product.currentStock > 0)
+      .sort((a, b) => b.currentStock - a.currentStock)
+      .slice(0, 3);
+
+  const maxStock = ranked[0]?.currentStock ?? 0;
+  return ranked.map(product => ({
     ...product,
-    stockPercent: maxQty > 0 ? Math.max(1, Math.round((product.totalQuantity / maxQty) * 12)) : 0
+    stockPercent: maxStock > 0 ? Math.round((product.currentStock / maxStock) * 100) : 0
   }));
 });
 
@@ -492,10 +507,10 @@ const quickActions = computed(() => [
               <div class="stock-row__info">
                 <p class="stock-row__name">{{ stockItem.productName }}</p>
                 <p class="stock-row__qty">
-                  {{ stockItem.totalQuantity }} {{ t('dashboard.units') }}
+                  {{ stockItem.currentStock }} {{ t('dashboard.units') }}
                 </p>
               </div>
-              <span class="stock-row__badge">+{{ stockItem.stockPercent }}%</span>
+              <span class="stock-row__badge">{{ stockItem.stockPercent }}%</span>
             </div>
           </div>
 
