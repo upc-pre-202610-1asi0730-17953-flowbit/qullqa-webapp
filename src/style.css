@@ -80,3 +80,12 @@ button:focus-visible {
 .z-30 { z-index: 30; }
 .z-40 { z-index: 40; }
 .z-50 { z-index: 50; }
+
+/* ── Position utilities ──
+   PrimeFlex (this project's utility library) has no inset-0 shorthand —
+   that's a Tailwind-only convention. Several modal overlays across the app
+   were written with class="fixed inset-0 ..." assuming it existed; since it
+   silently matched nothing, those overlays never got top/right/bottom/left:0
+   and rendered wherever they naturally fell in the page flow (sized to fit
+   their own content) instead of covering the viewport and centering. */
+.inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
