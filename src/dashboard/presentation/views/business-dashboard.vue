@@ -416,10 +416,12 @@ const quickActions = computed(() => [
                 <span class="chart-bar-col__amount">
                   {{ dayEntry.totalAmount > 0 ? formatCurrency(dayEntry.totalAmount) : '' }}
                 </span>
-                <div
-                    class="chart-bar-col__bar"
-                    :style="{ height: dayEntry.barHeightPercent + '%' }"
-                />
+                <div class="chart-bar-col__track">
+                  <div
+                      class="chart-bar-col__bar"
+                      :style="{ height: dayEntry.barHeightPercent + '%' }"
+                  />
+                </div>
                 <span class="chart-bar-col__label">{{ weekdayLabel(dayEntry.dayIndex) }}</span>
               </div>
             </div>
@@ -809,6 +811,17 @@ const quickActions = computed(() => [
 }
 @media (min-width: 640px) {
   .chart-bar-col__amount { font-size: 0.65rem; }
+}
+/* Fixed-height reference so the bar's height:X% below actually has a real
+   pixel height to resolve against — without this, .chart-bar-col__bar's
+   percentage height resolves against an auto-sized (content-fit) parent per
+   the CSS spec, which computes to nothing, so every bar silently collapsed
+   to its min-height regardless of barHeightPercent. */
+.chart-bar-col__track {
+  width: 100%;
+  height: 140px;
+  display: flex;
+  align-items: flex-end;
 }
 .chart-bar-col__bar {
   width: 100%;
