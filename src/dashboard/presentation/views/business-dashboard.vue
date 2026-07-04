@@ -535,9 +535,13 @@ const quickActions = computed(() => [
             </div>
           </div>
 
-          <div v-else class="panel__loading">
+          <div v-else-if="!productStore.productsLoaded || !productStore.inventoryLoaded" class="panel__loading">
             <i class="pi pi-spin pi-spinner"/>
           </div>
+
+          <p v-else class="m-0" style="font-size: 0.88rem; color: #64748B;">
+            {{ t('dashboard.no-stock-data') }}
+          </p>
         </div>
       </div>
     </div>
