@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, toRefs } from 'vue';
+import { computed, onMounted, ref, toRefs, watch } from 'vue';
 import { useI18n }        from 'vue-i18n';
 import { useToast }       from 'primevue/usetoast';
 import { useConfirm }     from 'primevue';
@@ -7,6 +7,7 @@ import useProductStore, { parseLocalDate } from '../../application/product.store
 import useIamStore        from '../../../iam/application/iam.store.js';
 import { Product, ProductCategory, ProductStatus } from '../../domain/model/product.entity.js';
 import { toDateLocale }   from '../../../shared/presentation/date-locale.js';
+import { isCustomCategory, orderedCategoryOptions } from '../category-options.js';
 
 const { t, locale } = useI18n();
 const toast        = useToast();
@@ -14,8 +15,8 @@ const confirm      = useConfirm();
 const productStore = useProductStore();
 const iamStore     = useIamStore();
 
-const { products, productsLoaded, inventory, stockMovements, errors } = toRefs(productStore);
-const { fetchProducts, fetchInventory, fetchBatches, fetchStockMovements,
+const { products, productsLoaded, inventory, stockMovements, stockMovementsLoaded, errors } = toRefs(productStore);
+const { fetchProducts, fetchInventory, fetchBatches, fetchAllStockMovements,
   addProduct, updateProduct, deleteProduct, registerStockIntake, updateMinimumStock,
   createBatchForProduct, isProductExpiringSoon } = productStore;
 
@@ -32,17 +33,40 @@ const editingProduct       = ref(null);
 const showIntakeModal      = ref(false);
 const intakeTargetProduct  = ref(null);
 
-const categoryOptions = ['Todos', 'DAIRY', 'GRAINS', 'OILS', 'BEVERAGES', 'CLEANING', 'MEDICINE', 'OTHER'];
+/**
+ * Filter dropdown options: the fixed categories plus any custom category
+ * labels currently in use by real products, so admins can actually filter
+ * down to the custom groups they created — otherwise a custom category
+ * would only ever be reachable via "Todos". OTHER always sorts last.
+ * @type {import('vue').ComputedRef<string[]>}
+ */
+const categoryFilterOptions = computed(() => ['Todos', ...orderedCategoryOptions(products.value)]);
+
+/**
+ * Category options for the create/edit product modal — same ordered list
+ * as the filter (fixed categories, then custom ones in use, OTHER last),
+ * minus "Todos". Lets an admin pick a previously-created custom category
+ * (e.g. "Frutas y verduras") directly, instead of having to reselect
+ * "Otros" and retype the same label every time.
+ * @type {import('vue').ComputedRef<string[]>}
+ */
+const categoryModalOptions = computed(() => orderedCategoryOptions(products.value));
 
 /**
  * Translated label for a product category (or 'Todos'), reusing the same
  * pos.category-* keys already defined for the POS product grid so the
  * wording stays consistent across bounded contexts and follows the locale.
+ *
+ * Categories outside the fixed ProductCategory enum are custom labels the
+ * admin typed in when "Otros" didn't fit — those have no i18n key, so
+ * they're shown verbatim instead of being run through t(), which would
+ * otherwise render the raw untranslated key on screen.
  * @param {string} category
  * @returns {string}
  */
 function categoryLabel(category) {
   if (category === 'Todos') return t('pos.category-all');
+  if (isCustomCategory(category)) return category;
   return t(`pos.category-${category.toLowerCase()}`);
 }
 
@@ -82,13 +106,37 @@ function statusLabel(statusKey) {
   return t(`inventory.status-${statusKey}`);
 }
 
+/**
+ * Active warehouses for the current business, used to let the user pick
+ * where a product's stock is being placed when registering an intake.
+ * Not kept in the store's own state (fetchWarehousesForBusiness returns a
+ * plain array), so it's held locally here.
+ * @type {import('vue').Ref<Array>}
+ */
+const warehouses = ref([]);
+
 onMounted(() => {
   const businessId = iamStore.currentUser?.businessId ?? null;
   if (businessId) {
     if (!productsLoaded.value) fetchProducts(businessId);
     fetchInventory(businessId);
+    productStore.fetchWarehousesForBusiness(businessId).then(list => {
+      warehouses.value = list.filter(warehouse => warehouse.status === 'ACTIVE');
+    });
   }
   if (!productStore.batchesLoaded) fetchBatches();
+});
+
+/**
+ * Lazily loads the real stock-movement history the first time the user
+ * opens the "Movimientos" tab, instead of fetching it on every Inventory
+ * page load regardless of whether that tab is ever viewed.
+ */
+watch(activeTab, (tab) => {
+  if (tab === 'movements' && !stockMovementsLoaded.value) {
+    const businessId = iamStore.currentUser?.businessId ?? null;
+    if (businessId) fetchAllStockMovements(businessId);
+  }
 });
 
 /**
@@ -159,6 +207,30 @@ function resolveExpirationLabel(productId) {
   return parseLocalDate(nearestBatch.expiration).toLocaleDateString(toDateLocale(locale.value), { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+/**
+ * Resolves a stock movement's product name for display, falling back to a
+ * generic "#id" label if the product isn't in the currently loaded list.
+ * @param {number|string} productId
+ * @returns {string}
+ */
+function movementProductName(productId) {
+  const product = products.value.find(p => p.id === parseInt(productId));
+  return product ? product.name : `#${productId}`;
+}
+
+/**
+ * Formats a stock movement's registeredAt (a real ISO timestamp) into a
+ * locale-aware date + time string.
+ * @param {string} isoString
+ * @returns {string}
+ */
+function formatMovementDate(isoString) {
+  if (!isoString) return '—';
+  return new Date(isoString).toLocaleString(toDateLocale(locale.value), {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+}
+
 const summaryCounts = computed(() => {
   const counts = { total: products.value.length, low: 0, expiring: 0, out: 0 };
   products.value.forEach(product => {
@@ -190,17 +262,22 @@ function countByStatus(statusKey) {
 const productModalForm = ref({
   name:           '',
   category:       'BEVERAGES',
+  customCategory: '',
   supplier:       '',
   currentStock:   '',
   minimumStock:   '',
   basePrice:      '',
   cost:           '',
-  expirationDate: ''
+  expirationDate: '',
+  warehouseId:    ''
 });
 
 function openCreateProductModal() {
   editingProduct.value   = null;
-  productModalForm.value = { name: '', category: 'BEVERAGES', supplier: '', currentStock: '', minimumStock: '', basePrice: '', cost: '', expirationDate: '' };
+  productModalForm.value = {
+    name: '', category: 'BEVERAGES', customCategory: '', supplier: '', currentStock: '', minimumStock: '', basePrice: '', cost: '', expirationDate: '',
+    warehouseId: warehouses.value[0] ? String(warehouses.value[0].id) : ''
+  };
   showProductModal.value = true;
 }
 
@@ -214,15 +291,20 @@ function openEditProductModal(product) {
       batch => batch.productId === product.id && batch.status === 'ACTIVE'
   );
 
+  // A product's custom category (if any) is already one of the dropdown's
+  // own options (see categoryModalOptions), so it's selected directly —
+  // no need to route through "Otros" + a prefilled text field on edit.
   productModalForm.value = {
     name:           product.name,
     category:       product.category,
+    customCategory: '',
     supplier:       product.description ?? '',
     currentStock:   String(resolveCurrentStock(product.id)),
     minimumStock:   String(resolveMinimumStock(product.id)),
     basePrice:      String(product.basePrice),
     cost:           activeBatch ? String(activeBatch.purchasePrice) : '',
-    expirationDate: activeBatch ? activeBatch.expiration : ''
+    expirationDate: activeBatch ? activeBatch.expiration : '',
+    warehouseId:    ''
   };
   showProductModal.value = true;
 }
@@ -231,11 +313,21 @@ function saveProductFromModal() {
   if (!productModalForm.value.name.trim()) return;
 
   const businessId = iamStore.currentUser?.businessId ?? null;
+
+  // When "Otros" is picked and the admin actually typed a custom label
+  // (e.g. "Frutas"), that label becomes the real category instead of the
+  // generic OTHER — effectively letting admins create new categories on
+  // the fly. Leaving the text blank keeps the plain OTHER behavior.
+  const customCategory = productModalForm.value.customCategory.trim();
+  const resolvedCategory = productModalForm.value.category === ProductCategory.OTHER && customCategory
+      ? customCategory
+      : productModalForm.value.category;
+
   const productEntity = new Product({
     id:          editingProduct.value ? editingProduct.value.id : null,
     businessId:  businessId,
     name:        productModalForm.value.name.trim(),
-    category:    productModalForm.value.category,
+    category:    resolvedCategory,
     description: productModalForm.value.supplier,
     basePrice:   parseFloat(productModalForm.value.basePrice) || 0,
     status:      ProductStatus.ACTIVE
@@ -258,7 +350,8 @@ function saveProductFromModal() {
         const initialStock = parseInt(productModalForm.value.currentStock) || 0;
         // Always create the inventory record, even with 0 initial stock, so
         // minimumStock has somewhere to persist (see registerStockIntake).
-        const intakePromise = registerStockIntake({ productId: createdProduct.id, businessId, quantity: initialStock, minimumStock });
+        const warehouseId = productModalForm.value.warehouseId ? parseInt(productModalForm.value.warehouseId) : null;
+        const intakePromise = registerStockIntake({ productId: createdProduct.id, businessId, quantity: initialStock, minimumStock, warehouseId });
 
         return intakePromise.then(createdInventoryItem => {
           if (expirationDate) {
@@ -320,15 +413,16 @@ function handleDeleteProduct(product) {
 
 // ── Intake modal ───────────────────────────────────────────────────────────────
 
-const intakeForm = ref({ productId: '', quantity: '', supplier: '', note: '' });
+const intakeForm = ref({ productId: '', quantity: '', supplier: '', note: '', warehouseId: '' });
 
 function openIntakeModal(product) {
   intakeTargetProduct.value = product;
   intakeForm.value = {
-    productId: product ? String(product.id) : (products.value[0] ? String(products.value[0].id) : ''),
-    quantity:  '',
-    supplier:  '',
-    note:      ''
+    productId:   product ? String(product.id) : (products.value[0] ? String(products.value[0].id) : ''),
+    quantity:    '',
+    supplier:    '',
+    note:        '',
+    warehouseId: warehouses.value[0] ? String(warehouses.value[0].id) : ''
   };
   showIntakeModal.value = true;
 }
@@ -341,22 +435,14 @@ function saveIntake() {
 
   savingIntake.value = true;
   registerStockIntake({
-    productId:  parseInt(intakeForm.value.productId),
-    businessId: businessId,
-    quantity:   quantity
+    productId:   parseInt(intakeForm.value.productId),
+    businessId:  businessId,
+    quantity:    quantity,
+    warehouseId: intakeForm.value.warehouseId ? parseInt(intakeForm.value.warehouseId) : null,
+    supplier:    intakeForm.value.supplier,
+    note:        intakeForm.value.note
   })
       .then(() => {
-        const productName = products.value.find(p => p.id === parseInt(intakeForm.value.productId))?.name ?? '';
-        stockMovements.value.unshift({
-          id:           Date.now(),
-          productId:    parseInt(intakeForm.value.productId),
-          product:      productName,
-          type:         'INTAKE',
-          quantity:     quantity,
-          supplier:     intakeForm.value.supplier,
-          note:         intakeForm.value.note,
-          registeredAt: new Date().toLocaleDateString('es-PE')
-        });
         toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('inventory.toast-intake-success'), life: 3500 });
         showIntakeModal.value = false;
       })
@@ -372,10 +458,66 @@ function formatCurrency(amount) {
   return `S/ ${Number(amount).toFixed(2)}`;
 }
 
-const warehouseSummary = [
-  { name: 'Almacén Principal',  location: 'Tienda – Primer piso', itemCount: 8, value: 'S/ 38,450' },
-  { name: 'Almacén Secundario', location: 'Depósito – Sótano',   itemCount: 4, value: 'S/ 6,780'  }
-];
+/**
+ * Builds one card/table entry for the Almacén tab from the set of inventory
+ * items belonging to a single warehouse.
+ * @param {number} key
+ * @param {string} name
+ * @param {string} location
+ * @param {import('../../domain/model/inventory-item.entity.js').InventoryItem[]} items
+ */
+function buildWarehouseSummaryEntry(key, name, location, items) {
+  const value = items.reduce((sum, item) => {
+    const product = products.value.find(p => p.id === item.productId);
+    return sum + (item.currentStock * (product?.basePrice ?? 0));
+  }, 0);
+  return { key, name, location, itemCount: items.length, value: formatCurrency(value) };
+}
+
+/**
+ * Per-warehouse stock summary for the Almacén tab.
+ *
+ * Computed entirely from data already loaded by this view (inventory,
+ * products, warehouses) — every InventoryItem already carries its own real
+ * warehouseId, so no separate API call or the previously-broken
+ * WarehouseStock entity is needed.
+ *
+ * Business rule: every inventory record is expected to have a real
+ * warehouseId — a product with no assigned warehouse is a data problem to
+ * fix at the source (see registerStockIntake's warehouse selector), not a
+ * state this view should normalize into its own "unassigned" bucket.
+ * @type {import('vue').ComputedRef<Array>}
+ */
+const warehouseSummary = computed(() => warehouses.value.map(warehouse =>
+    buildWarehouseSummaryEntry(
+        warehouse.id,
+        warehouse.name,
+        warehouse.address,
+        inventory.value.filter(item => item.warehouseId === warehouse.id)
+    )
+));
+
+/**
+ * Currently selected warehouse card (drives which warehouse's products the
+ * distribution table below shows). Null means "not chosen yet" — defaults
+ * to the first available entry so the table is never empty on first load.
+ * @type {import('vue').Ref<number|null>}
+ */
+const selectedWarehouseKey = ref(null);
+
+const activeWarehouseKey = computed(() => selectedWarehouseKey.value ?? (warehouseSummary.value[0]?.key ?? null));
+
+/**
+ * Inventory items belonging to the currently selected warehouse, joined
+ * with their product for display in the distribution table.
+ * @type {import('vue').ComputedRef<Array>}
+ */
+const warehouseTableRows = computed(() => {
+  const items = inventory.value.filter(item => item.warehouseId === activeWarehouseKey.value);
+  return items
+      .map(item => ({ item, product: products.value.find(p => p.id === item.productId) }))
+      .filter(row => row.product);
+});
 </script>
 
 <template>
@@ -482,7 +624,7 @@ const warehouseSummary = [
         <div class="relative" style="min-width: 160px;">
           <i class="pi pi-filter absolute filter-icon"/>
           <select v-model="selectedCategory" class="category-select">
-            <option v-for="cat in categoryOptions" :key="cat" :value="cat">{{ categoryLabel(cat) }}</option>
+            <option v-for="cat in categoryFilterOptions" :key="cat" :value="cat">{{ categoryLabel(cat) }}</option>
           </select>
           <i class="pi pi-chevron-down absolute select-arrow"/>
         </div>
@@ -781,8 +923,8 @@ const warehouseSummary = [
               class="table-row"
               :style="{ borderBottom: index < stockMovements.length - 1 ? '1px solid #F1F5F9' : 'none' }"
           >
-            <td class="px-4 py-3 movement-date">{{ movement.registeredAt }}</td>
-            <td class="px-4 py-3 movement-product">{{ movement.product ?? movement.productId }}</td>
+            <td class="px-4 py-3 movement-date">{{ formatMovementDate(movement.registeredAt) }}</td>
+            <td class="px-4 py-3 movement-product">{{ movementProductName(movement.productId) }}</td>
             <td class="px-4 py-3">
               <span
                   class="inline-flex align-items-center gap-1 border-round-3xl status-badge"
@@ -847,7 +989,7 @@ const warehouseSummary = [
           </div>
           <div style="flex: 1; min-width: 0;">
             <div class="flex align-items-center justify-content-between gap-2">
-              <p class="m-0 mobile-product-name" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ movement.product ?? movement.productId }}</p>
+              <p class="m-0 mobile-product-name" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ movementProductName(movement.productId) }}</p>
               <p
                   class="m-0 flex-shrink-0 stock-value"
                   :style="{ color: movement.type === 'SALE' ? '#DC2626' : '#16A34A' }"
@@ -865,7 +1007,7 @@ const warehouseSummary = [
               >
                 {{ movement.type === 'INTAKE' ? t('inventory.movement-intake') : movement.type === 'SALE' ? t('inventory.movement-sale') : t('inventory.movement-adjustment') }}
               </span>
-              <p class="m-0 product-desc">{{ movement.registeredAt }}</p>
+              <p class="m-0 product-desc">{{ formatMovementDate(movement.registeredAt) }}</p>
             </div>
           </div>
         </div>
@@ -877,12 +1019,14 @@ const warehouseSummary = [
     ═══════════════════════════════════════════════════════════════ -->
     <div v-if="activeTab === 'warehouse'" style="display: flex; flex-direction: column; gap: 1rem;">
 
-      <!-- Warehouse summary cards -->
+      <!-- Warehouse summary cards — double as filter buttons for the table below -->
       <div class="stat-grid">
-        <div
+        <button
             v-for="warehouse in warehouseSummary"
-            :key="warehouse.name"
-            class="border-round-xl overflow-hidden table-card"
+            :key="warehouse.key"
+            class="border-round-xl overflow-hidden table-card warehouse-card-btn"
+            :class="{ 'warehouse-card-btn-active': activeWarehouseKey === warehouse.key }"
+            @click="selectedWarehouseKey = warehouse.key"
         >
           <div style="height: 4px; background: linear-gradient(to right, #0E7490, #0B3558);"/>
           <div class="p-5">
@@ -892,26 +1036,26 @@ const warehouseSummary = [
               </div>
               <div>
                 <p class="m-0 warehouse-name">{{ warehouse.name }}</p>
-                <p class="m-0 mt-1 product-desc">
+                <p v-if="warehouse.location" class="m-0 mt-1 product-desc">
                   <i class="pi pi-map-marker" style="font-size: 0.7rem;"/> {{ warehouse.location }}
                 </p>
               </div>
             </div>
             <div class="warehouse-stats-grid">
               <div class="border-round-xl p-3 mini-stat">
-                <p class="m-0 mb-1 mini-stat-label">Productos</p>
+                <p class="m-0 mb-1 mini-stat-label">{{ t('inventory.warehouse-card-products') }}</p>
                 <p class="m-0 warehouse-count">{{ warehouse.itemCount }}</p>
               </div>
               <div class="border-round-xl p-3 warehouse-value-card">
-                <p class="m-0 mb-1 warehouse-value-label">Valor</p>
+                <p class="m-0 mb-1 warehouse-value-label">{{ t('inventory.warehouse-col-value') }}</p>
                 <p class="m-0 warehouse-value">{{ warehouse.value }}</p>
               </div>
             </div>
           </div>
-        </div>
+        </button>
       </div>
 
-      <!-- Distribution table -->
+      <!-- Distribution table for the selected warehouse -->
       <div class="border-round-xl overflow-hidden table-card">
         <div class="px-5 py-3 flex align-items-center gap-2 section-header">
           <i class="pi pi-table" style="color: #0E7490; font-size: 0.88rem;"/>
@@ -922,7 +1066,7 @@ const warehouseSummary = [
             <thead>
             <tr class="table-head">
               <th
-                  v-for="header in [t('inventory.warehouse-col-product'), t('inventory.warehouse-col-main'), t('inventory.warehouse-col-secondary'), t('inventory.warehouse-col-total')]"
+                  v-for="header in [t('inventory.warehouse-col-product'), t('inventory.warehouse-col-stock'), t('inventory.warehouse-col-expiration'), t('inventory.warehouse-col-value')]"
                   :key="header"
                   class="px-4 py-3 text-left col-header"
               >{{ header }}</th>
@@ -930,30 +1074,36 @@ const warehouseSummary = [
             </thead>
             <tbody>
             <tr
-                v-for="(product, index) in products.slice(0, 5)"
-                :key="product.id"
+                v-for="(row, index) in warehouseTableRows"
+                :key="row.item.id"
                 class="table-row"
-                :style="{ borderBottom: index < 4 ? '1px solid #F1F5F9' : 'none' }"
+                :style="{ borderBottom: index < warehouseTableRows.length - 1 ? '1px solid #F1F5F9' : 'none' }"
             >
               <td class="px-4 py-3">
                 <div class="flex align-items-center gap-2">
                   <div
                       class="flex align-items-center justify-content-center border-round flex-shrink-0 product-avatar-xs"
-                      :style="{ backgroundColor: getCategoryColor(product.category).bg, color: getCategoryColor(product.category).color }"
+                      :style="{ backgroundColor: getCategoryColor(row.product.category).bg, color: getCategoryColor(row.product.category).color }"
                   >
-                    {{ getProductInitial(product.name) }}
+                    {{ getProductInitial(row.product.name) }}
                   </div>
-                  <span class="product-name">{{ product.name }}</span>
+                  <span class="product-name">{{ row.product.name }}</span>
                 </div>
               </td>
-              <td class="px-4 py-3 warehouse-stock">{{ resolveCurrentStock(product.id) }} und.</td>
-              <td class="px-4 py-3 expiration-placeholder">—</td>
+              <td class="px-4 py-3 warehouse-stock">{{ row.item.currentStock }} und.</td>
+              <td class="px-4 py-3 expiration-placeholder">{{ resolveExpirationLabel(row.product.id) }}</td>
               <td class="px-4 py-3">
-                <span class="warehouse-total">{{ resolveCurrentStock(product.id) }} und.</span>
+                <span class="warehouse-total">{{ formatCurrency(row.item.currentStock * (row.product.basePrice ?? 0)) }}</span>
               </td>
             </tr>
             </tbody>
           </table>
+        </div>
+        <div v-if="!warehouseTableRows.length" class="flex flex-column align-items-center py-12 gap-3">
+          <div class="flex align-items-center justify-content-center border-round-xl empty-icon-wrap">
+            <i class="pi pi-building" style="font-size: 1.8rem; color: #CBD5E1;"/>
+          </div>
+          <p class="m-0 empty-text">{{ t('inventory.warehouse-empty') }}</p>
         </div>
       </div>
     </div>
@@ -996,7 +1146,7 @@ const warehouseSummary = [
               <div style="flex: 1;">
                 <label class="modal-label">{{ t('inventory.modal-field-category') }}</label>
                 <select v-model="productModalForm.category" class="modal-input modal-select">
-                  <option v-for="cat in categoryOptions.slice(1)" :key="cat" :value="cat">{{ categoryLabel(cat) }}</option>
+                  <option v-for="cat in categoryModalOptions" :key="cat" :value="cat">{{ categoryLabel(cat) }}</option>
                 </select>
               </div>
               <div style="flex: 1;">
@@ -1005,16 +1155,47 @@ const warehouseSummary = [
               </div>
             </div>
 
+            <!-- Custom category (only shown when "Otros" is selected) -->
+            <div v-if="productModalForm.category === 'OTHER'">
+              <label class="modal-label">{{ t('inventory.modal-field-custom-category') }}</label>
+              <input
+                  v-model="productModalForm.customCategory"
+                  :placeholder="t('inventory.modal-field-custom-category-placeholder')"
+                  class="modal-input"
+              />
+              <p class="m-0 mt-1 modal-field-hint">{{ t('inventory.modal-field-custom-category-hint') }}</p>
+            </div>
+
             <!-- Stock actual + Stock mínimo -->
             <div class="flex flex-column sm:flex-row gap-4">
               <div style="flex: 1;">
                 <label class="modal-label">{{ t('inventory.modal-field-stock') }}</label>
-                <input v-model="productModalForm.currentStock" type="number" min="0" placeholder="0" class="modal-input"/>
+                <input
+                    v-model="productModalForm.currentStock"
+                    type="number" min="0" placeholder="0"
+                    class="modal-input"
+                    :disabled="!!editingProduct"
+                    :title="editingProduct ? t('inventory.modal-field-stock-readonly-hint') : ''"
+                />
+                <p v-if="editingProduct" class="m-0 mt-1 modal-field-hint">
+                  {{ t('inventory.modal-field-stock-readonly-hint') }}
+                </p>
               </div>
               <div style="flex: 1;">
                 <label class="modal-label">{{ t('inventory.modal-field-min-stock') }}</label>
                 <input v-model="productModalForm.minimumStock" type="number" min="0" placeholder="0" class="modal-input"/>
               </div>
+            </div>
+
+            <!-- Warehouse (only relevant when placing initial stock on creation) -->
+            <div v-if="!editingProduct">
+              <label class="modal-label">{{ t('inventory.modal-field-warehouse') }}</label>
+              <select v-model="productModalForm.warehouseId" class="modal-input modal-select">
+                <option value="" disabled>{{ t('inventory.modal-field-warehouse-placeholder') }}</option>
+                <option v-for="warehouse in warehouses" :key="warehouse.id" :value="String(warehouse.id)">
+                  {{ warehouse.name }}
+                </option>
+              </select>
             </div>
 
             <!-- Precio venta + Precio costo -->
@@ -1084,6 +1265,16 @@ const warehouseSummary = [
           <div>
             <label class="modal-label">{{ t('inventory.intake-field-qty') }}</label>
             <input v-model="intakeForm.quantity" type="number" min="1" placeholder="0" class="modal-input"/>
+          </div>
+          <!-- Warehouse -->
+          <div>
+            <label class="modal-label">{{ t('inventory.intake-field-warehouse') }}</label>
+            <select v-model="intakeForm.warehouseId" class="modal-input modal-select">
+              <option value="" disabled>{{ t('inventory.modal-field-warehouse-placeholder') }}</option>
+              <option v-for="warehouse in warehouses" :key="warehouse.id" :value="String(warehouse.id)">
+                {{ warehouse.name }}
+              </option>
+            </select>
           </div>
           <!-- Supplier -->
           <div>
@@ -1311,6 +1502,20 @@ const warehouseSummary = [
   background-color: #ffffff;
   border: 1px solid #E2E8F0;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.05);
+}
+
+.warehouse-card-btn {
+  display:      block;
+  width:        100%;
+  text-align:   left;
+  cursor:       pointer;
+  transition:   border-color 0.15s, box-shadow 0.15s;
+  font-family:  inherit;
+}
+
+.warehouse-card-btn-active {
+  border-color: #0E7490;
+  box-shadow:   0 0 0 2px rgba(14, 116, 144, 0.25);
 }
 
 .table-head {
@@ -1747,6 +1952,15 @@ const warehouseSummary = [
   border-color: #0E7490;
   box-shadow: 0 0 0 3px rgba(14, 116, 144, 0.12);
   background-color: #fff;
+}
+.modal-input:disabled {
+  background-color: #F1F5F9;
+  color: #94A3B8;
+  cursor: not-allowed;
+}
+.modal-field-hint {
+  font-size: 0.7rem;
+  color: #94A3B8;
 }
 
 .modal-select {
