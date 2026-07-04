@@ -275,7 +275,9 @@ function receiveOrder() {
           productStore.registerStockIntake({
             productId:  detail.productId,
             businessId: businessId,
-            quantity:   detail.quantity
+            quantity:   detail.quantity,
+            supplier:   order.supplierName,
+            note:       `${t('suppliers.order-movement-note-prefix')} ${order.id}`
           })
       )))
       .then(() => {
