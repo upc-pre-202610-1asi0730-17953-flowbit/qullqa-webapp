@@ -133,7 +133,7 @@ const useProductStore = defineStore('product', () => {
      * @param {number|string} businessId
      */
     function fetchProducts(businessId) {
-        productApi.getProducts(businessId)
+        return productApi.getProducts(businessId)
             .then(response => {
                 products.value       = ProductAssembler.toEntitiesFromResponse(response);
                 productsLoaded.value = true;
@@ -146,7 +146,7 @@ const useProductStore = defineStore('product', () => {
      * @param {number|string} businessId
      */
     function fetchInventory(businessId) {
-        productApi.getInventory(businessId)
+        return productApi.getInventory(businessId)
             .then(response => {
                 inventory.value       = InventoryItemAssembler.toEntitiesFromResponse(response);
                 inventoryLoaded.value = true;
@@ -232,7 +232,7 @@ const useProductStore = defineStore('product', () => {
      * products have stock expiring soon (see getDaysToNearestExpiry).
      */
     function fetchBatches() {
-        productApi.getAllBatches()
+        return productApi.getAllBatches()
             .then(response => {
                 batches.value = response.data instanceof Array ? response.data : [];
                 batchesLoaded.value = true;
@@ -270,7 +270,7 @@ const useProductStore = defineStore('product', () => {
     /**
      * Returns true when a product has an active batch expiring within the given
      * threshold (default 7 days, matching the Alerts bounded context's EXPIRATION
-     * rule), including batches that already expired.
+     * rule) but NOT already expired — see isProductExpired for that case.
      *
      * @param {number|string} productId
      * @param {number} [thresholdDays=7]
@@ -278,7 +278,21 @@ const useProductStore = defineStore('product', () => {
      */
     function isProductExpiringSoon(productId, thresholdDays = 7) {
         const daysToExpiry = getDaysToNearestExpiry(productId);
-        return daysToExpiry !== null && daysToExpiry <= thresholdDays;
+        return daysToExpiry !== null && daysToExpiry >= 0 && daysToExpiry <= thresholdDays;
+    }
+
+    /**
+     * Returns true when a product's nearest active batch has already passed
+     * its expiration date (negative days to expiry). Kept distinct from
+     * isProductExpiringSoon so the UI can tell "will expire soon" apart from
+     * "already expired" instead of collapsing both into one bucket.
+     *
+     * @param {number|string} productId
+     * @returns {boolean}
+     */
+    function isProductExpired(productId) {
+        const daysToExpiry = getDaysToNearestExpiry(productId);
+        return daysToExpiry !== null && daysToExpiry < 0;
     }
 
     /**
@@ -644,6 +658,7 @@ const useProductStore = defineStore('product', () => {
         getInventoryByProduct,
         getDaysToNearestExpiry,
         isProductExpiringSoon,
+        isProductExpired,
         fetchProducts,
         fetchInventory,
         fetchBatches,
