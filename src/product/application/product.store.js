@@ -312,6 +312,22 @@ const useProductStore = defineStore('product', () => {
     }
 
     /**
+     * Creates a new warehouse for a business.
+     * Not kept in this store's own state, matching fetchWarehousesForBusiness
+     * above — the caller (Inventario's Almacén tab) manages its own local list.
+     * @param {Object} resource
+     * @returns {Promise<Object>} The created warehouse.
+     */
+    function createWarehouse(resource) {
+        return productApi.createWarehouse(resource)
+            .then(response => response.data)
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
+    }
+
+    /**
      * Fetches suppliers for a business and returns them as a plain array.
      * @param {number|string} businessId
      * @returns {Promise<Array>}
@@ -435,7 +451,11 @@ const useProductStore = defineStore('product', () => {
                 id:           existingItem.id,
                 productId:    existingItem.productId,
                 businessId:   existingItem.businessId,
-                warehouseId:  existingItem.warehouseId,
+                // Respects a warehouse explicitly chosen on this intake (e.g. the admin
+                // is moving the product to a different warehouse) — previously this
+                // always kept the product's existing warehouse no matter what was
+                // selected on the intake form, silently ignoring the choice.
+                warehouseId:  resource.warehouseId ?? existingItem.warehouseId,
                 minimumStock: existingItem.minimumStock,
                 stockUnit:    existingItem.currentStock + resource.quantity
             };
@@ -666,6 +686,7 @@ const useProductStore = defineStore('product', () => {
         fetchAllStockMovements,
         fetchWarehouseStock,
         fetchWarehousesForBusiness,
+        createWarehouse,
         fetchSuppliersForBusiness,
         addProduct,
         updateProduct,

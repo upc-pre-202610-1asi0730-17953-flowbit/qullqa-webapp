@@ -174,6 +174,15 @@ export class ProductApi extends BaseApi {
     }
 
     /**
+     * Creates a new warehouse for a business.
+     * @param {Object} resource
+     * @returns {Promise<import('axios').AxiosResponse>}
+     */
+    createWarehouse(resource) {
+        return this.#warehousesEndpoint.create(resource);
+    }
+
+    /**
      * Fetches all inventory records for a specific warehouse.
      * Used to populate the WarehouseStockView.
      * @param {number|string} warehouseId
