@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref, toRefs } from 'vue';
 import { useI18n }                           from 'vue-i18n';
+import { useRoute }                          from 'vue-router';
 import useDeliveryStore                      from '../../application/delivery.store.js';
 import useIamStore                           from '../../../iam/application/iam.store.js';
 import useProductStore                       from '../../../product/application/product.store.js';
@@ -10,6 +11,7 @@ import DeliveryFormModal                     from './delivery-form-modal.vue';
 import { toDateLocale }                      from '../../../shared/presentation/date-locale.js';
 
 const { t, locale }   = useI18n();
+const route           = useRoute();
 const deliveryStore   = useDeliveryStore();
 const iamStore        = useIamStore();
 const productStore    = useProductStore();
@@ -42,10 +44,13 @@ const showRegisterModal = ref(false);
 const selectedDelivery = ref(null);
 
 /**
- * Current search query string applied to the delivery list.
+ * Current search query string applied to the delivery list. Preloaded from
+ * a ?search= query param when arriving via a deep link (e.g. "Ver seguimiento"
+ * from a Purchase Order's shipment badge), so the link actually lands on the
+ * relevant delivery instead of just opening the full unfiltered list.
  * @type {import('vue').Ref<string>}
  */
-const searchQuery = ref('');
+const searchQuery = ref(typeof route.query.search === 'string' ? route.query.search : '');
 
 /**
  * Status filter currently active. 'ALL' means no status filter.

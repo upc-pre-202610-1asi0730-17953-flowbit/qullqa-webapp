@@ -168,6 +168,9 @@ const useDeliveryStore = defineStore('delivery', () => {
      * @param {number}   params.totalWeightValue - Total weight (numeric).
      * @param {string}   params.totalWeightUnit  - Weight unit ('kg' or 'lb').
      * @param {number}   params.businessId       - Business identifier.
+     * @param {number|null} [params.purchaseDetailId=null] - Links this delivery to a real
+     *   PurchaseOrderDetail line, so the Suppliers bounded context can resolve this
+     *   delivery's live status instead of relying on a static denormalized string.
      * @returns {Promise<{ success: boolean, errorKey: string|null }>}
      */
     async function createDelivery({
@@ -183,7 +186,8 @@ const useDeliveryStore = defineStore('delivery', () => {
                                       products,
                                       totalWeightValue,
                                       totalWeightUnit,
-                                      businessId
+                                      businessId,
+                                      purchaseDetailId = null
                                   }) {
         const nowIso         = new Date().toISOString();
         const trackingNumber = `TRK-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`;
@@ -209,7 +213,7 @@ const useDeliveryStore = defineStore('delivery', () => {
             totalWeightValue: totalWeightValue || 0,
             totalWeightUnit:  totalWeightUnit || 'kg',
             businessId:       businessId,
-            purchaseDetailId: null
+            purchaseDetailId: purchaseDetailId
         };
 
         try {

@@ -1,9 +1,20 @@
 <script setup>
-import { reactive, computed } from 'vue';
+import { reactive, computed, onMounted, ref, watch, nextTick } from 'vue';
 import { useI18n }            from 'vue-i18n';
 import useDeliveryStore       from '../../application/delivery.store.js';
 import useIamStore            from '../../../iam/application/iam.store.js';
 import useProductStore        from '../../../product/application/product.store.js';
+import useSupplierStore       from '../../../suppliers/application/supplier.store.js';
+
+const props = defineProps({
+  /**
+   * Preselects the order-linkage dropdowns when the modal is opened from a
+   * Purchase Order's detail line (see purchase-order-list.vue's "Crear envío"
+   * action), so the admin doesn't have to look the order up again here.
+   * @type {{orderId: number, detailId: number}|null}
+   */
+  presetOrderDetail: { type: Object, default: null }
+});
 
 const emit = defineEmits([
   /** Emitted when the modal should close without saving. */
@@ -16,10 +27,85 @@ const { t }         = useI18n();
 const deliveryStore = useDeliveryStore();
 const iamStore      = useIamStore();
 const productStore  = useProductStore();
+const supplierStore = useSupplierStore();
 
 const availableProducts = computed(() =>
     productStore.products.filter(product => product.isActive)
 );
+
+onMounted(async () => {
+  const businessId = iamStore.currentUser?.businessId ?? null;
+  if (businessId && !supplierStore.purchaseOrdersLoaded) {
+    await supplierStore.fetchPurchaseOrders(businessId);
+  }
+  if (props.presetOrderDetail) {
+    selectedOrderId.value = String(props.presetOrderDetail.orderId);
+    // The selectedOrderId watcher below resets selectedDetailId to '' — wait
+    // for that flush to happen first, so this explicit preset isn't wiped out.
+    await nextTick();
+    selectedDetailId.value = String(props.presetOrderDetail.detailId);
+  }
+});
+
+// ─── Optional purchase-order linkage ────────────────────────────────────────
+
+/**
+ * Purchase orders still awaiting delivery (PENDING or DELAYED) for the
+ * current business — the only ones that make sense to link a new shipment to.
+ * @type {import('vue').ComputedRef<Array>}
+ */
+const linkableOrders = computed(() =>
+    supplierStore.purchaseOrders.filter(order => order.isActionable)
+);
+
+/** @type {import('vue').Ref<string>} '' means no order linked (manual/standalone delivery). */
+const selectedOrderId = ref('');
+
+/** @type {import('vue').Ref<string>} '' means no specific line selected yet. */
+const selectedDetailId = ref('');
+
+/**
+ * Detail lines of the currently selected order, or [] when none is selected.
+ * @type {import('vue').ComputedRef<Array>}
+ */
+const selectedOrderDetails = computed(() => {
+  const order = linkableOrders.value.find(order => order.id === parseInt(selectedOrderId.value));
+  return order ? order.details : [];
+});
+
+watch(selectedOrderId, () => { selectedDetailId.value = ''; });
+
+/**
+ * Resolves a purchase order detail line's product name. Orders created in
+ * the current session already carry a denormalized productName; preexisting
+ * orders loaded from the mock don't, so fall back to the product catalog.
+ * @param {Object} detail - A purchase order detail line.
+ * @returns {string}
+ */
+function resolveDetailProductName(detail) {
+  if (detail.productName) return detail.productName;
+  const product = productStore.getProductById(detail.productId);
+  return product ? product.name : `#${detail.productId}`;
+}
+
+/**
+ * Auto-fills supplier, order reference and the product line from the linked
+ * order + detail line, so the admin doesn't retype data that's already known.
+ * Quantity stays editable afterwards (a shipment can be a partial delivery).
+ */
+watch(selectedDetailId, (newDetailId) => {
+  if (!newDetailId) return;
+  const order  = linkableOrders.value.find(order => order.id === parseInt(selectedOrderId.value));
+  const detail = selectedOrderDetails.value.find(detail => detail.id === parseInt(newDetailId));
+  if (!order || !detail) return;
+
+  formData.supplierName = order.supplierName;
+  formData.orderId       = `OC-${String(order.id).padStart(4, '0')}`;
+  productLines.splice(0, productLines.length, {
+    productId: String(detail.productId),
+    quantity:  detail.quantity
+  });
+});
 
 // ─── Form state ──────────────────────────────────────────────────────────────
 
@@ -212,7 +298,8 @@ async function handleSubmit() {
     products:         productList,
     totalWeightValue: parseFloat(formData.totalWeightValue) || 0,
     totalWeightUnit:  formData.totalWeightUnit,
-    businessId:       businessId
+    businessId:       businessId,
+    purchaseDetailId: selectedDetailId.value ? parseInt(selectedDetailId.value) : null
   });
 
   saving.value = false;
@@ -260,6 +347,40 @@ async function handleSubmit() {
 
       <!-- Form body -->
       <div class="px-5 py-4">
+
+        <!-- Optional purchase-order linkage -->
+        <div class="mb-4 p-3 border-round-lg" style="background: #F8FAFC; border: 1px solid #E2E8F0;">
+          <label class="block mb-1" style="font-size: 0.75rem; font-weight: 600; color: #64748B;">
+            {{ t('tracking.field-link-order') }}
+          </label>
+          <p class="m-0 mb-2" style="font-size: 0.7rem; color: #94A3B8;">
+            {{ t('tracking.field-link-order-hint') }}
+          </p>
+          <div class="flex gap-2">
+            <select
+                v-model="selectedOrderId"
+                class="border-round-lg"
+                style="flex: 1; min-width: 0; padding: 0.5rem 0.6rem; font-size: 0.85rem; color: #1E293B; outline: none; border: 1px solid #E2E8F0; background: #fff;"
+            >
+              <option value="">{{ t('tracking.field-link-order-none') }}</option>
+              <option v-for="order in linkableOrders" :key="order.id" :value="String(order.id)">
+                OC-{{ String(order.id).padStart(4, '0') }} — {{ order.supplierName }}
+              </option>
+            </select>
+            <select
+                v-if="selectedOrderId"
+                v-model="selectedDetailId"
+                class="border-round-lg"
+                style="flex: 1; min-width: 0; padding: 0.5rem 0.6rem; font-size: 0.85rem; color: #1E293B; outline: none; border: 1px solid #E2E8F0; background: #fff;"
+            >
+              <option value="">{{ t('tracking.field-link-order-select-line') }}</option>
+              <option v-for="detail in selectedOrderDetails" :key="detail.id" :value="String(detail.id)">
+                {{ resolveDetailProductName(detail) }} ({{ detail.quantity }})
+              </option>
+            </select>
+          </div>
+        </div>
+
         <div class="mb-4" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
 
           <div
@@ -277,13 +398,15 @@ async function handleSubmit() {
             <input
                 v-model="formData[field.key]"
                 type="text"
+                :disabled="!!selectedDetailId && (field.key === 'orderId' || field.key === 'supplierName')"
                 :placeholder="t(field.placeholderKey)"
                 class="w-full border-round-lg"
                 style="padding: 0.5rem 0.75rem; font-size: 0.88rem; color: #1E293B; outline: none; transition: border-color 0.15s;"
                 :style="{
                 border: submitted.value && validationErrors[field.key]
                   ? '1.5px solid #EF4444'
-                  : '1px solid #E2E8F0'
+                  : '1px solid #E2E8F0',
+                backgroundColor: (!!selectedDetailId && (field.key === 'orderId' || field.key === 'supplierName')) ? '#F1F5F9' : '#fff'
               }"
                 @focus="(event) => { event.target.style.borderColor = '#0E7490'; }"
                 @blur="(event) => {
