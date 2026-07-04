@@ -1,17 +1,15 @@
 import { BaseApi }      from '../../shared/infrastructure/base-api.js';
 import { BaseEndpoint } from '../../shared/infrastructure/base-endpoint.js';
 
-const productsEndpointPath    = import.meta.env.VITE_PRODUCTS_ENDPOINT_PATH;
-const inventoriesEndpointPath = import.meta.env.VITE_INVENTORIES_ENDPOINT_PATH;
-const batchesEndpointPath     = import.meta.env.VITE_BATCHES_ENDPOINT_PATH;
-const warehousesEndpointPath  = import.meta.env.VITE_WAREHOUSES_ENDPOINT_PATH;
-const suppliersEndpointPath   = import.meta.env.VITE_SUPPLIERS_ENDPOINT_PATH;
+const productsEndpointPath       = import.meta.env.VITE_PRODUCTS_ENDPOINT_PATH;
+const inventoriesEndpointPath    = import.meta.env.VITE_INVENTORIES_ENDPOINT_PATH;
+const batchesEndpointPath        = import.meta.env.VITE_BATCHES_ENDPOINT_PATH;
+const warehousesEndpointPath     = import.meta.env.VITE_WAREHOUSES_ENDPOINT_PATH;
+const suppliersEndpointPath      = import.meta.env.VITE_SUPPLIERS_ENDPOINT_PATH;
+const stockMovementsEndpointPath = import.meta.env.VITE_STOCK_MOVEMENTS_ENDPOINT_PATH;
 
 /**
  * Infrastructure gateway for the Product & Inventory Management bounded-context endpoints.
- *
- * Stock movements are derived client-side from batches (INTAKE) because the mock API
- * does not expose a dedicated /stockMovements endpoint.
  *
  * @class ProductApi
  * @extends BaseApi
@@ -27,14 +25,17 @@ export class ProductApi extends BaseApi {
     #warehousesEndpoint;
     /** @type {BaseEndpoint} @private */
     #suppliersEndpoint;
+    /** @type {BaseEndpoint} @private */
+    #stockMovementsEndpoint;
 
     constructor() {
         super();
-        this.#productsEndpoint    = new BaseEndpoint(this, productsEndpointPath);
-        this.#inventoriesEndpoint = new BaseEndpoint(this, inventoriesEndpointPath);
-        this.#batchesEndpoint     = new BaseEndpoint(this, batchesEndpointPath);
-        this.#warehousesEndpoint  = new BaseEndpoint(this, warehousesEndpointPath);
-        this.#suppliersEndpoint   = new BaseEndpoint(this, suppliersEndpointPath);
+        this.#productsEndpoint       = new BaseEndpoint(this, productsEndpointPath);
+        this.#inventoriesEndpoint    = new BaseEndpoint(this, inventoriesEndpointPath);
+        this.#batchesEndpoint        = new BaseEndpoint(this, batchesEndpointPath);
+        this.#warehousesEndpoint     = new BaseEndpoint(this, warehousesEndpointPath);
+        this.#suppliersEndpoint      = new BaseEndpoint(this, suppliersEndpointPath);
+        this.#stockMovementsEndpoint = new BaseEndpoint(this, stockMovementsEndpointPath);
     }
 
     /**
@@ -190,5 +191,23 @@ export class ProductApi extends BaseApi {
      */
     getSuppliers(businessId) {
         return this.#suppliersEndpoint.getAllByParam('businessId', businessId);
+    }
+
+    /**
+     * Fetches all stock movement records for a given business.
+     * @param {number|string} businessId
+     * @returns {Promise<import('axios').AxiosResponse>}
+     */
+    getStockMovements(businessId) {
+        return this.#stockMovementsEndpoint.getAllByParam('businessId', businessId);
+    }
+
+    /**
+     * Persists a new stock movement record (audit trail entry).
+     * @param {Object} resource
+     * @returns {Promise<import('axios').AxiosResponse>}
+     */
+    createStockMovement(resource) {
+        return this.#stockMovementsEndpoint.create(resource);
     }
 }

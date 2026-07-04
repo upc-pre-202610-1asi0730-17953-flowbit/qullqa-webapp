@@ -6,8 +6,9 @@
  * - A product cannot be deleted when its inventory record has currentStock > 0.
  * - registerStockIntake quantity must be a positive integer greater than zero.
  * - On intake, if an inventory record exists it is updated (PUT); otherwise created (POST).
- * - stockMovements are derived client-side from batches (INTAKE) because the mock API
- *   has no dedicated /stockMovements endpoint.
+ * - Every successful registerStockIntake/registerStockSale records a StockMovement
+ *   (best-effort: failures to log are swallowed so the underlying stock mutation,
+ *   already persisted, is never rolled back over an audit-trail write failing).
  * - stockStatusCounts joins products with their inventory items to compute
  *   { normal, low, critical } counts for the summary cards in the list view.
  *
@@ -63,6 +64,9 @@ const useProductStore = defineStore('product', () => {
 
     /** @type {import('vue').Ref<boolean>} */
     const batchesLoaded = ref(false);
+
+    /** @type {import('vue').Ref<boolean>} */
+    const stockMovementsLoaded = ref(false);
 
     /** @type {import('vue').Ref<boolean>} */
     const productsLoaded = ref(false);
@@ -171,6 +175,44 @@ const useProductStore = defineStore('product', () => {
                 );
             })
             .catch(error => errors.value.push(error));
+    }
+
+    /**
+     * Fetches the real, persisted stock movement history for a business
+     * (every INTAKE/SALE logged by registerStockIntake/registerStockSale),
+     * sorted most-recent-first. Used by the Inventory "Movimientos" tab.
+     * @param {number|string} businessId
+     */
+    function fetchAllStockMovements(businessId) {
+        productApi.getStockMovements(businessId)
+            .then(response => {
+                const entities = StockMovementAssembler.toEntitiesFromResponse(response);
+                stockMovements.value = entities.sort(
+                    (first, second) => new Date(second.registeredAt) - new Date(first.registeredAt)
+                );
+                stockMovementsLoaded.value = true;
+            })
+            .catch(error => {
+                errors.value.push(error);
+                stockMovementsLoaded.value = true;
+            });
+    }
+
+    /**
+     * Persists a StockMovement audit-trail entry. Best-effort: failures are
+     * logged but never rejected, so a logging outage never blocks or rolls
+     * back the stock mutation that already succeeded.
+     * @param {Object} resource
+     * @returns {Promise<void>}
+     */
+    function recordStockMovement(resource) {
+        return productApi.createStockMovement(resource)
+            .then(response => {
+                stockMovements.value.unshift(StockMovementAssembler.toEntityFromResource(response.data));
+            })
+            .catch(error => {
+                console.error('Failed to record stock movement (stock itself was already updated):', error);
+            });
     }
 
     /**
@@ -388,6 +430,16 @@ const useProductStore = defineStore('product', () => {
                     const updatedItem = InventoryItemAssembler.toEntityFromResource(response.data);
                     const index = inventory.value.findIndex(item => item.id === updatedItem.id);
                     if (index !== -1) inventory.value[index] = updatedItem;
+                    recordStockMovement({
+                        productId:    updatedItem.productId,
+                        businessId:   updatedItem.businessId,
+                        warehouseId:  updatedItem.warehouseId,
+                        type:         MovementType.INTAKE,
+                        quantity:     resource.quantity,
+                        supplier:     resource.supplier ?? '',
+                        note:         resource.note ?? '',
+                        registeredAt: new Date().toISOString()
+                    });
                     return updatedItem;
                 })
                 .catch(error => {
@@ -407,6 +459,18 @@ const useProductStore = defineStore('product', () => {
             .then(response => {
                 const createdItem = InventoryItemAssembler.toEntityFromResource(response.data);
                 inventory.value.push(createdItem);
+                if (resource.quantity > 0) {
+                    recordStockMovement({
+                        productId:    createdItem.productId,
+                        businessId:   createdItem.businessId,
+                        warehouseId:  createdItem.warehouseId,
+                        type:         MovementType.INTAKE,
+                        quantity:     resource.quantity,
+                        supplier:     resource.supplier ?? '',
+                        note:         resource.note ?? '',
+                        registeredAt: new Date().toISOString()
+                    });
+                }
                 return createdItem;
             })
             .catch(error => {
@@ -547,6 +611,14 @@ const useProductStore = defineStore('product', () => {
                 const updatedItem = InventoryItemAssembler.toEntityFromResource(response.data);
                 const index = inventory.value.findIndex(item => item.id === updatedItem.id);
                 if (index !== -1) inventory.value[index] = updatedItem;
+                recordStockMovement({
+                    productId:    updatedItem.productId,
+                    businessId:   updatedItem.businessId,
+                    warehouseId:  updatedItem.warehouseId,
+                    type:         MovementType.SALE,
+                    quantity:     resource.quantity,
+                    registeredAt: new Date().toISOString()
+                });
                 return updatedItem;
             })
             .catch(error => {
@@ -564,6 +636,7 @@ const useProductStore = defineStore('product', () => {
         productsLoaded,
         inventoryLoaded,
         batchesLoaded,
+        stockMovementsLoaded,
         errors,
         productsCount,
         stockStatusCounts,
@@ -575,6 +648,7 @@ const useProductStore = defineStore('product', () => {
         fetchInventory,
         fetchBatches,
         fetchStockMovements,
+        fetchAllStockMovements,
         fetchWarehouseStock,
         fetchWarehousesForBusiness,
         fetchSuppliersForBusiness,
