@@ -125,4 +125,14 @@ export class IamApi extends BaseApi {
     updateBusiness(id, resource) {
         return this.#businessesEndpoint.update(id, resource);
     }
+
+    /**
+     * Creates a new business. Used on sign-up so a new account is actually
+     * linked to a business instead of being left with businessId: null.
+     * @param {Object} resource
+     * @returns {Promise<import('axios').AxiosResponse>} Created business resource.
+     */
+    createBusiness(resource) {
+        return this.#businessesEndpoint.create(resource);
+    }
 }
