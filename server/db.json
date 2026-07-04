@@ -368,15 +368,15 @@
       "businessId": 1,
       "warehouseId": 1,
       "minimumStock": 0,
-      "stockUnit": 292
+      "stockUnit": 290
     },
     {
       "id": 2,
       "productId": 2,
       "businessId": 1,
       "warehouseId": 1,
-      "stockUnit": 74,
-      "minimumStock": 0
+      "minimumStock": 0,
+      "stockUnit": 71
     },
     {
       "id": 3,
@@ -384,7 +384,7 @@
       "businessId": 1,
       "warehouseId": 2,
       "minimumStock": 0,
-      "stockUnit": 57
+      "stockUnit": 155
     },
     {
       "id": 4,
@@ -392,7 +392,7 @@
       "businessId": 1,
       "warehouseId": 1,
       "minimumStock": 2,
-      "stockUnit": 11
+      "stockUnit": 10
     },
     {
       "id": 5,
@@ -414,23 +414,23 @@
       "businessId": 1,
       "warehouseId": 1,
       "minimumStock": 10,
-      "stockUnit": 99
+      "stockUnit": 96
     },
     {
       "id": 8,
       "productId": 8,
       "businessId": 1,
       "warehouseId": 1,
-      "stockUnit": 50,
-      "minimumStock": 5
+      "minimumStock": 5,
+      "stockUnit": 49
     },
     {
       "id": 9,
       "productId": 9,
       "businessId": 1,
       "warehouseId": 1,
-      "stockUnit": 3,
-      "minimumStock": 4
+      "minimumStock": 4,
+      "stockUnit": 2
     },
     {
       "id": 10,
@@ -798,6 +798,39 @@
       "description": "",
       "currency": "PEN",
       "id": 34
+    },
+    {
+      "businessId": 1,
+      "customerId": null,
+      "status": "PAID",
+      "totalAmount": 36.4,
+      "paymentMethod": "YAPE",
+      "date": "2026-07-04T05:50:28.772Z",
+      "description": "",
+      "currency": "PEN",
+      "id": 35
+    },
+    {
+      "businessId": 1,
+      "customerId": null,
+      "status": "PAID",
+      "totalAmount": 41.8,
+      "paymentMethod": "PLIN",
+      "date": "2026-07-04T06:18:28.381Z",
+      "description": "",
+      "currency": "PEN",
+      "id": 36
+    },
+    {
+      "businessId": 1,
+      "customerId": null,
+      "status": "PAID",
+      "totalAmount": 58.8,
+      "paymentMethod": "PLIN",
+      "date": "2026-07-04T06:25:42.270Z",
+      "description": "",
+      "currency": "PEN",
+      "id": 37
     }
   ],
   "saleDetails": [
@@ -1232,6 +1265,110 @@
       "unitPrice": 5,
       "discount": 0,
       "id": 54
+    },
+    {
+      "saleId": 35,
+      "productId": 1,
+      "quantity": 1,
+      "unitPrice": 4.5,
+      "discount": 0,
+      "id": 55
+    },
+    {
+      "saleId": 35,
+      "productId": 7,
+      "quantity": 1,
+      "unitPrice": 5,
+      "discount": 0,
+      "id": 56
+    },
+    {
+      "saleId": 35,
+      "productId": 2,
+      "quantity": 1,
+      "unitPrice": 26.9,
+      "discount": 0,
+      "id": 57
+    },
+    {
+      "saleId": 36,
+      "productId": 3,
+      "quantity": 1,
+      "unitPrice": 9.9,
+      "discount": 0,
+      "id": 58
+    },
+    {
+      "saleId": 36,
+      "productId": 7,
+      "quantity": 1,
+      "unitPrice": 5,
+      "discount": 0,
+      "id": 59
+    },
+    {
+      "saleId": 36,
+      "productId": 2,
+      "quantity": 1,
+      "unitPrice": 26.9,
+      "discount": 0,
+      "id": 60
+    },
+    {
+      "saleId": 37,
+      "productId": 3,
+      "quantity": 1,
+      "unitPrice": 9.9,
+      "discount": 0,
+      "id": 61
+    },
+    {
+      "saleId": 37,
+      "productId": 2,
+      "quantity": 1,
+      "unitPrice": 26.9,
+      "discount": 0,
+      "id": 62
+    },
+    {
+      "saleId": 37,
+      "productId": 4,
+      "quantity": 1,
+      "unitPrice": 6.5,
+      "discount": 0,
+      "id": 63
+    },
+    {
+      "saleId": 37,
+      "productId": 1,
+      "quantity": 1,
+      "unitPrice": 4.5,
+      "discount": 0,
+      "id": 64
+    },
+    {
+      "saleId": 37,
+      "productId": 9,
+      "quantity": 1,
+      "unitPrice": 5,
+      "discount": 0,
+      "id": 65
+    },
+    {
+      "saleId": 37,
+      "productId": 7,
+      "quantity": 1,
+      "unitPrice": 5,
+      "discount": 0,
+      "id": 66
+    },
+    {
+      "saleId": 37,
+      "productId": 8,
+      "quantity": 1,
+      "unitPrice": 1,
+      "discount": 0,
+      "id": 67
     }
   ],
   "customers": [
@@ -1644,7 +1781,7 @@
       "inventoryValue": 4320.5,
       "totalSales": 1850,
       "salesCount": 13,
-      "generatedAt": "2026-06-12T17:45:12.901Z"
+      "generatedAt": "2026-07-04T05:50:21.043Z"
     },
     {
       "id": 2,
@@ -2353,6 +2490,143 @@
       "quantity": 37,
       "registeredAt": "2026-07-04T02:18:09.780Z",
       "id": 21
+    },
+    {
+      "productId": 3,
+      "businessId": 1,
+      "warehouseId": 2,
+      "type": "INTAKE",
+      "quantity": 100,
+      "supplier": "Alicorp SAC",
+      "note": "Pedido semanal",
+      "registeredAt": "2026-07-04T05:41:55.938Z",
+      "id": 22
+    },
+    {
+      "productId": 1,
+      "businessId": 1,
+      "warehouseId": 1,
+      "type": "SALE",
+      "quantity": 1,
+      "registeredAt": "2026-07-04T05:51:05.804Z",
+      "id": 23
+    },
+    {
+      "productId": 2,
+      "businessId": 1,
+      "warehouseId": 1,
+      "type": "SALE",
+      "quantity": 1,
+      "registeredAt": "2026-07-04T05:51:05.808Z",
+      "id": 24
+    },
+    {
+      "productId": 7,
+      "businessId": 1,
+      "warehouseId": 1,
+      "type": "SALE",
+      "quantity": 1,
+      "registeredAt": "2026-07-04T05:51:05.813Z",
+      "id": 25
+    },
+    {
+      "productId": 2,
+      "businessId": 1,
+      "warehouseId": 1,
+      "type": "SALE",
+      "quantity": 1,
+      "registeredAt": "2026-07-04T05:51:05.808Z",
+      "id": 26
+    },
+    {
+      "productId": 2,
+      "businessId": 1,
+      "warehouseId": 1,
+      "type": "SALE",
+      "quantity": 1,
+      "registeredAt": "2026-07-04T06:18:44.706Z",
+      "id": 27
+    },
+    {
+      "productId": 3,
+      "businessId": 1,
+      "warehouseId": 2,
+      "type": "SALE",
+      "quantity": 1,
+      "registeredAt": "2026-07-04T06:18:44.704Z",
+      "id": 28
+    },
+    {
+      "productId": 7,
+      "businessId": 1,
+      "warehouseId": 1,
+      "type": "SALE",
+      "quantity": 1,
+      "registeredAt": "2026-07-04T06:18:44.710Z",
+      "id": 29
+    },
+    {
+      "productId": 2,
+      "businessId": 1,
+      "warehouseId": 1,
+      "type": "SALE",
+      "quantity": 1,
+      "registeredAt": "2026-07-04T06:25:49.978Z",
+      "id": 30
+    },
+    {
+      "productId": 3,
+      "businessId": 1,
+      "warehouseId": 2,
+      "type": "SALE",
+      "quantity": 1,
+      "registeredAt": "2026-07-04T06:25:49.987Z",
+      "id": 31
+    },
+    {
+      "productId": 2,
+      "businessId": 1,
+      "warehouseId": 1,
+      "type": "SALE",
+      "quantity": 1,
+      "registeredAt": "2026-07-04T06:25:49.978Z",
+      "id": 32
+    },
+    {
+      "productId": 4,
+      "businessId": 1,
+      "warehouseId": 1,
+      "type": "SALE",
+      "quantity": 1,
+      "registeredAt": "2026-07-04T06:25:49.996Z",
+      "id": 33
+    },
+    {
+      "productId": 1,
+      "businessId": 1,
+      "warehouseId": 1,
+      "type": "SALE",
+      "quantity": 1,
+      "registeredAt": "2026-07-04T06:25:50.544Z",
+      "id": 34
+    },
+    {
+      "productId": 9,
+      "businessId": 1,
+      "warehouseId": 1,
+      "type": "SALE",
+      "quantity": 1,
+      "registeredAt": "2026-07-04T06:25:50.547Z",
+      "id": 35
+    },
+    {
+      "productId": 1,
+      "businessId": 1,
+      "warehouseId": 1,
+      "type": "SALE",
+      "quantity": 1,
+      "registeredAt": "2026-07-04T06:25:50.544Z",
+      "id": 36
     }
   ]
 }
