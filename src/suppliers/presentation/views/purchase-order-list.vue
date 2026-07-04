@@ -2,16 +2,21 @@
 import { computed, onMounted, ref, toRefs } from 'vue';
 import { useI18n }        from 'vue-i18n';
 import { useToast }       from 'primevue/usetoast';
+import { useRouter }      from 'vue-router';
 import useSupplierStore   from '../../application/supplier.store.js';
 import useIamStore        from '../../../iam/application/iam.store.js';
 import useProductStore    from '../../../product/application/product.store.js';
+import useDeliveryStore   from '../../../delivery/application/delivery.store.js';
 import { PurchaseOrderStatus } from '../../domain/model/purchase-order.entity.js';
+import DeliveryFormModal  from '../../../delivery/presentation/views/delivery-form-modal.vue';
 
 const { t }         = useI18n();
 const toast         = useToast();
+const router        = useRouter();
 const supplierStore = useSupplierStore();
 const iamStore      = useIamStore();
 const productStore  = useProductStore();
+const deliveryStore = useDeliveryStore();
 
 const savingNewOrder      = ref(false);
 const updatingOrderStatus = ref(false);
@@ -92,6 +97,9 @@ onMounted(() => {
     }
     if (!productStore.inventoryLoaded) {
       productStore.fetchInventory(businessId);
+    }
+    if (!deliveryStore.deliveriesLoaded) {
+      deliveryStore.fetchDeliveries(businessId);
     }
   }
 });
@@ -353,6 +361,57 @@ function resolveProductName(detail) {
   if (detail.productName) return detail.productName;
   const product = productStore.getProductById(detail.productId);
   return product ? product.name : `#${detail.productId}`;
+}
+
+// ─── Delivery Tracking linkage ──────────────────────────────────────────────
+
+/** Reuses the same status colors as Delivery Tracking, so a line's shipment
+ *  badge here looks like the one it corresponds to over there. */
+const deliveryStatusConfig = {
+  REGISTERED:     { labelKey: 'tracking.status-registered',     color: '#0891B2', background: '#CFFAFE' },
+  IN_TRANSIT:     { labelKey: 'tracking.status-in-transit',     color: '#D97706', background: '#FEF3C7' },
+  AT_DESTINATION: { labelKey: 'tracking.status-at-destination', color: '#7C3AED', background: '#EDE9FE' },
+  COMPLETED:      { labelKey: 'tracking.status-completed',      color: '#16A34A', background: '#DCFCE7' },
+  CANCELLED:      { labelKey: 'tracking.status-cancelled',      color: '#EF4444', background: '#FEE2E2' }
+};
+
+/**
+ * Resolves the real, live Delivery linked to a purchase order detail line
+ * (via Delivery.purchaseDetailId), instead of trusting the line's own static
+ * deliveryStatus/deliveryTrackingNum fields, which nothing keeps in sync.
+ * @param {Object} detail - A purchase order detail line.
+ * @returns {import('../../../delivery/domain/model/delivery.entity.js').Delivery|undefined}
+ */
+function resolveDeliveryForDetail(detail) {
+  return deliveryStore.deliveries.find(delivery => delivery.purchaseDetailId === detail.id);
+}
+
+const showDeliveryFormModal = ref(false);
+const deliveryFormPreset    = ref(null);
+
+/**
+ * Opens the delivery registration modal preselected to this order's detail
+ * line, so the admin doesn't have to look the order up again over there.
+ * @param {Object} detail - A purchase order detail line.
+ */
+function openCreateDeliveryForDetail(detail) {
+  deliveryFormPreset.value  = { orderId: selectedOrder.value.id, detailId: detail.id };
+  showDeliveryFormModal.value = true;
+}
+
+function handleDeliveryCreated() {
+  showDeliveryFormModal.value = false;
+  deliveryFormPreset.value    = null;
+  toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('suppliers.toast-delivery-linked'), life: 3500 });
+}
+
+/**
+ * Navigates to Delivery Tracking with the search box preloaded to this
+ * shipment's tracking number, so the link actually lands on the right delivery.
+ * @param {import('../../../delivery/domain/model/delivery.entity.js').Delivery} delivery
+ */
+function viewDeliveryTracking(delivery) {
+  router.push({ name: 'deliveries', query: { search: delivery.trackingNumber } });
 }
 </script>
 
@@ -790,6 +849,7 @@ function resolveProductName(detail) {
                   <th class="orders-detail-th orders-detail-th-center">{{ t('suppliers.order-detail-col-qty') }}</th>
                   <th class="orders-detail-th orders-detail-th-right">{{ t('suppliers.order-detail-col-unit-price') }}</th>
                   <th class="orders-detail-th orders-detail-th-right">{{ t('suppliers.order-detail-col-subtotal') }}</th>
+                  <th class="orders-detail-th">{{ t('suppliers.order-detail-col-shipment') }}</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -806,6 +866,28 @@ function resolveProductName(detail) {
                   <td class="orders-detail-td orders-detail-td-right orders-detail-td-bold">
                     {{ formatCurrency(detail.lineTotal) }}
                   </td>
+                  <td class="orders-detail-td">
+                    <template v-if="resolveDeliveryForDetail(detail)">
+                      <button
+                          class="orders-shipment-badge"
+                          :style="{
+                            color:           deliveryStatusConfig[resolveDeliveryForDetail(detail).status]?.color,
+                            backgroundColor: deliveryStatusConfig[resolveDeliveryForDetail(detail).status]?.background
+                          }"
+                          @click="viewDeliveryTracking(resolveDeliveryForDetail(detail))"
+                      >
+                        {{ t(deliveryStatusConfig[resolveDeliveryForDetail(detail).status]?.labelKey) }}
+                      </button>
+                    </template>
+                    <button
+                        v-else-if="selectedOrder.isActionable"
+                        class="orders-shipment-link-btn"
+                        @click="openCreateDeliveryForDetail(detail)"
+                    >
+                      + {{ t('suppliers.order-detail-btn-create-shipment') }}
+                    </button>
+                    <span v-else class="orders-detail-td-muted">—</span>
+                  </td>
                 </tr>
                 </tbody>
                 <tfoot>
@@ -816,6 +898,7 @@ function resolveProductName(detail) {
                   <td class="orders-detail-td orders-detail-td-right orders-detail-tfoot-total">
                     {{ formatCurrency(selectedOrder.totalAmount) }}
                   </td>
+                  <td class="orders-detail-td"></td>
                 </tr>
                 </tfoot>
               </table>
@@ -834,8 +917,12 @@ function resolveProductName(detail) {
           <!-- Status action buttons (only for actionable orders) -->
           <div v-if="selectedOrder.isActionable" class="orders-detail-actions-section">
             <p class="orders-detail-section-label">{{ t('suppliers.order-detail-update-status') }}</p>
+            <p class="orders-detail-receive-hint">
+              <i class="pi pi-info-circle" style="font-size: 0.78rem; margin-right: 0.3rem;"/>
+              {{ t('suppliers.order-detail-receive-hint') }}
+            </p>
             <div class="orders-detail-action-buttons">
-              <button class="orders-action-btn orders-action-btn-receive" :disabled="updatingOrderStatus" @click="receiveOrder">
+              <button class="orders-action-btn orders-action-btn-receive" :disabled="updatingOrderStatus" @click="receiveOrder" :title="t('suppliers.order-detail-receive-hint')">
                 <i :class="updatingOrderStatus ? 'pi pi-spin pi-spinner' : 'pi pi-check-circle'" />
                 <span>{{ t('suppliers.order-action-receive') }}</span>
               </button>
@@ -857,6 +944,14 @@ function resolveProductName(detail) {
         </div>
       </div>
     </div>
+
+    <!-- Create-shipment modal, preselected to the order/detail line just clicked -->
+    <DeliveryFormModal
+        v-if="showDeliveryFormModal"
+        :preset-order-detail="deliveryFormPreset"
+        @close="showDeliveryFormModal = false"
+        @created="handleDeliveryCreated"
+    />
 
   </div>
 </template>
@@ -1516,6 +1611,16 @@ function resolveProductName(detail) {
   margin-bottom: 0.5rem;
 }
 
+.orders-detail-receive-hint {
+  font-size:        0.74rem;
+  color:            #64748B;
+  background-color: #F8FAFC;
+  border:           1px solid #E2E8F0;
+  border-radius:    0.6rem;
+  padding:          0.55rem 0.7rem;
+  margin:           0 0 0.75rem 0;
+}
+
 .orders-detail-table-wrapper {
   border:        1px solid #E2E8F0;
   border-radius: 0.75rem;
@@ -1573,6 +1678,29 @@ function resolveProductName(detail) {
 .orders-detail-td-bold {
   font-weight: 600;
   color:       #0B3558;
+}
+
+.orders-shipment-badge {
+  border:        none;
+  cursor:        pointer;
+  font-size:     0.7rem;
+  font-weight:   600;
+  padding:       0.25rem 0.6rem;
+  border-radius: 999px;
+  white-space:   nowrap;
+}
+
+.orders-shipment-link-btn {
+  border:      none;
+  background:  none;
+  cursor:      pointer;
+  font-size:   0.72rem;
+  font-weight: 600;
+  color:       #0E7490;
+  white-space: nowrap;
+}
+.orders-shipment-link-btn:hover {
+  text-decoration: underline;
 }
 
 .orders-detail-tfoot-row {

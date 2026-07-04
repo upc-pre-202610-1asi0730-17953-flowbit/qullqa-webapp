@@ -137,7 +137,7 @@ const useSupplierStore = defineStore('supplier', () => {
     function fetchPurchaseOrders(businessId) {
         const suppliersReady = suppliersLoaded.value ? Promise.resolve() : fetchSuppliers(businessId);
 
-        suppliersReady
+        return suppliersReady
             .then(() => supplierApi.getPurchaseOrders(businessId))
             .then(response => {
                 const rawOrders = Array.isArray(response.data) ? response.data : [];
