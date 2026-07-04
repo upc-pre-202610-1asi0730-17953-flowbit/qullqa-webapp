@@ -7,7 +7,7 @@ import useProductStore, { parseLocalDate } from '../../application/product.store
 import useIamStore        from '../../../iam/application/iam.store.js';
 import { Product, ProductCategory, ProductStatus } from '../../domain/model/product.entity.js';
 import { toDateLocale }   from '../../../shared/presentation/date-locale.js';
-import { isCustomCategory, orderedCategoryOptions } from '../category-options.js';
+import { isCustomCategory, orderedCategoryOptions, filterableCategoryOptions } from '../category-options.js';
 
 const { t, locale } = useI18n();
 const toast        = useToast();
@@ -34,13 +34,15 @@ const showIntakeModal      = ref(false);
 const intakeTargetProduct  = ref(null);
 
 /**
- * Filter dropdown options: the fixed categories plus any custom category
- * labels currently in use by real products, so admins can actually filter
- * down to the custom groups they created — otherwise a custom category
- * would only ever be reachable via "Todos". OTHER always sorts last.
+ * Filter dropdown options: only the categories actually in use by this
+ * business's real products (fixed or custom), so admins can filter down to
+ * the groups they created — otherwise a custom category would only ever be
+ * reachable via "Todos". OTHER is excluded here: it's a form trigger for
+ * creating a new category, never a real persisted value, so filtering by it
+ * would always return zero products.
  * @type {import('vue').ComputedRef<string[]>}
  */
-const categoryFilterOptions = computed(() => ['Todos', ...orderedCategoryOptions(products.value)]);
+const categoryFilterOptions = computed(() => ['Todos', ...filterableCategoryOptions(products.value)]);
 
 /**
  * Category options for the create/edit product modal — same ordered list
@@ -268,7 +270,7 @@ function countByStatus(statusKey) {
 
 const productModalForm = ref({
   name:           '',
-  category:       'BEVERAGES',
+  category:       ProductCategory.OTHER,
   customCategory: '',
   supplier:       '',
   currentStock:   '',
@@ -282,7 +284,7 @@ const productModalForm = ref({
 function openCreateProductModal() {
   editingProduct.value   = null;
   productModalForm.value = {
-    name: '', category: 'BEVERAGES', customCategory: '', supplier: '', currentStock: '', minimumStock: '', basePrice: '', cost: '', expirationDate: '',
+    name: '', category: ProductCategory.OTHER, customCategory: '', supplier: '', currentStock: '', minimumStock: '', basePrice: '', cost: '', expirationDate: '',
     warehouseId: warehouses.value[0] ? String(warehouses.value[0].id) : ''
   };
   showProductModal.value = true;

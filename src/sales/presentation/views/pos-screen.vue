@@ -8,7 +8,7 @@ import useSalesStore      from '../../application/sales.store.js';
 import useProductStore    from '../../../product/application/product.store.js';
 import useIamStore        from '../../../iam/application/iam.store.js';
 import { PaymentMethod }  from '../../domain/model/sale.entity.js';
-import { isCustomCategory, orderedCategoryOptions } from '../../../product/presentation/category-options.js';
+import { isCustomCategory, filterableCategoryOptions } from '../../../product/presentation/category-options.js';
 
 /**
  * POS screen view for the Sales & POS Management bounded context.
@@ -68,15 +68,18 @@ const isSubmitting = ref(false);
 // ─── Category filter config ─────────────────────────────────────────────────
 
 /**
- * Category filter pills: "All", then the fixed categories, then any custom
- * category currently in use (see product-list.vue's category-options.js),
- * with OTHER always last. Custom categories have no i18n key, so they're
- * shown verbatim via `label` instead of being translated via `labelKey`.
+ * Category filter pills: "All", then only the categories actually in use by
+ * this business's real products (fixed or custom) — see
+ * product-list.vue's category-options.js. OTHER is excluded: it's a form
+ * trigger for creating a new category, never a real persisted value, so
+ * filtering by it would always return zero products. Custom categories have
+ * no i18n key, so they're shown verbatim via `label` instead of being
+ * translated via `labelKey`.
  * @type {import('vue').ComputedRef<Array<{value: string, labelKey: string|null, label: string|null}>>}
  */
 const categoryFilters = computed(() => [
   { value: 'ALL', labelKey: 'pos.category-all', label: null },
-  ...orderedCategoryOptions(productStore.products).map(category => ({
+  ...filterableCategoryOptions(productStore.products).map(category => ({
     value:    category,
     labelKey: isCustomCategory(category) ? null : `pos.category-${category.toLowerCase()}`,
     label:    isCustomCategory(category) ? category : null
