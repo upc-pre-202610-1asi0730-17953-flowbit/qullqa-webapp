@@ -30,13 +30,13 @@ async function submitSignIn() {
   if (!validateForm()) return;
   isLoading.value = true;
   iamStore.errors = [];
-  iamStore.signIn(form.value.email, form.value.password);
-  await new Promise(resolve => setTimeout(resolve, 500));
-  isLoading.value = false;
-  if (iamStore.isAuthenticated) {
+  try {
+    await iamStore.signIn(form.value.email, form.value.password);
     router.push({ name: 'dashboard' });
-  } else if (iamStore.errors.length > 0) {
-    localError.value = t(iamStore.errors[0]);
+  } catch {
+    localError.value = iamStore.errors.length > 0 ? t(iamStore.errors[0]) : t('sign-in.error-credentials');
+  } finally {
+    isLoading.value = false;
   }
 }
 

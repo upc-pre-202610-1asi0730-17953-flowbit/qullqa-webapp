@@ -1,15 +1,20 @@
 <script setup>
 import { computed, onMounted, ref, toRefs } from 'vue';
 import { useI18n }                           from 'vue-i18n';
+import { useRoute }                          from 'vue-router';
 import useDeliveryStore                      from '../../application/delivery.store.js';
 import useIamStore                           from '../../../iam/application/iam.store.js';
+import useProductStore                       from '../../../product/application/product.store.js';
 import { DeliveryStatus }                    from '../../domain/model/delivery.entity.js';
 import DeliveryDetailModal                   from './delivery-detail-modal.vue';
 import DeliveryFormModal                     from './delivery-form-modal.vue';
+import { toDateLocale }                      from '../../../shared/presentation/date-locale.js';
 
-const { t }           = useI18n();
+const { t, locale }   = useI18n();
+const route           = useRoute();
 const deliveryStore   = useDeliveryStore();
 const iamStore        = useIamStore();
+const productStore    = useProductStore();
 
 const {
   deliveries,
@@ -39,10 +44,13 @@ const showRegisterModal = ref(false);
 const selectedDelivery = ref(null);
 
 /**
- * Current search query string applied to the delivery list.
+ * Current search query string applied to the delivery list. Preloaded from
+ * a ?search= query param when arriving via a deep link (e.g. "Ver seguimiento"
+ * from a Purchase Order's shipment badge), so the link actually lands on the
+ * relevant delivery instead of just opening the full unfiltered list.
  * @type {import('vue').Ref<string>}
  */
-const searchQuery = ref('');
+const searchQuery = ref(typeof route.query.search === 'string' ? route.query.search : '');
 
 /**
  * Status filter currently active. 'ALL' means no status filter.
@@ -53,9 +61,17 @@ const activeStatusFilter = ref('ALL');
 // ─── Lifecycle ───────────────────────────────────────────────────────────────
 
 onMounted(() => {
-  if (deliveriesLoaded.value) return;
   const businessId = iamStore.currentUser?.businessId ?? null;
-  fetchDeliveries(businessId);
+
+  const deliveriesReady = deliveriesLoaded.value ? Promise.resolve() : fetchDeliveries(businessId);
+  // Waypoints are otherwise only fetched lazily when a delivery's detail modal
+  // is opened (see openDeliveryDetail) — without this, every "in transit" card's
+  // route progress bar would show 0% until the user opened it at least once.
+  deliveriesReady.then(() => {
+    Promise.all(inTransitDeliveries.value.map(delivery => loadDeliveryWaypoints(delivery.id)));
+  });
+
+  if (!productStore.productsLoaded) productStore.fetchProducts(businessId);
 });
 
 // ─── Filtering ───────────────────────────────────────────────────────────────
@@ -158,7 +174,7 @@ function getPillStyle(key) {
  */
 function formatDateTime(isoString) {
   if (!isoString) return '—';
-  return new Date(isoString).toLocaleString('es-PE', {
+  return new Date(isoString).toLocaleString(toDateLocale(locale.value), {
     day:    '2-digit',
     month:  '2-digit',
     year:   'numeric',
@@ -322,7 +338,7 @@ function handleDeliveryCreated() {
                     style="background-color: rgba(56,189,248,0.15); border: 1px solid rgba(56,189,248,0.3);"
                 >
                   <span class="live-dot border-circle" style="width: 6px; height: 6px; background-color: #38BDF8; display: inline-block;"/>
-                  <span style="font-size: 0.62rem; color: #38BDF8; font-weight: 700;">EN VIVO</span>
+                  <span style="font-size: 0.62rem; color: #38BDF8; font-weight: 700;">{{ t('tracking.live-badge') }}</span>
                 </span>
               </div>
               <p class="m-0 mt-1" style="font-size: 0.72rem; color: #7FA8BF;">

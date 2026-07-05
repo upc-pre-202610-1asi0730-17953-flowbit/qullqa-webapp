@@ -8,7 +8,7 @@ import useSalesStore      from '../../application/sales.store.js';
 import useProductStore    from '../../../product/application/product.store.js';
 import useIamStore        from '../../../iam/application/iam.store.js';
 import { PaymentMethod }  from '../../domain/model/sale.entity.js';
-import { ProductCategory } from '../../../product/domain/model/product.entity.js';
+import { isCustomCategory, filterableCategoryOptions } from '../../../product/presentation/category-options.js';
 
 /**
  * POS screen view for the Sales & POS Management bounded context.
@@ -50,6 +50,15 @@ const showPaymentModal = ref(false);
 /** @type {import('vue').Ref<import('../../domain/model/sale.entity.js').Sale|null>} The last completed sale for the success modal. */
 const completedSale = ref(null);
 
+/**
+ * Snapshot of the cart lines at the moment a sale is confirmed, kept for the
+ * success modal. `cartItems` can't be reused there: it's derived from
+ * `salesStore.currentSale`, which is cleared to null right after a successful
+ * confirmSale(), so by the time the modal renders `cartItems` is already [].
+ * @type {import('vue').Ref<Array>}
+ */
+const lastSoldLines = ref([]);
+
 /** @type {import('vue').Ref<string|null>} Inline stock error message shown briefly under the grid. */
 const stockErrorMessage = ref(null);
 
@@ -59,14 +68,21 @@ const isSubmitting = ref(false);
 // ─── Category filter config ─────────────────────────────────────────────────
 
 /**
- * Category filter pills: the first entry is "All", followed by each ProductCategory value.
- * @type {import('vue').ComputedRef<Array<{value: string, labelKey: string}>>}
+ * Category filter pills: "All", then only the categories actually in use by
+ * this business's real products (fixed or custom) — see
+ * product-list.vue's category-options.js. OTHER is excluded: it's a form
+ * trigger for creating a new category, never a real persisted value, so
+ * filtering by it would always return zero products. Custom categories have
+ * no i18n key, so they're shown verbatim via `label` instead of being
+ * translated via `labelKey`.
+ * @type {import('vue').ComputedRef<Array<{value: string, labelKey: string|null, label: string|null}>>}
  */
 const categoryFilters = computed(() => [
-  { value: 'ALL', labelKey: 'pos.category-all' },
-  ...Object.values(ProductCategory).map(category => ({
+  { value: 'ALL', labelKey: 'pos.category-all', label: null },
+  ...filterableCategoryOptions(productStore.products).map(category => ({
     value:    category,
-    labelKey: `pos.category-${category.toLowerCase()}`
+    labelKey: isCustomCategory(category) ? null : `pos.category-${category.toLowerCase()}`,
+    label:    isCustomCategory(category) ? category : null
   }))
 ]);
 
@@ -217,6 +233,7 @@ function showStockError(message) {
  * Opens the PaymentModal if the cart has at least one item.
  */
 function openPaymentModal() {
+  if (isSubmitting.value) return;
   if (cartItems.value.length === 0) {
     showStockError(t('pos.error-empty-cart'));
     return;
@@ -228,26 +245,39 @@ function openPaymentModal() {
 /**
  * Handles the confirm event from PaymentModal.
  * Persists the sale and shows the success modal on success.
- * @param {{ paymentMethod: string, cashGiven: number }} payload
+ * @param {{ paymentMethod: string, cashGiven: number, customerId: number|null }} payload
  */
-async function handlePaymentConfirm({ paymentMethod }) {
+async function handlePaymentConfirm({ paymentMethod, customerId }) {
+  if (isSubmitting.value) return;
+
   isSubmitting.value    = true;
   showPaymentModal.value = false;
 
+  const soldLines = [...cartItems.value];
+
   const result = await salesStore.confirmSale({
     paymentMethod: paymentMethod,
-    customerId:    null,
+    customerId:    customerId ?? null,
     description:   ''
   });
 
-  isSubmitting.value = false;
-
   if (result.success) {
-    const lastSale = salesStore.sales[salesStore.sales.length - 1];
-    completedSale.value = lastSale || null;
+    // Deduct sold quantities from inventory now that the sale is persisted.
+    try {
+      await Promise.all(soldLines.map(line =>
+          productStore.registerStockSale({ productId: line.productId, quantity: line.quantity })
+      ));
+    } catch (error) {
+      showStockError(t('pos.error-stock-deduction-failed'));
+    }
+
+    lastSoldLines.value  = soldLines;
+    completedSale.value  = result.sale;
   } else {
     showStockError(t('pos.error-confirm-failed'));
   }
+
+  isSubmitting.value = false;
 }
 
 /**
@@ -256,6 +286,7 @@ async function handlePaymentConfirm({ paymentMethod }) {
  */
 function handleNewSale() {
   completedSale.value = null;
+  lastSoldLines.value = [];
   const businessId    = iamStore.currentUser?.businessId;
   salesStore.startNewSale(businessId);
 }
@@ -298,6 +329,7 @@ onMounted(() => {
   if (!productStore.productsLoaded)  productStore.fetchProducts(businessId);
   if (!productStore.inventoryLoaded) productStore.fetchInventory(businessId);
   if (!salesStore.currentSale)       salesStore.startNewSale(businessId);
+  if (!salesStore.customersLoaded)   salesStore.fetchCustomers(businessId);
 });
 </script>
 
@@ -345,7 +377,7 @@ onMounted(() => {
                         }"
               @click="activeCategory = filter.value"
           >
-            {{ t(filter.labelKey) }}
+            {{ filter.label ?? t(filter.labelKey) }}
           </button>
         </div>
       </div>
@@ -523,6 +555,7 @@ onMounted(() => {
     <payment-modal
         v-if="showPaymentModal"
         :total="cartTotal"
+        :customers="salesStore.customers"
         @confirm="handlePaymentConfirm"
         @cancel="showPaymentModal = false"
     />
@@ -531,7 +564,7 @@ onMounted(() => {
     <sale-success-modal
         v-if="completedSale"
         :sale="completedSale"
-        :sale-items="cartItems"
+        :sale-items="lastSoldLines"
         @new-sale="handleNewSale"
     />
   </div>

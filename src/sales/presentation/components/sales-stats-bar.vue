@@ -48,7 +48,7 @@ const todayPaidSales = computed(() =>
  * @type {import('vue').ComputedRef<number>}
  */
 const todayRevenue = computed(() =>
-    todayPaidSales.value.reduce((sum, sale) => sum + (sale.totalAmount || 0), 0)
+    todayPaidSales.value.reduce((sum, sale) => sum + sale.subtotal, 0)
 );
 
 /**
@@ -64,7 +64,7 @@ const todayTransactionCount = computed(() => todayPaidSales.value.length);
 const accumulatedRevenue = computed(() =>
     props.sales
         .filter(sale => sale.status === 'PAID')
-        .reduce((sum, sale) => sum + (sale.totalAmount || 0), 0)
+        .reduce((sum, sale) => sum + sale.subtotal, 0)
 );
 
 /**

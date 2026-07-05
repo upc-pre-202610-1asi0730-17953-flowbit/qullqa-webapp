@@ -14,6 +14,7 @@ const fieldErrors = ref({ fullName: '', businessName: '', businessType: '', emai
 
 const showPassword = ref(false);
 const isLoading    = ref(false);
+const localError   = ref('');
 
 const businessTypeOptions = [
   { value: 'BODEGA',   icon: 'pi pi-shopping-cart', labelKey: 'sign-up.type-bodega',   descKey: 'sign-up.type-bodega-desc'   },
@@ -28,10 +29,11 @@ function computePasswordStrength(password) {
   return 4;
 }
 
-const strengthLabels = ['', 'Débil', 'Regular', 'Buena', 'Fuerte'];
+const strengthLabelKeys = ['', 'sign-up.strength-weak', 'sign-up.strength-fair', 'sign-up.strength-good', 'sign-up.strength-strong'];
 const strengthColors = ['', '#EF4444', '#FACC15', '#0E7490', '#16A34A'];
 
 function resolveStrengthBarColor(level) { return strengthColors[level] || '#E2E8F0'; }
+function strengthLabel(level) { return strengthLabelKeys[level] ? t(strengthLabelKeys[level]) : ''; }
 
 function validateForm() {
   fieldErrors.value = { fullName: '', businessName: '', businessType: '', email: '', password: '' };
@@ -47,10 +49,15 @@ function validateForm() {
 async function submitSignUp() {
   if (!validateForm()) return;
   isLoading.value = true;
-  iamStore.signUp({ fullName: form.value.fullName, businessName: form.value.businessName, email: form.value.email, password: form.value.password });
-  await new Promise(resolve => setTimeout(resolve, 700));
-  isLoading.value = false;
-  if (iamStore.isAuthenticated) router.push({ name: 'dashboard' });
+  localError.value = '';
+  try {
+    await iamStore.signUp({ fullName: form.value.fullName, businessName: form.value.businessName, businessType: form.value.businessType, email: form.value.email, password: form.value.password });
+    router.push({ name: 'dashboard' });
+  } catch {
+    localError.value = t('sign-up.error-submit-failed');
+  } finally {
+    isLoading.value = false;
+  }
 }
 
 function navigateToSignIn() { router.push({ name: 'sign-in' }); }
@@ -250,10 +257,20 @@ function selectBusinessType(typeValue) {
                 />
               </div>
               <span style="font-size: 0.72rem; font-weight: 600; min-width: 42px; text-align: right;" :style="{ color: resolveStrengthBarColor(computePasswordStrength(form.password)) }">
-                {{ strengthLabels[computePasswordStrength(form.password)] }}
+                {{ strengthLabel(computePasswordStrength(form.password)) }}
               </span>
             </div>
             <p v-if="fieldErrors.password" class="auth-error"><i class="pi pi-exclamation-circle" style="font-size: 0.72rem;"/> {{ fieldErrors.password }}</p>
+          </div>
+
+          <!-- Error -->
+          <div
+              v-if="localError"
+              class="flex align-items-center gap-2 p-3 border-round-lg"
+              style="background-color: #FEE2E2; border: 1px solid #FECACA;"
+          >
+            <i class="pi pi-exclamation-circle flex-shrink-0" style="color: #DC2626; font-size: 0.9rem;"/>
+            <p class="m-0" style="color: #DC2626; font-size: 0.875rem;">{{ localError }}</p>
           </div>
 
           <!-- Submit -->

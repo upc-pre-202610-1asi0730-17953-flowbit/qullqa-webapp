@@ -109,10 +109,10 @@ const useDeliveryStore = defineStore('delivery', () => {
     /**
      * Loads all deliveries for the given business and updates local state.
      * @param {number|string} businessId - Business identifier from the IAM store.
-     * @returns {void}
+     * @returns {Promise<void>}
      */
     function fetchDeliveries(businessId) {
-        deliveryApi.getDeliveries(businessId).then(response => {
+        return deliveryApi.getDeliveries(businessId).then(response => {
             deliveries.value    = DeliveryAssembler.toEntitiesFromResponse(response);
             deliveriesLoaded.value = true;
         }).catch(error => {
@@ -164,9 +164,13 @@ const useDeliveryStore = defineStore('delivery', () => {
      * @param {string}   params.vehicle          - Vehicle description.
      * @param {string}   params.licensePlate     - Vehicle license plate.
      * @param {string}   params.estimatedArrival - Estimated arrival date-time string.
-     * @param {string[]} params.products         - List of product description strings.
-     * @param {string}   params.totalWeight      - Total weight description.
+     * @param {Array<{productId: number, quantity: number}>} params.products - Structured product lines.
+     * @param {number}   params.totalWeightValue - Total weight (numeric).
+     * @param {string}   params.totalWeightUnit  - Weight unit ('kg' or 'lb').
      * @param {number}   params.businessId       - Business identifier.
+     * @param {number|null} [params.purchaseDetailId=null] - Links this delivery to a real
+     *   PurchaseOrderDetail line, so the Suppliers bounded context can resolve this
+     *   delivery's live status instead of relying on a static denormalized string.
      * @returns {Promise<{ success: boolean, errorKey: string|null }>}
      */
     async function createDelivery({
@@ -180,8 +184,10 @@ const useDeliveryStore = defineStore('delivery', () => {
                                       licensePlate,
                                       estimatedArrival,
                                       products,
-                                      totalWeight,
-                                      businessId
+                                      totalWeightValue,
+                                      totalWeightUnit,
+                                      businessId,
+                                      purchaseDetailId = null
                                   }) {
         const nowIso         = new Date().toISOString();
         const trackingNumber = `TRK-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`;
@@ -204,9 +210,10 @@ const useDeliveryStore = defineStore('delivery', () => {
             currentLatitude:  -12.0453,
             currentLongitude: -77.0311,
             products:         products,
-            totalWeight:      totalWeight || '—',
+            totalWeightValue: totalWeightValue || 0,
+            totalWeightUnit:  totalWeightUnit || 'kg',
             businessId:       businessId,
-            purchaseDetailId: null
+            purchaseDetailId: purchaseDetailId
         };
 
         try {
@@ -321,7 +328,8 @@ const useDeliveryStore = defineStore('delivery', () => {
             currentLatitude:  targetWaypoint.latitude,
             currentLongitude: targetWaypoint.longitude,
             products:         delivery.products,
-            totalWeight:      delivery.totalWeight,
+            totalWeightValue: delivery.totalWeightValue,
+            totalWeightUnit:  delivery.totalWeightUnit,
             businessId:       delivery.businessId,
             purchaseDetailId: delivery.purchaseDetailId
         };
@@ -389,7 +397,8 @@ const useDeliveryStore = defineStore('delivery', () => {
             currentLatitude:  delivery.currentLatitude,
             currentLongitude: delivery.currentLongitude,
             products:         delivery.products,
-            totalWeight:      delivery.totalWeight,
+            totalWeightValue: delivery.totalWeightValue,
+            totalWeightUnit:  delivery.totalWeightUnit,
             businessId:       delivery.businessId,
             purchaseDetailId: delivery.purchaseDetailId
         };
@@ -453,7 +462,8 @@ const useDeliveryStore = defineStore('delivery', () => {
             currentLatitude:  delivery.currentLatitude,
             currentLongitude: delivery.currentLongitude,
             products:         delivery.products,
-            totalWeight:      delivery.totalWeight,
+            totalWeightValue: delivery.totalWeightValue,
+            totalWeightUnit:  delivery.totalWeightUnit,
             businessId:       delivery.businessId,
             purchaseDetailId: delivery.purchaseDetailId
         };
@@ -519,7 +529,8 @@ const useDeliveryStore = defineStore('delivery', () => {
             currentLatitude:  delivery.currentLatitude,
             currentLongitude: delivery.currentLongitude,
             products:         delivery.products,
-            totalWeight:      delivery.totalWeight,
+            totalWeightValue: delivery.totalWeightValue,
+            totalWeightUnit:  delivery.totalWeightUnit,
             businessId:       delivery.businessId,
             purchaseDetailId: delivery.purchaseDetailId
         };

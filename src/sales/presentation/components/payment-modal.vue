@@ -25,13 +25,22 @@ const props = defineProps({
   total: {
     type:     Number,
     required: true
+  },
+  /**
+   * Registered customers for the current business, offered as an optional
+   * pick list. Leaving no selection keeps the sale anonymous, same as before.
+   * @type {import('../../domain/model/customer.entity.js').Customer[]}
+   */
+  customers: {
+    type:    Array,
+    default: () => []
   }
 });
 
 const emit = defineEmits([
   /**
    * Emitted when the user confirms the payment.
-   * payload: { paymentMethod: string, cashGiven: number }
+   * payload: { paymentMethod: string, cashGiven: number, customerId: number|null }
    */
   'confirm',
   /** Emitted when the user cancels/closes the modal. */
@@ -59,6 +68,12 @@ const cashInput = ref(String(Math.ceil(props.total)));
  * @type {import('vue').ComputedRef<number>}
  */
 const cashGiven = computed(() => parseFloat(cashInput.value) || 0);
+
+/**
+ * Selected customer id ('' means anonymous/no customer, the previous behavior).
+ * @type {import('vue').Ref<string>}
+ */
+const selectedCustomerId = ref('');
 
 /**
  * Change to return to the customer when paying with cash.
@@ -108,7 +123,8 @@ function handleConfirm() {
   if (!canConfirm.value) return;
   emit('confirm', {
     paymentMethod: selectedMethod.value,
-    cashGiven:     selectedMethod.value === PaymentMethod.CASH ? cashGiven.value : props.total
+    cashGiven:     selectedMethod.value === PaymentMethod.CASH ? cashGiven.value : props.total,
+    customerId:    selectedCustomerId.value ? parseInt(selectedCustomerId.value) : null
   });
 }
 </script>
@@ -149,6 +165,23 @@ function handleConfirm() {
         <p class="m-0" style="color: #0B3558; font-size: 2rem; font-weight: 800; line-height: 1.2;">
           {{ formatCurrency(total) }}
         </p>
+      </div>
+
+      <!-- Customer selector (optional — anonymous sale if left unselected) -->
+      <div class="mb-4">
+        <label class="block mb-1" style="font-size: 0.78rem; font-weight: 600; color: #64748B;">
+          {{ t('pos.payment-modal-customer-label') }}
+        </label>
+        <select
+            v-model="selectedCustomerId"
+            class="w-full border-round-lg px-3"
+            style="border: 1px solid #E2E8F0; font-size: 0.88rem; color: #1E293B; padding: 10px 12px; outline: none; background: #fff;"
+        >
+          <option value="">{{ t('pos.payment-modal-customer-anonymous') }}</option>
+          <option v-for="customer in customers" :key="customer.id" :value="String(customer.id)">
+            {{ customer.fullName }}
+          </option>
+        </select>
       </div>
 
       <!-- Method selector -->

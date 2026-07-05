@@ -1,17 +1,28 @@
 <script setup>
-import { computed, onMounted, ref, toRefs } from 'vue';
+import { computed, onMounted, ref, toRefs, watch } from 'vue';
 import { useI18n }        from 'vue-i18n';
-import useProductStore    from '../../application/product.store.js';
+import { useToast }       from 'primevue/usetoast';
+import { useConfirm }     from 'primevue';
+import useProductStore, { parseLocalDate } from '../../application/product.store.js';
 import useIamStore        from '../../../iam/application/iam.store.js';
 import { Product, ProductCategory, ProductStatus } from '../../domain/model/product.entity.js';
+import { toDateLocale }   from '../../../shared/presentation/date-locale.js';
+import { isCustomCategory, orderedCategoryOptions, filterableCategoryOptions } from '../category-options.js';
 
-const { t }        = useI18n();
+const { t, locale } = useI18n();
+const toast        = useToast();
+const confirm      = useConfirm();
 const productStore = useProductStore();
 const iamStore     = useIamStore();
 
-const { products, productsLoaded, inventory, stockMovements } = toRefs(productStore);
-const { fetchProducts, fetchInventory, fetchStockMovements,
-  addProduct, updateProduct, registerStockIntake } = productStore;
+const { products, productsLoaded, inventory, stockMovements, stockMovementsLoaded, errors } = toRefs(productStore);
+const { fetchProducts, fetchInventory, fetchBatches, fetchAllStockMovements,
+  addProduct, updateProduct, deleteProduct, registerStockIntake, updateMinimumStock,
+  createBatchForProduct, isProductExpiringSoon, isProductExpired } = productStore;
+
+const savingProduct  = ref(false);
+const savingIntake   = ref(false);
+const deletingProductId = ref(null);
 
 const activeTab            = ref('products');
 const searchQuery          = ref('');
@@ -22,18 +33,44 @@ const editingProduct       = ref(null);
 const showIntakeModal      = ref(false);
 const intakeTargetProduct  = ref(null);
 
-const categoryOptions = ['Todos', 'DAIRY', 'GRAINS', 'OILS', 'BEVERAGES', 'CLEANING', 'MEDICINE', 'OTHER'];
+/**
+ * Filter dropdown options: only the categories actually in use by this
+ * business's real products (fixed or custom), so admins can filter down to
+ * the groups they created — otherwise a custom category would only ever be
+ * reachable via "Todos". OTHER is excluded here: it's a form trigger for
+ * creating a new category, never a real persisted value, so filtering by it
+ * would always return zero products.
+ * @type {import('vue').ComputedRef<string[]>}
+ */
+const categoryFilterOptions = computed(() => ['Todos', ...filterableCategoryOptions(products.value)]);
 
-const categoryLabels = {
-  DAIRY:     'Lácteos',
-  GRAINS:    'Granos',
-  OILS:      'Aceites',
-  BEVERAGES: 'Bebidas',
-  CLEANING:  'Limpieza',
-  MEDICINE:  'Medicamentos',
-  OTHER:     'Otros',
-  Todos:     'Todos'
-};
+/**
+ * Category options for the create/edit product modal — same ordered list
+ * as the filter (fixed categories, then custom ones in use, OTHER last),
+ * minus "Todos". Lets an admin pick a previously-created custom category
+ * (e.g. "Frutas y verduras") directly, instead of having to reselect
+ * "Otros" and retype the same label every time.
+ * @type {import('vue').ComputedRef<string[]>}
+ */
+const categoryModalOptions = computed(() => orderedCategoryOptions(products.value));
+
+/**
+ * Translated label for a product category (or 'Todos'), reusing the same
+ * pos.category-* keys already defined for the POS product grid so the
+ * wording stays consistent across bounded contexts and follows the locale.
+ *
+ * Categories outside the fixed ProductCategory enum are custom labels the
+ * admin typed in when "Otros" didn't fit — those have no i18n key, so
+ * they're shown verbatim instead of being run through t(), which would
+ * otherwise render the raw untranslated key on screen.
+ * @param {string} category
+ * @returns {string}
+ */
+function categoryLabel(category) {
+  if (category === 'Todos') return t('pos.category-all');
+  if (isCustomCategory(category)) return category;
+  return t(`pos.category-${category.toLowerCase()}`);
+}
 
 const categoryColors = {
   DAIRY:     { bg: '#DBEAFE', color: '#1D4ED8' },
@@ -54,26 +91,101 @@ function getProductInitial(name) {
 }
 
 const statusConfig = {
-  normal:   { label: 'Normal',     color: '#16A34A', background: '#DCFCE7', icon: 'pi pi-box'                  },
-  low:      { label: 'Stock bajo', color: '#D97706', background: '#FEF3C7', icon: 'pi pi-exclamation-triangle'  },
-  expiring: { label: 'Por vencer', color: '#EA580C', background: '#FFEDD5', icon: 'pi pi-clock'                 },
-  critical: { label: 'Crítico',    color: '#DC2626', background: '#FEE2E2', icon: 'pi pi-exclamation-circle'    },
-  out:      { label: 'Sin stock',  color: '#64748B', background: '#F1F5F9', icon: 'pi pi-times-circle'          }
+  normal:   { color: '#16A34A', background: '#DCFCE7', icon: 'pi pi-box'                 },
+  low:      { color: '#D97706', background: '#FEF3C7', icon: 'pi pi-exclamation-triangle' },
+  expiring: { color: '#EA580C', background: '#FFEDD5', icon: 'pi pi-clock'                },
+  critical: { color: '#DC2626', background: '#FEE2E2', icon: 'pi pi-exclamation-circle'   },
+  expired:  { color: '#7C2D12', background: '#FFE4E1', icon: 'pi pi-ban'                  },
+  out:      { color: '#64748B', background: '#F1F5F9', icon: 'pi pi-times-circle'         }
 };
+
+/**
+ * Translated label for a resolved product status, reusing the existing
+ * inventory.status-* keys.
+ * @param {string} statusKey
+ * @returns {string}
+ */
+function statusLabel(statusKey) {
+  return t(`inventory.status-${statusKey}`);
+}
+
+/**
+ * Active warehouses for the current business, used to let the user pick
+ * where a product's stock is being placed when registering an intake.
+ * Not kept in the store's own state (fetchWarehousesForBusiness returns a
+ * plain array), so it's held locally here.
+ * @type {import('vue').Ref<Array>}
+ */
+const warehouses = ref([]);
 
 onMounted(() => {
   const businessId = iamStore.currentUser?.businessId ?? null;
   if (businessId) {
     if (!productsLoaded.value) fetchProducts(businessId);
     fetchInventory(businessId);
+    productStore.fetchWarehousesForBusiness(businessId).then(list => {
+      warehouses.value = list.filter(warehouse => warehouse.status === 'ACTIVE');
+    });
+  }
+  if (!productStore.batchesLoaded) fetchBatches();
+});
+
+/**
+ * Lazily loads the real stock-movement history the first time the user
+ * opens the "Movimientos" tab, instead of fetching it on every Inventory
+ * page load regardless of whether that tab is ever viewed.
+ */
+watch(activeTab, (tab) => {
+  if (tab === 'movements' && !stockMovementsLoaded.value) {
+    const businessId = iamStore.currentUser?.businessId ?? null;
+    if (businessId) fetchAllStockMovements(businessId);
   }
 });
 
+/**
+ * Resolves a product's inventory status for the summary cards, filter pills
+ * and status badge.
+ *
+ * Business rule: combines the InventoryItem's own stock-level state
+ * (out/low/normal, see InventoryItem.stockStatus) with an independent
+ * expiration check against active batches. A product that is both low on
+ * stock and expiring soon is reported as 'critical' — the most urgent case.
+ * An already-expired batch is reported as its own 'expired' state, distinct
+ * from 'expiring' (soon, not yet expired) — this must match Alerts'
+ * EXPIRATION/EXPIRED distinction so both screens agree on the same product.
+ *
+ * @param {number|string} productId
+ * @returns {'out'|'expired'|'critical'|'low'|'expiring'|'normal'}
+ */
 function resolveProductStatus(productId) {
   const inventoryItem = productStore.getInventoryByProduct(productId);
   if (!inventoryItem || inventoryItem.currentStock === 0) return 'out';
-  if (inventoryItem.currentStock <= inventoryItem.minimumStock) return 'critical';
+  if (isProductExpired(productId)) return 'expired';
+
+  const isLow      = inventoryItem.isLowStock;
+  const isExpiring = isProductExpiringSoon(productId);
+
+  if (isLow && isExpiring) return 'critical';
+  if (isExpiring)          return 'expiring';
+  if (isLow)                return 'low';
   return 'normal';
+}
+
+/**
+ * Checks whether a product's resolved status matches a filter/pill key.
+ * 'low' and 'expiring' filters also include 'critical' products, since a
+ * critical product is by definition both low on stock and expiring soon.
+ * 'expiring' also includes 'expired', so the "Por vencer" pill still shows
+ * every expiration-related product, with the row badge itself telling them apart.
+ * @param {string} productStatus
+ * @param {string} filterKey
+ * @returns {boolean}
+ */
+function statusMatchesFilter(productStatus, filterKey) {
+  if (filterKey === 'all')      return true;
+  if (filterKey === 'low')      return productStatus === 'low' || productStatus === 'critical';
+  if (filterKey === 'expiring') return productStatus === 'expiring' || productStatus === 'critical' || productStatus === 'expired';
+  return productStatus === filterKey;
 }
 
 function resolveCurrentStock(productId) {
@@ -86,13 +198,55 @@ function resolveMinimumStock(productId) {
   return inventoryItem ? inventoryItem.minimumStock : 0;
 }
 
+/**
+ * Formats the nearest active batch expiration date for a product, or '—' when
+ * the product has no active batch with an expiration date.
+ * @param {number|string} productId
+ * @returns {string}
+ */
+function resolveExpirationLabel(productId) {
+  const daysToExpiry = productStore.getDaysToNearestExpiry(productId);
+  if (daysToExpiry === null) return '—';
+
+  const nearestBatch = productStore.batches
+      .filter(batch => batch.productId === parseInt(productId) && batch.status === 'ACTIVE' && batch.expiration)
+      .reduce((soonest, batch) =>
+          !soonest || parseLocalDate(batch.expiration) < parseLocalDate(soonest.expiration) ? batch : soonest, null);
+
+  return parseLocalDate(nearestBatch.expiration).toLocaleDateString(toDateLocale(locale.value), { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+/**
+ * Resolves a stock movement's product name for display, falling back to a
+ * generic "#id" label if the product isn't in the currently loaded list.
+ * @param {number|string} productId
+ * @returns {string}
+ */
+function movementProductName(productId) {
+  const product = products.value.find(p => p.id === parseInt(productId));
+  return product ? product.name : `#${productId}`;
+}
+
+/**
+ * Formats a stock movement's registeredAt (a real ISO timestamp) into a
+ * locale-aware date + time string.
+ * @param {string} isoString
+ * @returns {string}
+ */
+function formatMovementDate(isoString) {
+  if (!isoString) return '—';
+  return new Date(isoString).toLocaleString(toDateLocale(locale.value), {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+}
+
 const summaryCounts = computed(() => {
   const counts = { total: products.value.length, low: 0, expiring: 0, out: 0 };
   products.value.forEach(product => {
     const status = resolveProductStatus(product.id);
     if (status === 'out')      counts.out      += 1;
     if (status === 'low' || status === 'critical') counts.low += 1;
-    if (status === 'expiring' || status === 'critical') counts.expiring += 1;
+    if (status === 'expiring' || status === 'critical' || status === 'expired') counts.expiring += 1;
   });
   return counts;
 });
@@ -103,45 +257,63 @@ const filteredProducts = computed(() => {
     const matchesSearch   = !query || product.name.toLowerCase().includes(query);
     const matchesCategory = selectedCategory.value === 'Todos' || product.category === selectedCategory.value;
     const productStatus   = resolveProductStatus(product.id);
-    const matchesStatus   = selectedStatusFilter.value === 'all' || productStatus === selectedStatusFilter.value;
+    const matchesStatus   = statusMatchesFilter(productStatus, selectedStatusFilter.value);
     return matchesSearch && matchesCategory && matchesStatus;
   });
 });
 
 function countByStatus(statusKey) {
-  return products.value.filter(product => resolveProductStatus(product.id) === statusKey).length;
+  return products.value.filter(product => statusMatchesFilter(resolveProductStatus(product.id), statusKey)).length;
 }
 
 // ── Product modal ──────────────────────────────────────────────────────────────
 
 const productModalForm = ref({
   name:           '',
-  category:       'BEVERAGES',
+  category:       ProductCategory.OTHER,
+  customCategory: '',
   supplier:       '',
   currentStock:   '',
   minimumStock:   '',
   basePrice:      '',
   cost:           '',
-  expirationDate: ''
+  expirationDate: '',
+  warehouseId:    ''
 });
 
 function openCreateProductModal() {
   editingProduct.value   = null;
-  productModalForm.value = { name: '', category: 'BEVERAGES', supplier: '', currentStock: '', minimumStock: '', basePrice: '', cost: '', expirationDate: '' };
+  productModalForm.value = {
+    name: '', category: ProductCategory.OTHER, customCategory: '', supplier: '', currentStock: '', minimumStock: '', basePrice: '', cost: '', expirationDate: '',
+    warehouseId: warehouses.value[0] ? String(warehouses.value[0].id) : ''
+  };
   showProductModal.value = true;
 }
 
 function openEditProductModal(product) {
   editingProduct.value = product;
+
+  // Pre-fill cost/expiration from the product's existing active batch so that
+  // leaving these fields untouched doesn't silently reset purchasePrice to 0
+  // (createBatchForProduct updates the active batch in place on save).
+  const activeBatch = productStore.batches.find(
+      batch => batch.productId === product.id && batch.status === 'ACTIVE'
+  );
+
+  // A product's custom category (if any) is already one of the dropdown's
+  // own options (see categoryModalOptions), so it's selected directly —
+  // no need to route through "Otros" + a prefilled text field on edit.
   productModalForm.value = {
     name:           product.name,
     category:       product.category,
+    customCategory: '',
     supplier:       product.description ?? '',
     currentStock:   String(resolveCurrentStock(product.id)),
     minimumStock:   String(resolveMinimumStock(product.id)),
     basePrice:      String(product.basePrice),
-    cost:           '',
-    expirationDate: ''
+    cost:           activeBatch ? String(activeBatch.purchasePrice) : '',
+    expirationDate: activeBatch ? activeBatch.expiration : '',
+    warehouseId:    ''
   };
   showProductModal.value = true;
 }
@@ -150,83 +322,273 @@ function saveProductFromModal() {
   if (!productModalForm.value.name.trim()) return;
 
   const businessId = iamStore.currentUser?.businessId ?? null;
+
+  // When "Otros" is picked and the admin actually typed a custom label
+  // (e.g. "Frutas"), that label becomes the real category instead of the
+  // generic OTHER — effectively letting admins create new categories on
+  // the fly. Leaving the text blank keeps the plain OTHER behavior.
+  const customCategory = productModalForm.value.customCategory.trim();
+  const resolvedCategory = productModalForm.value.category === ProductCategory.OTHER && customCategory
+      ? customCategory
+      : productModalForm.value.category;
+
   const productEntity = new Product({
     id:          editingProduct.value ? editingProduct.value.id : null,
     businessId:  businessId,
     name:        productModalForm.value.name.trim(),
-    category:    productModalForm.value.category,
+    category:    resolvedCategory,
     description: productModalForm.value.supplier,
     basePrice:   parseFloat(productModalForm.value.basePrice) || 0,
     status:      ProductStatus.ACTIVE
   });
 
-  if (editingProduct.value) {
-    updateProduct(productEntity);
-  } else {
-    addProduct(productEntity);
-    const initialStock = parseInt(productModalForm.value.currentStock) || 0;
-    if (initialStock > 0) {
-      setTimeout(() => {
-        const newProduct = productStore.products[productStore.products.length - 1];
-        if (newProduct) {
-          registerStockIntake({ productId: newProduct.id, businessId, quantity: initialStock });
-        }
-      }, 400);
-    }
+  const minimumStock   = parseInt(productModalForm.value.minimumStock) || 0;
+  const purchasePrice  = parseFloat(productModalForm.value.cost) || 0;
+  const expirationDate = productModalForm.value.expirationDate;
+
+  savingProduct.value = true;
+  const savePromise = editingProduct.value
+      ? updateProduct(productEntity)
+          .then(() => updateMinimumStock(editingProduct.value.id, minimumStock))
+          .then(() => {
+            if (expirationDate) {
+              return createBatchForProduct({ productId: editingProduct.value.id, expiration: expirationDate, purchasePrice });
+            }
+          })
+      : addProduct(productEntity).then(createdProduct => {
+        const initialStock = parseInt(productModalForm.value.currentStock) || 0;
+        // Always create the inventory record, even with 0 initial stock, so
+        // minimumStock has somewhere to persist (see registerStockIntake).
+        const warehouseId = productModalForm.value.warehouseId ? parseInt(productModalForm.value.warehouseId) : null;
+        const intakePromise = registerStockIntake({ productId: createdProduct.id, businessId, quantity: initialStock, minimumStock, warehouseId });
+
+        return intakePromise.then(createdInventoryItem => {
+          if (expirationDate) {
+            return createBatchForProduct({
+              productId:   createdProduct.id,
+              expiration:  expirationDate,
+              purchasePrice,
+              inventoryId: createdInventoryItem ? createdInventoryItem.id : null
+            });
+          }
+        });
+      });
+
+  savePromise
+      .then(() => {
+        toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('inventory.toast-save-success'), life: 3500 });
+        showProductModal.value = false;
+      })
+      .catch(() => {
+        toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('inventory.toast-save-error'), life: 4500 });
+      })
+      .finally(() => {
+        savingProduct.value = false;
+      });
+}
+
+/**
+ * Deletes a product after confirmation.
+ * Business rule (enforced by the store): a product with stock > 0 cannot be
+ * deleted — checked client-side first so the user gets an immediate,
+ * friendly explanation instead of a generic error after confirming.
+ * @param {import('../../domain/model/product.entity.js').Product} product
+ */
+function handleDeleteProduct(product) {
+  if (resolveCurrentStock(product.id) > 0) {
+    toast.add({ severity: 'warn', summary: t('common.toast-error-title'), detail: t('inventory.toast-delete-has-stock'), life: 5000 });
+    return;
   }
 
-  showProductModal.value = false;
+  confirm.require({
+    message: t('inventory.confirm-delete-body', { name: product.name }),
+    header:  t('inventory.confirm-delete-header'),
+    icon:    'pi pi-exclamation-triangle',
+    accept:  () => {
+      deletingProductId.value = product.id;
+      deleteProduct(product.id)
+          .then(() => {
+            toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('inventory.toast-delete-success'), life: 3500 });
+          })
+          .catch(() => {
+            toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('inventory.toast-delete-error'), life: 4500 });
+          })
+          .finally(() => {
+            deletingProductId.value = null;
+          });
+    }
+  });
 }
 
 // ── Intake modal ───────────────────────────────────────────────────────────────
 
-const intakeForm = ref({ productId: '', quantity: '', supplier: '', note: '' });
+const intakeForm = ref({ productId: '', quantity: '', supplier: '', note: '', warehouseId: '' });
+
+/**
+ * Defaults the intake warehouse to where a product's stock already lives,
+ * so leaving the selector untouched never silently moves it elsewhere —
+ * only falls back to the first warehouse for a product with no inventory
+ * record yet (shouldn't normally happen, since every product gets one).
+ * @param {number|string} productId
+ * @returns {string}
+ */
+function resolveWarehouseIdForProduct(productId) {
+  const inventoryItem = productStore.getInventoryByProduct(productId);
+  if (inventoryItem && inventoryItem.warehouseId) return String(inventoryItem.warehouseId);
+  return warehouses.value[0] ? String(warehouses.value[0].id) : '';
+}
 
 function openIntakeModal(product) {
   intakeTargetProduct.value = product;
+  const initialProductId = product ? String(product.id) : (products.value[0] ? String(products.value[0].id) : '');
   intakeForm.value = {
-    productId: product ? String(product.id) : (products.value[0] ? String(products.value[0].id) : ''),
-    quantity:  '',
-    supplier:  '',
-    note:      ''
+    productId:   initialProductId,
+    quantity:    '',
+    supplier:    '',
+    note:        '',
+    warehouseId: resolveWarehouseIdForProduct(initialProductId)
   };
   showIntakeModal.value = true;
 }
+
+/**
+ * Keeps the warehouse selector in sync when the admin picks a different
+ * product from the dropdown (the generic "Registrar ingreso" entry point,
+ * not tied to one product's row), so it still defaults to that product's
+ * real current warehouse instead of staying on whatever was selected before.
+ */
+watch(() => intakeForm.value.productId, (newProductId) => {
+  if (!showIntakeModal.value || !newProductId) return;
+  intakeForm.value.warehouseId = resolveWarehouseIdForProduct(newProductId);
+});
 
 function saveIntake() {
   const quantity = parseInt(intakeForm.value.quantity);
   if (!intakeForm.value.productId || !quantity || quantity <= 0) return;
 
   const businessId = iamStore.currentUser?.businessId ?? null;
+
+  savingIntake.value = true;
   registerStockIntake({
-    productId:  parseInt(intakeForm.value.productId),
-    businessId: businessId,
-    quantity:   quantity
-  });
-
-  const productName = products.value.find(p => p.id === parseInt(intakeForm.value.productId))?.name ?? '';
-  stockMovements.value.unshift({
-    id:           Date.now(),
-    productId:    parseInt(intakeForm.value.productId),
-    product:      productName,
-    type:         'INTAKE',
-    quantity:     quantity,
-    supplier:     intakeForm.value.supplier,
-    note:         intakeForm.value.note,
-    registeredAt: new Date().toLocaleDateString('es-PE')
-  });
-
-  showIntakeModal.value = false;
+    productId:   parseInt(intakeForm.value.productId),
+    businessId:  businessId,
+    quantity:    quantity,
+    warehouseId: intakeForm.value.warehouseId ? parseInt(intakeForm.value.warehouseId) : null,
+    supplier:    intakeForm.value.supplier,
+    note:        intakeForm.value.note
+  })
+      .then(() => {
+        toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('inventory.toast-intake-success'), life: 3500 });
+        showIntakeModal.value = false;
+      })
+      .catch(() => {
+        toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('inventory.toast-intake-error'), life: 4500 });
+      })
+      .finally(() => {
+        savingIntake.value = false;
+      });
 }
 
 function formatCurrency(amount) {
   return `S/ ${Number(amount).toFixed(2)}`;
 }
 
-const warehouseSummary = [
-  { name: 'Almacén Principal',  location: 'Tienda – Primer piso', itemCount: 8, value: 'S/ 38,450' },
-  { name: 'Almacén Secundario', location: 'Depósito – Sótano',   itemCount: 4, value: 'S/ 6,780'  }
-];
+/**
+ * Builds one card/table entry for the Almacén tab from the set of inventory
+ * items belonging to a single warehouse.
+ * @param {number} key
+ * @param {string} name
+ * @param {string} location
+ * @param {import('../../domain/model/inventory-item.entity.js').InventoryItem[]} items
+ */
+function buildWarehouseSummaryEntry(key, name, location, items) {
+  const value = items.reduce((sum, item) => {
+    const product = products.value.find(p => p.id === item.productId);
+    return sum + (item.currentStock * (product?.basePrice ?? 0));
+  }, 0);
+  return { key, name, location, itemCount: items.length, value: formatCurrency(value) };
+}
+
+/**
+ * Per-warehouse stock summary for the Almacén tab.
+ *
+ * Computed entirely from data already loaded by this view (inventory,
+ * products, warehouses) — every InventoryItem already carries its own real
+ * warehouseId, so no separate API call or the previously-broken
+ * WarehouseStock entity is needed.
+ *
+ * Business rule: every inventory record is expected to have a real
+ * warehouseId — a product with no assigned warehouse is a data problem to
+ * fix at the source (see registerStockIntake's warehouse selector), not a
+ * state this view should normalize into its own "unassigned" bucket.
+ * @type {import('vue').ComputedRef<Array>}
+ */
+const warehouseSummary = computed(() => warehouses.value.map(warehouse =>
+    buildWarehouseSummaryEntry(
+        warehouse.id,
+        warehouse.name,
+        warehouse.address,
+        inventory.value.filter(item => item.warehouseId === warehouse.id)
+    )
+));
+
+/**
+ * Currently selected warehouse card (drives which warehouse's products the
+ * distribution table below shows). Null means "not chosen yet" — defaults
+ * to the first available entry so the table is never empty on first load.
+ * @type {import('vue').Ref<number|null>}
+ */
+const selectedWarehouseKey = ref(null);
+
+const activeWarehouseKey = computed(() => selectedWarehouseKey.value ?? (warehouseSummary.value[0]?.key ?? null));
+
+/**
+ * Inventory items belonging to the currently selected warehouse, joined
+ * with their product for display in the distribution table.
+ * @type {import('vue').ComputedRef<Array>}
+ */
+const warehouseTableRows = computed(() => {
+  const items = inventory.value.filter(item => item.warehouseId === activeWarehouseKey.value);
+  return items
+      .map(item => ({ item, product: products.value.find(p => p.id === item.productId) }))
+      .filter(row => row.product);
+});
+
+// ── New warehouse modal ─────────────────────────────────────────────────────
+
+const showWarehouseModal = ref(false);
+const savingWarehouse    = ref(false);
+const warehouseForm      = ref({ name: '', code: '', address: '', capacity: 'MEDIUM' });
+
+function openWarehouseModal() {
+  warehouseForm.value = { name: '', code: '', address: '', capacity: 'MEDIUM' };
+  showWarehouseModal.value = true;
+}
+
+function saveWarehouse() {
+  const name = warehouseForm.value.name.trim();
+  if (!name) return;
+
+  const businessId = iamStore.currentUser?.businessId ?? null;
+  savingWarehouse.value = true;
+
+  productStore.createWarehouse({
+    name,
+    code:      warehouseForm.value.code.trim(),
+    address:   warehouseForm.value.address.trim(),
+    capacity:  warehouseForm.value.capacity,
+    status:    'ACTIVE',
+    businessId
+  })
+      .then(createdWarehouse => {
+        warehouses.value.push(createdWarehouse);
+        selectedWarehouseKey.value = createdWarehouse.id;
+        showWarehouseModal.value = false;
+      })
+      .finally(() => {
+        savingWarehouse.value = false;
+      });
+}
 </script>
 
 <template>
@@ -243,9 +605,10 @@ const warehouseSummary = [
           <!-- Register intake (hidden on mobile, replaced by FAB) -->
           <button
               class="hidden sm:flex align-items-center gap-2 px-3 py-2 border-round-xl cursor-pointer btn-intake-outline"
+              :title="t('inventory.intake-modal-hint')"
               @click="openIntakeModal(null)"
           >
-            <i class="pi pi-arrow-down-circle" style="font-size: 0.9rem;"/>
+            <i class="pi pi-inbox" style="font-size: 0.9rem;"/>
             {{ t('inventory.btn-register-intake') }}
           </button>
           <!-- New product -->
@@ -333,7 +696,7 @@ const warehouseSummary = [
         <div class="relative" style="min-width: 160px;">
           <i class="pi pi-filter absolute filter-icon"/>
           <select v-model="selectedCategory" class="category-select">
-            <option v-for="cat in categoryOptions" :key="cat" :value="cat">{{ categoryLabels[cat] ?? cat }}</option>
+            <option v-for="cat in categoryFilterOptions" :key="cat" :value="cat">{{ categoryLabel(cat) }}</option>
           </select>
           <i class="pi pi-chevron-down absolute select-arrow"/>
         </div>
@@ -379,11 +742,17 @@ const warehouseSummary = [
       <!-- Loading -->
       <div v-if="!productsLoaded" class="flex justify-content-center align-items-center gap-3 py-8">
         <i class="pi pi-spin pi-spinner" style="font-size: 1.5rem; color: #0E7490;"/>
-        <span class="loading-text">Cargando productos…</span>
+        <span class="loading-text">{{ t('inventory.loading') }}</span>
+      </div>
+
+      <template v-else>
+      <!-- Load errors -->
+      <div v-if="errors.length > 0" class="product-list-errors">
+        {{ t('errors.occurred') }}: {{ errors.map(error => error.message).join(', ') }}
       </div>
 
       <!-- Desktop table -->
-      <div v-else class="hidden md:block border-round-xl overflow-hidden table-card">
+      <div class="hidden md:block border-round-xl overflow-hidden table-card">
         <div style="overflow-x: auto;">
           <table style="width: 100%; border-collapse: collapse;">
             <thead>
@@ -425,7 +794,7 @@ const warehouseSummary = [
                     class="border-round-2xl category-badge"
                     :style="{ backgroundColor: getCategoryColor(product.category).bg, color: getCategoryColor(product.category).color }"
                 >
-                  {{ categoryLabels[product.category] ?? product.category }}
+                  {{ categoryLabel(product.category) }}
                 </span>
               </td>
               <!-- Stock -->
@@ -440,7 +809,7 @@ const warehouseSummary = [
               <!-- Price -->
               <td class="px-4 py-3 price-value">{{ formatCurrency(product.basePrice) }}</td>
               <!-- Expiration -->
-              <td class="px-4 py-3 expiration-placeholder">—</td>
+              <td class="px-4 py-3 expiration-placeholder">{{ resolveExpirationLabel(product.id) }}</td>
               <!-- Status badge -->
               <td class="px-4 py-3">
                 <span
@@ -451,7 +820,7 @@ const warehouseSummary = [
                     }"
                 >
                   <i :class="statusConfig[resolveProductStatus(product.id)]?.icon" style="font-size: 0.65rem;"/>
-                  {{ statusConfig[resolveProductStatus(product.id)]?.label }}
+                  {{ statusLabel(resolveProductStatus(product.id)) }}
                 </span>
               </td>
               <!-- Actions -->
@@ -459,17 +828,28 @@ const warehouseSummary = [
                 <div class="flex align-items-center gap-1 justify-content-end">
                   <button
                       class="p-2 border-round-lg border-none cursor-pointer btn-icon-intake"
-                      title="Registrar ingreso"
+                      :title="t('inventory.btn-register-intake')"
+                      :aria-label="t('inventory.btn-register-intake')"
                       @click="openIntakeModal(product)"
                   >
-                    <i class="pi pi-arrow-down-circle" style="font-size: 0.95rem;"/>
+                    <i class="pi pi-inbox" style="font-size: 0.95rem;"/>
                   </button>
                   <button
                       class="p-2 border-round-lg border-none cursor-pointer btn-icon-edit"
-                      title="Editar"
+                      :title="t('inventory.btn-edit')"
+                      :aria-label="t('inventory.btn-edit')"
                       @click="openEditProductModal(product)"
                   >
                     <i class="pi pi-pencil" style="font-size: 0.9rem;"/>
+                  </button>
+                  <button
+                      class="p-2 border-round-lg border-none cursor-pointer btn-icon-delete"
+                      :disabled="deletingProductId === product.id"
+                      :title="t('inventory.btn-delete')"
+                      :aria-label="t('inventory.btn-delete')"
+                      @click="handleDeleteProduct(product)"
+                  >
+                    <i :class="deletingProductId === product.id ? 'pi pi-spin pi-spinner' : 'pi pi-trash'" style="font-size: 0.9rem;"/>
                   </button>
                 </div>
               </td>
@@ -486,6 +866,7 @@ const warehouseSummary = [
           </div>
         </div>
       </div>
+      </template>
 
       <!-- Mobile cards -->
       <div class="md:hidden" style="display: flex; flex-direction: column; gap: 0.75rem;">
@@ -518,7 +899,7 @@ const warehouseSummary = [
                   class="border-round-2xl mt-1 inline-block category-badge-sm"
                   :style="{ backgroundColor: getCategoryColor(product.category).bg, color: getCategoryColor(product.category).color }"
               >
-                {{ categoryLabels[product.category] ?? product.category }}
+                {{ categoryLabel(product.category) }}
               </span>
             </div>
             <span
@@ -529,24 +910,24 @@ const warehouseSummary = [
                 }"
             >
               <i :class="statusConfig[resolveProductStatus(product.id)]?.icon" style="font-size: 0.65rem;"/>
-              {{ statusConfig[resolveProductStatus(product.id)]?.label }}
+              {{ statusLabel(resolveProductStatus(product.id)) }}
             </span>
           </div>
 
           <!-- Stats mini-cards -->
           <div class="mb-3 mini-stats-grid">
             <div class="border-round-lg p-2 text-center mini-stat">
-              <p class="m-0 mb-1 mini-stat-label">Stock</p>
+              <p class="m-0 mb-1 mini-stat-label">{{ t('inventory.col-stock') }}</p>
               <p class="m-0 mini-stat-value" :style="{ color: resolveCurrentStock(product.id) === 0 ? '#CBD5E1' : '#0B3558' }">
                 {{ resolveCurrentStock(product.id) }}
               </p>
             </div>
             <div class="border-round-lg p-2 text-center mini-stat">
-              <p class="m-0 mb-1 mini-stat-label">Mínimo</p>
+              <p class="m-0 mb-1 mini-stat-label">{{ t('inventory.col-min') }}</p>
               <p class="m-0 mini-stat-value" style="color: #64748B;">{{ resolveMinimumStock(product.id) }}</p>
             </div>
             <div class="border-round-lg p-2 text-center mini-stat">
-              <p class="m-0 mb-1 mini-stat-label">Precio</p>
+              <p class="m-0 mb-1 mini-stat-label">{{ t('inventory.col-price') }}</p>
               <p class="m-0 mini-price-value">{{ formatCurrency(product.basePrice) }}</p>
             </div>
           </div>
@@ -557,15 +938,23 @@ const warehouseSummary = [
                 class="flex-1 flex align-items-center justify-content-center gap-2 py-2 border-round-xl border-none cursor-pointer btn-mobile-intake"
                 @click="openIntakeModal(product)"
             >
-              <i class="pi pi-arrow-down-circle" style="font-size: 0.82rem;"/>
-              Ingreso
+              <i class="pi pi-inbox" style="font-size: 0.82rem;"/>
+              {{ t('inventory.btn-intake-short') }}
             </button>
             <button
                 class="flex-1 flex align-items-center justify-content-center gap-2 py-2 border-round-xl cursor-pointer btn-mobile-edit"
                 @click="openEditProductModal(product)"
             >
               <i class="pi pi-pencil" style="font-size: 0.82rem;"/>
-              Editar
+              {{ t('inventory.btn-edit') }}
+            </button>
+            <button
+                class="flex align-items-center justify-content-center py-2 px-3 border-round-xl cursor-pointer btn-mobile-delete"
+                :disabled="deletingProductId === product.id"
+                :aria-label="t('inventory.btn-delete')"
+                @click="handleDeleteProduct(product)"
+            >
+              <i :class="deletingProductId === product.id ? 'pi pi-spin pi-spinner' : 'pi pi-trash'" style="font-size: 0.82rem;"/>
             </button>
           </div>
         </div>
@@ -578,7 +967,7 @@ const warehouseSummary = [
         class="sm:hidden fixed flex align-items-center justify-content-center border-round-3xl border-none cursor-pointer fab"
         @click="openIntakeModal(null)"
     >
-      <i class="pi pi-arrow-down-circle" style="font-size: 1.3rem;"/>
+      <i class="pi pi-inbox" style="font-size: 1.3rem;"/>
     </button>
 
     <!-- ══════════════════════════════════════════════════════════════
@@ -606,8 +995,8 @@ const warehouseSummary = [
               class="table-row"
               :style="{ borderBottom: index < stockMovements.length - 1 ? '1px solid #F1F5F9' : 'none' }"
           >
-            <td class="px-4 py-3 movement-date">{{ movement.registeredAt }}</td>
-            <td class="px-4 py-3 movement-product">{{ movement.product ?? movement.productId }}</td>
+            <td class="px-4 py-3 movement-date">{{ formatMovementDate(movement.registeredAt) }}</td>
+            <td class="px-4 py-3 movement-product">{{ movementProductName(movement.productId) }}</td>
             <td class="px-4 py-3">
               <span
                   class="inline-flex align-items-center gap-1 border-round-3xl status-badge"
@@ -641,7 +1030,7 @@ const warehouseSummary = [
           <div class="flex align-items-center justify-content-center border-round-xl empty-icon-wrap">
             <i class="pi pi-clock" style="font-size: 1.8rem; color: #CBD5E1;"/>
           </div>
-          <p class="m-0 empty-text">Sin movimientos registrados</p>
+          <p class="m-0 empty-text">{{ t('inventory.no-movements') }}</p>
         </div>
       </div>
 
@@ -651,7 +1040,7 @@ const warehouseSummary = [
           <div class="flex align-items-center justify-content-center border-round-xl empty-icon-wrap-sm">
             <i class="pi pi-clock" style="font-size: 1.6rem; color: #CBD5E1;"/>
           </div>
-          <p class="m-0 empty-text">Sin movimientos registrados</p>
+          <p class="m-0 empty-text">{{ t('inventory.no-movements') }}</p>
         </div>
         <div
             v-for="(movement, index) in stockMovements"
@@ -672,7 +1061,7 @@ const warehouseSummary = [
           </div>
           <div style="flex: 1; min-width: 0;">
             <div class="flex align-items-center justify-content-between gap-2">
-              <p class="m-0 mobile-product-name" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ movement.product ?? movement.productId }}</p>
+              <p class="m-0 mobile-product-name" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ movementProductName(movement.productId) }}</p>
               <p
                   class="m-0 flex-shrink-0 stock-value"
                   :style="{ color: movement.type === 'SALE' ? '#DC2626' : '#16A34A' }"
@@ -690,7 +1079,7 @@ const warehouseSummary = [
               >
                 {{ movement.type === 'INTAKE' ? t('inventory.movement-intake') : movement.type === 'SALE' ? t('inventory.movement-sale') : t('inventory.movement-adjustment') }}
               </span>
-              <p class="m-0 product-desc">{{ movement.registeredAt }}</p>
+              <p class="m-0 product-desc">{{ formatMovementDate(movement.registeredAt) }}</p>
             </div>
           </div>
         </div>
@@ -702,12 +1091,24 @@ const warehouseSummary = [
     ═══════════════════════════════════════════════════════════════ -->
     <div v-if="activeTab === 'warehouse'" style="display: flex; flex-direction: column; gap: 1rem;">
 
-      <!-- Warehouse summary cards -->
+      <div class="flex justify-content-end">
+        <button
+            class="flex align-items-center gap-2 px-3 py-2 border-round-xl border-none cursor-pointer btn-primary"
+            @click="openWarehouseModal"
+        >
+          <i class="pi pi-plus" style="font-size: 0.85rem;"/>
+          {{ t('inventory.btn-new-warehouse') }}
+        </button>
+      </div>
+
+      <!-- Warehouse summary cards — double as filter buttons for the table below -->
       <div class="stat-grid">
-        <div
+        <button
             v-for="warehouse in warehouseSummary"
-            :key="warehouse.name"
-            class="border-round-xl overflow-hidden table-card"
+            :key="warehouse.key"
+            class="border-round-xl overflow-hidden table-card warehouse-card-btn"
+            :class="{ 'warehouse-card-btn-active': activeWarehouseKey === warehouse.key }"
+            @click="selectedWarehouseKey = warehouse.key"
         >
           <div style="height: 4px; background: linear-gradient(to right, #0E7490, #0B3558);"/>
           <div class="p-5">
@@ -717,26 +1118,26 @@ const warehouseSummary = [
               </div>
               <div>
                 <p class="m-0 warehouse-name">{{ warehouse.name }}</p>
-                <p class="m-0 mt-1 product-desc">
+                <p v-if="warehouse.location" class="m-0 mt-1 product-desc">
                   <i class="pi pi-map-marker" style="font-size: 0.7rem;"/> {{ warehouse.location }}
                 </p>
               </div>
             </div>
             <div class="warehouse-stats-grid">
               <div class="border-round-xl p-3 mini-stat">
-                <p class="m-0 mb-1 mini-stat-label">Productos</p>
+                <p class="m-0 mb-1 mini-stat-label">{{ t('inventory.warehouse-card-products') }}</p>
                 <p class="m-0 warehouse-count">{{ warehouse.itemCount }}</p>
               </div>
               <div class="border-round-xl p-3 warehouse-value-card">
-                <p class="m-0 mb-1 warehouse-value-label">Valor</p>
+                <p class="m-0 mb-1 warehouse-value-label">{{ t('inventory.warehouse-col-value') }}</p>
                 <p class="m-0 warehouse-value">{{ warehouse.value }}</p>
               </div>
             </div>
           </div>
-        </div>
+        </button>
       </div>
 
-      <!-- Distribution table -->
+      <!-- Distribution table for the selected warehouse -->
       <div class="border-round-xl overflow-hidden table-card">
         <div class="px-5 py-3 flex align-items-center gap-2 section-header">
           <i class="pi pi-table" style="color: #0E7490; font-size: 0.88rem;"/>
@@ -747,7 +1148,7 @@ const warehouseSummary = [
             <thead>
             <tr class="table-head">
               <th
-                  v-for="header in [t('inventory.warehouse-col-product'), t('inventory.warehouse-col-main'), t('inventory.warehouse-col-secondary'), t('inventory.warehouse-col-total')]"
+                  v-for="header in [t('inventory.warehouse-col-product'), t('inventory.warehouse-col-stock'), t('inventory.warehouse-col-expiration'), t('inventory.warehouse-col-value')]"
                   :key="header"
                   class="px-4 py-3 text-left col-header"
               >{{ header }}</th>
@@ -755,30 +1156,36 @@ const warehouseSummary = [
             </thead>
             <tbody>
             <tr
-                v-for="(product, index) in products.slice(0, 5)"
-                :key="product.id"
+                v-for="(row, index) in warehouseTableRows"
+                :key="row.item.id"
                 class="table-row"
-                :style="{ borderBottom: index < 4 ? '1px solid #F1F5F9' : 'none' }"
+                :style="{ borderBottom: index < warehouseTableRows.length - 1 ? '1px solid #F1F5F9' : 'none' }"
             >
               <td class="px-4 py-3">
                 <div class="flex align-items-center gap-2">
                   <div
                       class="flex align-items-center justify-content-center border-round flex-shrink-0 product-avatar-xs"
-                      :style="{ backgroundColor: getCategoryColor(product.category).bg, color: getCategoryColor(product.category).color }"
+                      :style="{ backgroundColor: getCategoryColor(row.product.category).bg, color: getCategoryColor(row.product.category).color }"
                   >
-                    {{ getProductInitial(product.name) }}
+                    {{ getProductInitial(row.product.name) }}
                   </div>
-                  <span class="product-name">{{ product.name }}</span>
+                  <span class="product-name">{{ row.product.name }}</span>
                 </div>
               </td>
-              <td class="px-4 py-3 warehouse-stock">{{ resolveCurrentStock(product.id) }} und.</td>
-              <td class="px-4 py-3 expiration-placeholder">—</td>
+              <td class="px-4 py-3 warehouse-stock">{{ row.item.currentStock }} und.</td>
+              <td class="px-4 py-3 expiration-placeholder">{{ resolveExpirationLabel(row.product.id) }}</td>
               <td class="px-4 py-3">
-                <span class="warehouse-total">{{ resolveCurrentStock(product.id) }} und.</span>
+                <span class="warehouse-total">{{ formatCurrency(row.item.currentStock * (row.product.basePrice ?? 0)) }}</span>
               </td>
             </tr>
             </tbody>
           </table>
+        </div>
+        <div v-if="!warehouseTableRows.length" class="flex flex-column align-items-center py-12 gap-3">
+          <div class="flex align-items-center justify-content-center border-round-xl empty-icon-wrap">
+            <i class="pi pi-building" style="font-size: 1.8rem; color: #CBD5E1;"/>
+          </div>
+          <p class="m-0 empty-text">{{ t('inventory.warehouse-empty') }}</p>
         </div>
       </div>
     </div>
@@ -821,7 +1228,7 @@ const warehouseSummary = [
               <div style="flex: 1;">
                 <label class="modal-label">{{ t('inventory.modal-field-category') }}</label>
                 <select v-model="productModalForm.category" class="modal-input modal-select">
-                  <option v-for="cat in categoryOptions.slice(1)" :key="cat" :value="cat">{{ categoryLabels[cat] ?? cat }}</option>
+                  <option v-for="cat in categoryModalOptions" :key="cat" :value="cat">{{ categoryLabel(cat) }}</option>
                 </select>
               </div>
               <div style="flex: 1;">
@@ -830,16 +1237,47 @@ const warehouseSummary = [
               </div>
             </div>
 
+            <!-- Custom category (only shown when "Otros" is selected) -->
+            <div v-if="productModalForm.category === 'OTHER'">
+              <label class="modal-label">{{ t('inventory.modal-field-custom-category') }}</label>
+              <input
+                  v-model="productModalForm.customCategory"
+                  :placeholder="t('inventory.modal-field-custom-category-placeholder')"
+                  class="modal-input"
+              />
+              <p class="m-0 mt-1 modal-field-hint">{{ t('inventory.modal-field-custom-category-hint') }}</p>
+            </div>
+
             <!-- Stock actual + Stock mínimo -->
             <div class="flex flex-column sm:flex-row gap-4">
               <div style="flex: 1;">
                 <label class="modal-label">{{ t('inventory.modal-field-stock') }}</label>
-                <input v-model="productModalForm.currentStock" type="number" min="0" placeholder="0" class="modal-input"/>
+                <input
+                    v-model="productModalForm.currentStock"
+                    type="number" min="0" placeholder="0"
+                    class="modal-input"
+                    :disabled="!!editingProduct"
+                    :title="editingProduct ? t('inventory.modal-field-stock-readonly-hint') : ''"
+                />
+                <p v-if="editingProduct" class="m-0 mt-1 modal-field-hint">
+                  {{ t('inventory.modal-field-stock-readonly-hint') }}
+                </p>
               </div>
               <div style="flex: 1;">
                 <label class="modal-label">{{ t('inventory.modal-field-min-stock') }}</label>
                 <input v-model="productModalForm.minimumStock" type="number" min="0" placeholder="0" class="modal-input"/>
               </div>
+            </div>
+
+            <!-- Warehouse (only relevant when placing initial stock on creation) -->
+            <div v-if="!editingProduct">
+              <label class="modal-label">{{ t('inventory.modal-field-warehouse') }}</label>
+              <select v-model="productModalForm.warehouseId" class="modal-input modal-select">
+                <option value="" disabled>{{ t('inventory.modal-field-warehouse-placeholder') }}</option>
+                <option v-for="warehouse in warehouses" :key="warehouse.id" :value="String(warehouse.id)">
+                  {{ warehouse.name }}
+                </option>
+              </select>
             </div>
 
             <!-- Precio venta + Precio costo -->
@@ -863,11 +1301,12 @@ const warehouseSummary = [
 
           <!-- Modal actions -->
           <div class="flex gap-3 mt-5">
-            <button class="flex-1 py-2 border-round-xl cursor-pointer btn-modal-cancel" @click="showProductModal = false">
+            <button class="flex-1 py-2 border-round-xl cursor-pointer btn-modal-cancel" :disabled="savingProduct" @click="showProductModal = false">
               {{ t('inventory.modal-cancel') }}
             </button>
-            <button class="flex-1 py-2 border-round-xl border-none cursor-pointer btn-modal-primary" @click="saveProductFromModal">
-              {{ editingProduct ? t('inventory.modal-save') : t('inventory.modal-register') }}
+            <button class="flex-1 py-2 border-round-xl border-none cursor-pointer btn-modal-primary" :disabled="savingProduct" @click="saveProductFromModal">
+              <i v-if="savingProduct" class="pi pi-spin pi-spinner" style="margin-right: 0.4rem;"/>
+              {{ savingProduct ? t('inventory.modal-saving') : (editingProduct ? t('inventory.modal-save') : t('inventory.modal-register')) }}
             </button>
           </div>
         </div>
@@ -887,13 +1326,20 @@ const warehouseSummary = [
         <div class="flex align-items-center justify-content-between px-5 py-4 modal-header">
           <div class="flex align-items-center gap-3">
             <div class="flex align-items-center justify-content-center border-round-lg modal-icon-wrap" style="background: linear-gradient(135deg, #DCFCE7, #BBF7D0);">
-              <i class="pi pi-arrow-down-circle" style="color: #16A34A; font-size: 0.95rem;"/>
+              <i class="pi pi-inbox" style="color: #16A34A; font-size: 0.95rem;"/>
             </div>
             <p class="m-0 modal-title">{{ t('inventory.intake-modal-title') }}</p>
           </div>
           <button class="p-2 border-round-lg border-none cursor-pointer btn-modal-close" @click="showIntakeModal = false">
             <i class="pi pi-times" style="font-size: 1rem;"/>
           </button>
+        </div>
+
+        <div class="px-5 pt-2 pb-0">
+          <p class="m-0 intake-modal-hint">
+            <i class="pi pi-info-circle" style="font-size: 0.8rem; margin-right: 0.3rem;"/>
+            {{ t('inventory.intake-modal-hint') }}
+          </p>
         </div>
 
         <div class="px-5 py-5 flex flex-column gap-4">
@@ -909,6 +1355,16 @@ const warehouseSummary = [
             <label class="modal-label">{{ t('inventory.intake-field-qty') }}</label>
             <input v-model="intakeForm.quantity" type="number" min="1" placeholder="0" class="modal-input"/>
           </div>
+          <!-- Warehouse -->
+          <div>
+            <label class="modal-label">{{ t('inventory.intake-field-warehouse') }}</label>
+            <select v-model="intakeForm.warehouseId" class="modal-input modal-select">
+              <option value="" disabled>{{ t('inventory.modal-field-warehouse-placeholder') }}</option>
+              <option v-for="warehouse in warehouses" :key="warehouse.id" :value="String(warehouse.id)">
+                {{ warehouse.name }}
+              </option>
+            </select>
+          </div>
           <!-- Supplier -->
           <div>
             <label class="modal-label">{{ t('inventory.intake-field-supplier') }}</label>
@@ -922,11 +1378,72 @@ const warehouseSummary = [
 
           <!-- Actions -->
           <div class="flex gap-3">
-            <button class="flex-1 py-2 border-round-xl cursor-pointer btn-modal-cancel" @click="showIntakeModal = false">
+            <button class="flex-1 py-2 border-round-xl cursor-pointer btn-modal-cancel" :disabled="savingIntake" @click="showIntakeModal = false">
               {{ t('inventory.modal-cancel') }}
             </button>
-            <button class="flex-1 py-2 border-round-xl border-none cursor-pointer btn-intake-confirm" @click="saveIntake">
-              {{ t('inventory.intake-btn') }}
+            <button class="flex-1 py-2 border-round-xl border-none cursor-pointer btn-intake-confirm" :disabled="savingIntake" @click="saveIntake">
+              <i v-if="savingIntake" class="pi pi-spin pi-spinner" style="margin-right: 0.4rem;"/>
+              {{ savingIntake ? t('inventory.modal-saving') : t('inventory.intake-btn') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════════════════════
+         MODAL: NEW WAREHOUSE
+    ═══════════════════════════════════════════════════════════════ -->
+    <div
+        v-if="showWarehouseModal"
+        class="fixed inset-0 z-50 flex align-items-end sm:align-items-center justify-content-center modal-overlay"
+        @click.self="showWarehouseModal = false"
+    >
+      <div class="w-full border-round-t-2xl sm:border-round-2xl modal-container-sm">
+        <div class="flex align-items-center justify-content-between px-5 py-4 modal-header">
+          <div class="flex align-items-center gap-3">
+            <div class="flex align-items-center justify-content-center border-round-lg modal-icon-wrap" style="background: linear-gradient(135deg, #E0F2FE, #BAE6FD);">
+              <i class="pi pi-building" style="color: #0E7490; font-size: 0.95rem;"/>
+            </div>
+            <p class="m-0 modal-title">{{ t('inventory.warehouse-modal-title') }}</p>
+          </div>
+          <button class="p-2 border-round-lg border-none cursor-pointer btn-modal-close" @click="showWarehouseModal = false">
+            <i class="pi pi-times" style="font-size: 1rem;"/>
+          </button>
+        </div>
+
+        <div class="px-5 py-5 flex flex-column gap-4">
+          <div>
+            <label class="modal-label">{{ t('inventory.warehouse-field-name') }} *</label>
+            <input v-model="warehouseForm.name" :placeholder="t('inventory.warehouse-field-name-placeholder')" class="modal-input"/>
+          </div>
+          <div>
+            <label class="modal-label">{{ t('inventory.warehouse-field-code') }}</label>
+            <input v-model="warehouseForm.code" :placeholder="t('inventory.warehouse-field-code-placeholder')" class="modal-input"/>
+          </div>
+          <div>
+            <label class="modal-label">{{ t('inventory.warehouse-field-address') }}</label>
+            <input v-model="warehouseForm.address" :placeholder="t('inventory.warehouse-field-address-placeholder')" class="modal-input"/>
+          </div>
+          <div>
+            <label class="modal-label">{{ t('inventory.warehouse-field-capacity') }}</label>
+            <select v-model="warehouseForm.capacity" class="modal-input modal-select">
+              <option value="SMALL">{{ t('inventory.warehouse-capacity-small') }}</option>
+              <option value="MEDIUM">{{ t('inventory.warehouse-capacity-medium') }}</option>
+              <option value="LARGE">{{ t('inventory.warehouse-capacity-large') }}</option>
+            </select>
+          </div>
+
+          <div class="flex gap-3">
+            <button class="flex-1 py-2 border-round-xl cursor-pointer btn-modal-cancel" :disabled="savingWarehouse" @click="showWarehouseModal = false">
+              {{ t('inventory.modal-cancel') }}
+            </button>
+            <button
+                class="flex-1 py-2 border-round-xl border-none cursor-pointer btn-primary"
+                :disabled="savingWarehouse || !warehouseForm.name.trim()"
+                @click="saveWarehouse"
+            >
+              <i v-if="savingWarehouse" class="pi pi-spin pi-spinner" style="margin-right: 0.4rem;"/>
+              {{ savingWarehouse ? t('inventory.modal-saving') : t('inventory.warehouse-btn-create') }}
             </button>
           </div>
         </div>
@@ -1119,11 +1636,35 @@ const warehouseSummary = [
   font-size: 0.88rem;
 }
 
+.product-list-errors {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  color: #EF4444;
+  font-size: 0.8rem;
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-radius: 0.75rem;
+}
+
 /* ── Table card ──────────────────────────────────────────────── */
 .table-card {
   background-color: #ffffff;
   border: 1px solid #E2E8F0;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.05);
+}
+
+.warehouse-card-btn {
+  display:      block;
+  width:        100%;
+  text-align:   left;
+  cursor:       pointer;
+  transition:   border-color 0.15s, box-shadow 0.15s;
+  font-family:  inherit;
+}
+
+.warehouse-card-btn-active {
+  border-color: #0E7490;
+  box-shadow:   0 0 0 2px rgba(14, 116, 144, 0.25);
 }
 
 .table-head {
@@ -1223,6 +1764,20 @@ const warehouseSummary = [
   transform: scale(1.12);
 }
 
+.btn-icon-delete {
+  background: none;
+  color: #EF4444;
+  transition: all 0.15s;
+}
+.btn-icon-delete:hover {
+  background-color: #FEE2E2;
+  transform: scale(1.12);
+}
+.btn-icon-delete:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* ── Empty states ────────────────────────────────────────────── */
 .empty-icon-wrap {
   width: 64px;
@@ -1316,6 +1871,20 @@ const warehouseSummary = [
 .btn-mobile-edit:hover {
   background-color: #F8FAFC;
   border-color: #CBD5E1;
+}
+
+.btn-mobile-delete {
+  background: none;
+  border: 1.5px solid #FECACA;
+  color: #EF4444;
+  transition: all 0.15s;
+}
+.btn-mobile-delete:hover {
+  background-color: #FEE2E2;
+}
+.btn-mobile-delete:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* ── FAB ─────────────────────────────────────────────────────── */
@@ -1532,6 +2101,23 @@ const warehouseSummary = [
   border-color: #0E7490;
   box-shadow: 0 0 0 3px rgba(14, 116, 144, 0.12);
   background-color: #fff;
+}
+.modal-input:disabled {
+  background-color: #F1F5F9;
+  color: #94A3B8;
+  cursor: not-allowed;
+}
+.modal-field-hint {
+  font-size: 0.7rem;
+  color: #94A3B8;
+}
+.intake-modal-hint {
+  font-size: 0.76rem;
+  color: #64748B;
+  background-color: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 0.6rem;
+  padding: 0.6rem 0.75rem;
 }
 
 .modal-select {

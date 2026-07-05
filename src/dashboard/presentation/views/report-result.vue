@@ -3,13 +3,31 @@ import { computed, onMounted, toRefs } from 'vue';
 import { useRouter }                   from 'vue-router';
 import { useI18n }                     from 'vue-i18n';
 import useDashboardStore               from '../../application/dashboard.store.js';
+import { ReportType }                  from '../../domain/model/report.entity.js';
+import { toDateLocale }                from '../../../shared/presentation/date-locale.js';
 
-const { t }          = useI18n();
+const { t, locale }  = useI18n();
 const router         = useRouter();
 const dashboardStore = useDashboardStore();
 
-const { reports, reportsLoaded, metrics, errors } = toRefs(dashboardStore);
-const { exportReport } = dashboardStore;
+/**
+ * Translated label for a report type, reusing the same reports.type-* keys
+ * already defined for the report-filters type dropdown.
+ * @param {string} type - A ReportType value.
+ * @returns {string}
+ */
+function reportTypeLabel(type) {
+  const keys = {
+    [ReportType.INVENTORY]:     'reports.type-inventory',
+    [ReportType.SALES]:         'reports.type-sales',
+    [ReportType.LOW_STOCK]:     'reports.type-low-stock',
+    [ReportType.REPLENISHMENT]: 'reports.type-replenishment'
+  };
+  return t(keys[type] ?? type);
+}
+
+const { reports, reportsLoaded, errors } = toRefs(dashboardStore);
+const { exportReport, computeMetricsForFilters } = dashboardStore;
 
 /**
  * The most recently generated report (last element of the reports array).
@@ -23,6 +41,15 @@ const latestReport = computed(() => {
 });
 
 /**
+ * Metrics scoped to the report's own date range — NOT the Panel's all-time
+ * liveMetrics, which would silently ignore the filters the user just chose.
+ * @type {import('vue').ComputedRef<Object|null>}
+ */
+const metrics = computed(() =>
+    latestReport.value ? computeMetricsForFilters(latestReport.value.filters) : null
+);
+
+/**
  * Redirects to the filters view when there are no reports to display.
  */
 onMounted(() => {
@@ -32,11 +59,23 @@ onMounted(() => {
 });
 
 /**
- * Triggers the CSV export for the latest report via the store.
+ * Triggers the CSV export for the latest report via the store, passing
+ * already-translated row labels so the exported file matches the active
+ * UI locale instead of a hardcoded English fallback.
  */
 function handleExportReport() {
   if (!latestReport.value) return;
-  exportReport(latestReport.value.id);
+  exportReport(latestReport.value.id, {
+    header:           `${t('reports.col-metric')},${t('reports.col-value')}`,
+    totalProducts:    t('reports.metrics-total-products'),
+    lowStockProducts: t('reports.metrics-low-stock'),
+    inventoryValue:   t('reports.metrics-inventory-value'),
+    totalSales:       t('reports.metrics-total-sales'),
+    salesCount:       t('reports.metrics-sales-count'),
+    averageSaleValue: t('reports.metrics-average-sale'),
+    stockHealth:      t('reports.metrics-stock-health'),
+    generatedAt:      t('reports.generated-at')
+  });
 }
 
 /**
@@ -71,7 +110,7 @@ function formatCurrency(amount) {
  */
 function formatDate(isoDate) {
   if (!isoDate) return '-';
-  return new Date(isoDate).toLocaleDateString('es-PE');
+  return new Date(isoDate).toLocaleDateString(toDateLocale(locale.value));
 }
 </script>
 
@@ -110,7 +149,7 @@ function formatDate(isoDate) {
           <div class="grid">
             <div class="col-12 md:col-4">
               <p class="m-0 text-sm" style="color: #64748B;">{{ t('reports.type') }}</p>
-              <p class="m-0 mt-1 font-semibold" style="color: #0B3558;">{{ latestReport.typeLabel }}</p>
+              <p class="m-0 mt-1 font-semibold" style="color: #0B3558;">{{ reportTypeLabel(latestReport.type) }}</p>
             </div>
             <div class="col-12 md:col-4">
               <p class="m-0 text-sm" style="color: #64748B;">{{ t('reports.filters') }}</p>

@@ -112,9 +112,10 @@ const useSupplierStore = defineStore('supplier', () => {
     /**
      * Fetches all suppliers for the authenticated business.
      * @param {number|string} businessId
+     * @returns {Promise<void>}
      */
     function fetchSuppliers(businessId) {
-        supplierApi.getSuppliers(businessId)
+        return supplierApi.getSuppliers(businessId)
             .then(response => {
                 suppliers.value       = SupplierAssembler.toEntitiesFromResponse(response);
                 suppliersLoaded.value = true;
@@ -126,25 +127,37 @@ const useSupplierStore = defineStore('supplier', () => {
      * Fetches all purchase orders for the authenticated business and hydrates
      * their detail lines by fetching /purchaseDetails for each order.
      *
+     * Ensures suppliers are loaded first (awaiting fetchSuppliers if needed) so
+     * each order's supplierName can be resolved regardless of whether the caller
+     * happened to load suppliers first — this view can be reached directly
+     * without visiting the Suppliers tab in the same session.
+     *
      * @param {number|string} businessId
      */
     function fetchPurchaseOrders(businessId) {
-        supplierApi.getPurchaseOrders(businessId)
+        const suppliersReady = suppliersLoaded.value ? Promise.resolve() : fetchSuppliers(businessId);
+
+        return suppliersReady
+            .then(() => supplierApi.getPurchaseOrders(businessId))
             .then(response => {
                 const rawOrders = Array.isArray(response.data) ? response.data : [];
-                const hydratedOrderPromises = rawOrders.map(rawOrder =>
-                    supplierApi.getPurchaseDetailsByOrder(rawOrder.id)
+                const hydratedOrderPromises = rawOrders.map(rawOrder => {
+                    const supplierEntity = suppliers.value.find(supplier => supplier.id === rawOrder.supplierId);
+                    const supplierName   = supplierEntity ? supplierEntity.fullName : '';
+
+                    return supplierApi.getPurchaseDetailsByOrder(rawOrder.id)
                         .then(detailsResponse => {
                             const rawDetails = Array.isArray(detailsResponse.data)
                                 ? detailsResponse.data
                                 : [];
                             return PurchaseOrderAssembler.toEntityFromResource({
                                 ...rawOrder,
+                                supplierName,
                                 details: rawDetails
                             });
                         })
-                        .catch(() => PurchaseOrderAssembler.toEntityFromResource(rawOrder))
-                );
+                        .catch(() => PurchaseOrderAssembler.toEntityFromResource({ ...rawOrder, supplierName }));
+                });
                 return Promise.all(hydratedOrderPromises);
             })
             .then(hydratedOrders => {
@@ -157,29 +170,40 @@ const useSupplierStore = defineStore('supplier', () => {
     /**
      * Creates a new supplier and appends it to local state.
      * @param {import('../domain/model/supplier.entity.js').Supplier} supplier
+     * @returns {Promise<import('../domain/model/supplier.entity.js').Supplier>}
      */
     function addSupplier(supplier) {
         const resource = SupplierAssembler.toResourceFromEntity(supplier);
-        supplierApi.createSupplier(resource)
+        return supplierApi.createSupplier(resource)
             .then(response => {
-                suppliers.value.push(SupplierAssembler.toEntityFromResource(response.data));
+                const createdSupplier = SupplierAssembler.toEntityFromResource(response.data);
+                suppliers.value.push(createdSupplier);
+                return createdSupplier;
             })
-            .catch(error => errors.value.push(error));
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
     }
 
     /**
      * Updates an existing supplier and synchronizes local state.
      * @param {import('../domain/model/supplier.entity.js').Supplier} supplier - Must include id.
+     * @returns {Promise<import('../domain/model/supplier.entity.js').Supplier>}
      */
     function updateSupplier(supplier) {
         const resource = SupplierAssembler.toResourceFromEntity(supplier);
-        supplierApi.updateSupplier(supplier.id, resource)
+        return supplierApi.updateSupplier(supplier.id, resource)
             .then(response => {
                 const updatedSupplier = SupplierAssembler.toEntityFromResource(response.data);
                 const index = suppliers.value.findIndex(existingSupplier => existingSupplier.id === updatedSupplier.id);
                 if (index !== -1) suppliers.value[index] = updatedSupplier;
+                return updatedSupplier;
             })
-            .catch(error => errors.value.push(error));
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
     }
 
     /**
@@ -189,6 +213,7 @@ const useSupplierStore = defineStore('supplier', () => {
      * PENDING or DELAYED purchase orders.
      *
      * @param {number|string} supplierId
+     * @returns {Promise<import('../domain/model/supplier.entity.js').Supplier>}
      */
     function deactivateSupplier(supplierId) {
         const numericId      = parseInt(supplierId);
@@ -197,28 +222,31 @@ const useSupplierStore = defineStore('supplier', () => {
         );
 
         if (activeOrders.length > 0) {
-            errors.value.push(
-                new Error(
-                    `Cannot deactivate supplier #${numericId}: it has ${activeOrders.length} active order(s).`
-                )
+            const error = new Error(
+                `Cannot deactivate supplier #${numericId}: it has ${activeOrders.length} active order(s).`
             );
-            return;
+            errors.value.push(error);
+            return Promise.reject(error);
         }
 
         const existingSupplier = suppliers.value.find(supplier => supplier.id === numericId);
-        if (!existingSupplier) return;
+        if (!existingSupplier) return Promise.reject(new Error(`Supplier #${numericId} not found.`));
 
         const resource = SupplierAssembler.toResourceFromEntity(
             new Supplier({ ...existingSupplier, status: SupplierStatus.INACTIVE })
         );
 
-        supplierApi.deactivateSupplier(numericId, resource)
+        return supplierApi.deactivateSupplier(numericId, resource)
             .then(response => {
                 const updatedSupplier = SupplierAssembler.toEntityFromResource(response.data);
                 const index = suppliers.value.findIndex(supplier => supplier.id === numericId);
                 if (index !== -1) suppliers.value[index] = updatedSupplier;
+                return updatedSupplier;
             })
-            .catch(error => errors.value.push(error));
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
     }
 
     /**
@@ -240,11 +268,13 @@ const useSupplierStore = defineStore('supplier', () => {
      * @param {number}   orderPayload.detailLines[].quantity
      * @param {number}   orderPayload.detailLines[].unitPrice
      * @param {number}   [orderPayload.detailLines[].discount]
+     * @returns {Promise<import('../domain/model/purchase-order.entity.js').PurchaseOrder>}
      */
     function createPurchaseOrder(orderPayload) {
         if (!orderPayload.detailLines || orderPayload.detailLines.length === 0) {
-            errors.value.push(new Error('A purchase order requires at least one detail line.'));
-            return;
+            const error = new Error('A purchase order requires at least one detail line.');
+            errors.value.push(error);
+            return Promise.reject(error);
         }
 
         const invalidLines = orderPayload.detailLines.filter(
@@ -252,10 +282,9 @@ const useSupplierStore = defineStore('supplier', () => {
         );
 
         if (invalidLines.length > 0) {
-            errors.value.push(
-                new Error('All purchase order lines must have quantity > 0 and unitPrice > 0.')
-            );
-            return;
+            const error = new Error('All purchase order lines must have quantity > 0 and unitPrice > 0.');
+            errors.value.push(error);
+            return Promise.reject(error);
         }
 
         const supplierEntity = suppliers.value.find(supplier => supplier.id === parseInt(orderPayload.supplierId));
@@ -270,7 +299,7 @@ const useSupplierStore = defineStore('supplier', () => {
             description:  orderPayload.description ?? ''
         };
 
-        supplierApi.createPurchaseOrder(orderResource)
+        return supplierApi.createPurchaseOrder(orderResource)
             .then(orderResponse => {
                 const createdOrder = orderResponse.data;
                 const detailPromises = orderPayload.detailLines.map(line =>
@@ -295,11 +324,14 @@ const useSupplierStore = defineStore('supplier', () => {
                 }));
             })
             .then(hydratedOrder => {
-                purchaseOrders.value.unshift(
-                    PurchaseOrderAssembler.toEntityFromResource(hydratedOrder)
-                );
+                const createdOrder = PurchaseOrderAssembler.toEntityFromResource(hydratedOrder);
+                purchaseOrders.value.unshift(createdOrder);
+                return createdOrder;
             })
-            .catch(error => errors.value.push(error));
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
     }
 
     /**
@@ -310,20 +342,20 @@ const useSupplierStore = defineStore('supplier', () => {
      *
      * @param {number|string}       orderId
      * @param {PurchaseOrderStatus} newStatus - Must be RECEIVED, DELAYED or CANCELLED.
+     * @returns {Promise<import('../domain/model/purchase-order.entity.js').PurchaseOrder>}
      */
     function updatePurchaseOrderStatus(orderId, newStatus) {
         const numericId    = parseInt(orderId);
         const existingOrder = purchaseOrders.value.find(order => order.id === numericId);
 
-        if (!existingOrder) return;
+        if (!existingOrder) return Promise.reject(new Error(`Purchase order #${numericId} not found.`));
 
         if (!existingOrder.isActionable) {
-            errors.value.push(
-                new Error(
-                    `Cannot update purchase order #${numericId}: it is already ${existingOrder.status}.`
-                )
+            const error = new Error(
+                `Cannot update purchase order #${numericId}: it is already ${existingOrder.status}.`
             );
-            return;
+            errors.value.push(error);
+            return Promise.reject(error);
         }
 
         const resource = PurchaseOrderAssembler.toResourceFromEntity(existingOrder);
@@ -333,7 +365,7 @@ const useSupplierStore = defineStore('supplier', () => {
             resource.receivedDate = new Date().toISOString().slice(0, 10);
         }
 
-        supplierApi.updatePurchaseOrder(numericId, resource)
+        return supplierApi.updatePurchaseOrder(numericId, resource)
             .then(response => {
                 const updatedOrder = PurchaseOrderAssembler.toEntityFromResource({
                     ...response.data,
@@ -342,8 +374,12 @@ const useSupplierStore = defineStore('supplier', () => {
                 });
                 const index = purchaseOrders.value.findIndex(order => order.id === numericId);
                 if (index !== -1) purchaseOrders.value[index] = updatedOrder;
+                return updatedOrder;
             })
-            .catch(error => errors.value.push(error));
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
     }
 
     return {

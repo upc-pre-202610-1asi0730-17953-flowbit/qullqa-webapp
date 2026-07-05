@@ -17,6 +17,14 @@ import { useI18n }       from 'vue-i18n';
  * @component CustomerModal
  */
 
+const props = defineProps({
+  /** Whether a save request is currently in flight (disables the form). */
+  saving: {
+    type:    Boolean,
+    default: false
+  }
+});
+
 const emit = defineEmits([
   /**
    * Emitted when the form is valid and the user clicks register.
@@ -219,6 +227,7 @@ function handleSave() {
           <button
               class="flex-1 border-round-xl py-3"
               style="border: 1px solid #E2E8F0; color: #64748B; font-size: 0.88rem; font-weight: 600; background: #fff; cursor: pointer;"
+              :disabled="saving"
               @click="emit('close')"
           >
             {{ t('customer-form.cancel') }}
@@ -226,17 +235,18 @@ function handleSave() {
           <button
               class="flex-1 border-round-xl py-3"
               :style="{
-                            backgroundColor: isFormValid ? '#0B3558' : '#CBD5E1',
+                            backgroundColor: (isFormValid && !saving) ? '#0B3558' : '#CBD5E1',
                             color: '#fff',
                             fontSize: '0.88rem',
                             fontWeight: 600,
                             border: 'none',
-                            cursor: isFormValid ? 'pointer' : 'not-allowed'
+                            cursor: (isFormValid && !saving) ? 'pointer' : 'not-allowed'
                         }"
-              :disabled="!isFormValid"
+              :disabled="!isFormValid || saving"
               @click="handleSave"
           >
-            {{ t('customers.modal-register-btn') }}
+            <i v-if="saving" class="pi pi-spin pi-spinner" style="margin-right: 0.4rem;"/>
+            {{ saving ? t('customers.modal-saving') : t('customers.modal-register-btn') }}
           </button>
         </div>
       </div>

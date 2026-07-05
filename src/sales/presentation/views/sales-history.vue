@@ -1,10 +1,12 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useI18n }      from 'vue-i18n';
+import { useToast }     from 'primevue/usetoast';
 import useSalesStore    from '../../application/sales.store.js';
 import useProductStore  from '../../../product/application/product.store.js';
 import useIamStore      from '../../../iam/application/iam.store.js';
 import { SaleStatus }   from '../../domain/model/sale.entity.js';
+import { toDateLocale } from '../../../shared/presentation/date-locale.js';
 
 /**
  * SalesHistory view for the Sales & POS Management bounded context.
@@ -21,7 +23,8 @@ import { SaleStatus }   from '../../domain/model/sale.entity.js';
  * @view SalesHistory
  */
 
-const { t }        = useI18n();
+const { t, locale } = useI18n();
+const toast        = useToast();
 const salesStore   = useSalesStore();
 const productStore = useProductStore();
 const iamStore     = useIamStore();
@@ -36,6 +39,9 @@ const activeStatusFilter = ref('ALL');
 
 /** @type {import('vue').Ref<string|null>} The id of the currently expanded sale row. */
 const expandedSaleId = ref(null);
+
+/** @type {import('vue').Ref<number|null>} The id of the sale whose line items are being fetched. */
+const loadingDetailsSaleId = ref(null);
 
 // ─── Computed ──────────────────────────────────────────────────────────────
 
@@ -132,7 +138,7 @@ function getMethodConfig(method) {
  */
 function formatDate(dateString) {
   if (!dateString) return '—';
-  return new Date(dateString).toLocaleString('es-PE', {
+  return new Date(dateString).toLocaleString(toDateLocale(locale.value), {
     day:    '2-digit',
     month:  '2-digit',
     year:   'numeric',
@@ -153,27 +159,66 @@ function formatCurrency(amount) {
 
 /**
  * Toggles the expanded state of a sale row.
- * @param {number} saleId
+ *
+ * `fetchSales()` loads sales without their line items (the mock API doesn't
+ * nest them), so `sale.details` is always [] right after the list loads.
+ * The first time a row is expanded, its details are fetched lazily and
+ * cached on the entity so later toggles don't refetch.
+ *
+ * @param {import('../../domain/model/sale.entity.js').Sale} sale
  */
-function toggleExpand(saleId) {
-  expandedSaleId.value = expandedSaleId.value === saleId ? null : saleId;
+async function toggleExpand(sale) {
+  if (expandedSaleId.value === sale.id) {
+    expandedSaleId.value = null;
+    return;
+  }
+
+  expandedSaleId.value = sale.id;
+
+  if (sale.details.length === 0) {
+    loadingDetailsSaleId.value = sale.id;
+    sale.details = await salesStore.fetchSaleDetailsForSale(sale.id);
+    loadingDetailsSaleId.value = null;
+  }
 }
 
 /**
- * Cancels a sale after inline confirmation.
+ * Cancels a sale after inline confirmation, then restores the sold
+ * quantities back into inventory (the cancellation itself only flips
+ * the sale's status; restocking is a Product & Inventory concern).
  * @param {import('../../domain/model/sale.entity.js').Sale} sale
  */
-function handleCancelSale(sale) {
-  salesStore.cancelSale(sale);
+async function handleCancelSale(sale) {
+  const businessId = iamStore.currentUser?.businessId;
+  const result = await salesStore.cancelSale(sale);
+
+  if (!result.success) {
+    toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('sales.toast-cancel-error'), life: 4500 });
+    return;
+  }
+
+  try {
+    await Promise.all(result.restockedDetails.map(detail =>
+        productStore.registerStockIntake({
+          productId:  detail.productId,
+          businessId: businessId,
+          quantity:   detail.quantity
+        })
+    ));
+    toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('sales.toast-cancel-success'), life: 3500 });
+  } catch {
+    toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('sales.toast-cancel-error'), life: 4500 });
+  }
 }
 
 // ─── Lifecycle ───────────────────────────────────────────────────────────────
 
 onMounted(() => {
   const businessId = iamStore.currentUser?.businessId;
-  if (!salesStore.salesLoaded)     salesStore.fetchSales(businessId);
-  if (!salesStore.customersLoaded) salesStore.fetchCustomers(businessId);
+  if (!salesStore.salesLoaded)      salesStore.fetchSales(businessId);
+  if (!salesStore.customersLoaded)  salesStore.fetchCustomers(businessId);
   if (!productStore.productsLoaded) productStore.fetchProducts(businessId);
+  if (!productStore.inventoryLoaded) productStore.fetchInventory(businessId);
 });
 </script>
 
@@ -254,7 +299,7 @@ onMounted(() => {
             <!-- Main row -->
             <tr
                 style="border-bottom: 1px solid #F1F5F9; cursor: pointer;"
-                @click="toggleExpand(sale.id)"
+                @click="toggleExpand(sale)"
                 @mouseenter="(e) => e.currentTarget.style.backgroundColor = '#F8FAFC'"
                 @mouseleave="(e) => e.currentTarget.style.backgroundColor = 'transparent'"
             >
@@ -282,7 +327,7 @@ onMounted(() => {
                 <span v-else style="color: #94A3B8;">—</span>
               </td>
               <td class="px-4 py-3" style="font-size: 0.88rem; font-weight: 700; color: #0B3558;">
-                {{ formatCurrency(sale.totalAmount) }}
+                {{ formatCurrency(sale.subtotal) }}
               </td>
               <td class="px-4 py-3">
                                     <span
@@ -312,6 +357,17 @@ onMounted(() => {
                       :style="{ transform: expandedSaleId === sale.id ? 'rotate(180deg)' : 'rotate(0deg)' }"
                   />
                 </div>
+              </td>
+            </tr>
+
+            <!-- Loading line items -->
+            <tr
+                v-if="expandedSaleId === sale.id && loadingDetailsSaleId === sale.id"
+                :key="`${sale.id}-loading`"
+                style="background-color: #F8FAFC;"
+            >
+              <td colspan="7" class="px-6 py-3">
+                <i class="pi pi-spin pi-spinner" style="color: #94A3B8; font-size: 0.85rem;"/>
               </td>
             </tr>
 
@@ -388,7 +444,7 @@ onMounted(() => {
                         </span>
             <span v-else />
             <span style="font-size: 1rem; font-weight: 800; color: #0B3558;">
-                            {{ formatCurrency(sale.totalAmount) }}
+                            {{ formatCurrency(sale.subtotal) }}
                         </span>
           </div>
 
@@ -407,7 +463,7 @@ onMounted(() => {
           <button
               class="w-full flex align-items-center justify-content-center gap-1 mt-3 border-round-lg py-2"
               style="background-color: #F1F5F9; color: #64748B; border: none; cursor: pointer;"
-              @click="toggleExpand(sale.id)"
+              @click="toggleExpand(sale)"
           >
                         <span style="font-size: 0.72rem; font-weight: 600;">
                             {{ expandedSaleId === sale.id ? t('sales.hide-items') : t('sales.show-items') }}
@@ -418,6 +474,15 @@ onMounted(() => {
                 :style="{ transform: expandedSaleId === sale.id ? 'rotate(180deg)' : 'rotate(0deg)' }"
             />
           </button>
+
+          <!-- Loading line items -->
+          <div
+              v-if="expandedSaleId === sale.id && loadingDetailsSaleId === sale.id"
+              class="mt-2 pt-2"
+              style="border-top: 1px solid #F1F5F9;"
+          >
+            <i class="pi pi-spin pi-spinner" style="color: #94A3B8; font-size: 0.85rem;"/>
+          </div>
 
           <!-- Expanded items -->
           <div

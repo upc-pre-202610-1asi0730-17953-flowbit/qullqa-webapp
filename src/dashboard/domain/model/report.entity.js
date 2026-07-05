@@ -46,20 +46,4 @@ export class Report {
         this.filters     = filters instanceof ReportFilters ? filters : new ReportFilters(filters ?? {});
         this.generatedAt = generatedAt;
     }
-
-    /**
-     * Returns a human-readable label for the report type.
-     * Useful in the presentation layer without coupling it to translation keys.
-     *
-     * @returns {string} Readable report type label.
-     */
-    get typeLabel() {
-        const labels = {
-            [ReportType.INVENTORY]:     'Inventory',
-            [ReportType.SALES]:         'Sales',
-            [ReportType.LOW_STOCK]:     'Low Stock',
-            [ReportType.REPLENISHMENT]: 'Replenishment'
-        };
-        return labels[this.type] ?? this.type;
-    }
 }

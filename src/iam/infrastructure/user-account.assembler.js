@@ -21,7 +21,8 @@ export class UserAccountAssembler {
             lastName:   resource.lastName   ?? '',
             businessId: resource.businessId ?? null,
             status:     resource.status     ?? 'ACTIVE',
-            roleId:     resource.roleId     ?? null
+            roleId:     resource.roleId     ?? null,
+            phone:      resource.phone      ?? ''
         });
     }
 
@@ -42,5 +43,31 @@ export class UserAccountAssembler {
             ? response.data
             : response.data['users'];
         return resources.map(resource => this.toEntityFromResource(resource));
+    }
+
+    /**
+     * Converts a UserAccount entity back into a raw API resource payload.
+     *
+     * The mock schema uses `name` (not `firstName`) and requires a `password`
+     * field on create — neither is present on the UserAccount entity (password
+     * is intentionally excluded from it), so callers must pass it explicitly
+     * when creating a new account.
+     *
+     * @param {UserAccount} user - Entity to serialise.
+     * @param {Object} [extra] - Extra raw fields to merge in (e.g. password).
+     * @returns {Object} Resource payload suitable for POST/PUT to /users.
+     */
+    static toResourceFromEntity(user, extra = {}) {
+        return {
+            ...(user.id != null ? { id: user.id } : {}),
+            name:       user.firstName,
+            lastName:   user.lastName,
+            email:      user.email,
+            businessId: user.businessId,
+            status:     user.status,
+            roleId:     user.roleId,
+            phone:      user.phone,
+            ...extra
+        };
     }
 }

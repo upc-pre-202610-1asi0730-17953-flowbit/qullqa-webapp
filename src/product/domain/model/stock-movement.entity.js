@@ -31,23 +31,32 @@ export class StockMovement {
      * @param {number|null} [params.id=null]
      * @param {number|null} [params.productId=null]
      * @param {number|null} [params.businessId=null]
+     * @param {number|null} [params.warehouseId=null]
      * @param {number}      [params.quantity=0]
      * @param {string}      [params.type=MovementType.INTAKE]
+     * @param {string}      [params.supplier='']  - Free-text supplier name, only meaningful for INTAKE.
+     * @param {string}      [params.note='']
      * @param {string}      [params.registeredAt='']
      */
     constructor({
                     id           = null,
                     productId    = null,
                     businessId   = null,
+                    warehouseId  = null,
                     quantity     = 0,
                     type         = MovementType.INTAKE,
+                    supplier     = '',
+                    note         = '',
                     registeredAt = ''
                 }) {
         this.id           = id;
         this.productId    = productId;
         this.businessId   = businessId;
+        this.warehouseId  = warehouseId;
         this.quantity     = quantity;
         this.type         = type;
+        this.supplier     = supplier;
+        this.note         = note;
         this.registeredAt = registeredAt;
     }
 

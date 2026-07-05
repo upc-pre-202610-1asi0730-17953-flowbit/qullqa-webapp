@@ -14,10 +14,14 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { IamApi } from '../infrastructure/iam.api.js';
+import { AuthProvider } from '../infrastructure/auth-provider.js';
 import { UserAccountAssembler } from '../infrastructure/user-account.assembler.js';
+import { BusinessAssembler } from '../infrastructure/business.assembler.js';
 import { UserAccount } from '../domain/model/user-account.entity.js';
+import { SESSION_EXPIRED_EVENT } from '../../shared/infrastructure/base-api.js';
 
 const iamApi = new IamApi();
+const authProvider = new AuthProvider();
 
 /**
  * Reactive store that exposes IAM commands and queries.
@@ -38,10 +42,34 @@ const useIamStore = defineStore('iam', () => {
     const users = ref([]);
 
     /**
+     * All available roles, fetched from the API.
+     * @type {import('vue').Ref<Array<{id: number, position: string}>>}
+     */
+    const roles = ref([]);
+
+    /**
+     * The business (tenant) the current user belongs to.
+     * @type {import('vue').Ref<import('../domain/model/business.entity.js').Business|null>}
+     */
+    const currentBusiness = ref(null);
+
+    /**
      * Whether the user list has been loaded from the API.
      * @type {import('vue').Ref<boolean>}
      */
     const usersLoaded = ref(false);
+
+    /**
+     * Whether the role list has been loaded from the API.
+     * @type {import('vue').Ref<boolean>}
+     */
+    const rolesLoaded = ref(false);
+
+    /**
+     * Whether the current business has been loaded from the API.
+     * @type {import('vue').Ref<boolean>}
+     */
+    const businessLoaded = ref(false);
 
     /**
      * Whether there is an authenticated user session.
@@ -76,7 +104,8 @@ const useIamStore = defineStore('iam', () => {
             lastName:   user.lastName,
             businessId: user.businessId,
             status:     user.status,
-            roleId:     user.roleId
+            roleId:     user.roleId,
+            phone:      user.phone
         };
     }
 
@@ -115,6 +144,11 @@ const useIamStore = defineStore('iam', () => {
 
     restoreSession();
 
+    // When BaseApi sees a 401, it clears the token and dispatches this event.
+    // Wired here (not in BaseApi) so the shared/infrastructure layer never
+    // depends on IAM. Never fires today since no real token is issued yet.
+    window.addEventListener(SESSION_EXPIRED_EVENT, () => signOut());
+
     /**
      * Number of loaded user accounts.
      * @type {import('vue').ComputedRef<number>}
@@ -129,70 +163,77 @@ const useIamStore = defineStore('iam', () => {
      *
      * @param {string} email - User email address.
      * @param {string} password - User password (plain text for mock).
-     * @returns {void}
+     * @returns {Promise<import('../domain/model/user-account.entity.js').UserAccount>}
      */
     function signIn(email, password) {
         errors.value = [];
 
         if (!email || !password) {
             errors.value.push('sign-in.error-empty');
-            return;
+            return Promise.reject(new Error('sign-in.error-empty'));
         }
         if (!email.includes('@')) {
             errors.value.push('sign-in.error-invalid-email');
-            return;
+            return Promise.reject(new Error('sign-in.error-invalid-email'));
         }
 
-        iamApi.signIn(email).then(response => {
-            const matchedUsers = response.data instanceof Array ? response.data : [];
-            const matched = matchedUsers.find(user => user.email === email && user.password === password);
-
-            if (!matched) {
-                errors.value.push('sign-in.error-credentials');
-                return;
-            }
-
-            currentUser.value = UserAccountAssembler.toEntityFromResource(matched);
+        return authProvider.signIn(email, password).then(matchedResource => {
+            currentUser.value = UserAccountAssembler.toEntityFromResource(matchedResource);
             isAuthenticated.value = true;
             persistSession(currentUser.value);
+            return currentUser.value;
         }).catch(error => {
             errors.value.push(error.message);
+            throw error;
         });
     }
 
     /**
      * Registers a new user and business account.
      * Business rule: businessName, fullName, valid email, password >= 6 chars,
-     * and password confirmation must match.
+     * and password confirmation must match (enforced by the Sign Up view).
+     *
+     * Phase 2: the backend creates the User and its Business atomically in a
+     * single request and returns a JWT — this used to be a client-side chain
+     * of 3 calls (create user → create business → PUT user to link them),
+     * which is exactly the shape of bug that left businessId permanently null
+     * if any step failed partway. The backend also no longer provisions a
+     * default warehouse here (that's Product & Inventory's job once that
+     * bounded context exists — see the backend's TODO in
+     * UserCommandService.Handle(SignUpCommand)), so a freshly-registered
+     * business has zero warehouses until Phase 3.
      *
      * @param {Object} payload - Registration form data.
      * @param {string} payload.businessName - Name of the business.
+     * @param {string} [payload.businessType] - BODEGA or FARMACIA.
      * @param {string} payload.fullName - Full name of the user.
      * @param {string} payload.email - Email address.
      * @param {string} payload.password - Password (min 6 characters).
-     * @returns {void}
+     * @returns {Promise<import('../domain/model/user-account.entity.js').UserAccount>}
      */
     function signUp(payload) {
         errors.value = [];
 
         const resource = {
-            name:       payload.fullName.split(' ')[0] ?? payload.fullName,
-            lastName:   payload.fullName.split(' ').slice(1).join(' ') ?? '',
-            email:      payload.email,
-            password:   payload.password,
-            status:     'ACTIVE',
-            roleId:     1,
-            businessId: null
+            name:         payload.fullName.split(' ')[0] ?? payload.fullName,
+            lastName:     payload.fullName.split(' ').slice(1).join(' ') ?? '',
+            email:        payload.email,
+            password:     payload.password,
+            businessName: payload.businessName,
+            businessType: payload.businessType || 'BODEGA'
         };
 
-        iamApi.signUp(resource).then(response => {
-            const createdUser = UserAccountAssembler.toEntityFromResource(response.data);
-            currentUser.value  = createdUser;
-            isAuthenticated.value = true;
-            persistSession(currentUser.value);
-        }).catch(error => {
-            errors.value.push(error.message);
-        });
+        return authProvider.signUp(resource)
+            .then(authenticatedResource => {
+                currentUser.value = UserAccountAssembler.toEntityFromResource(authenticatedResource);
+                isAuthenticated.value = true;
+                persistSession(currentUser.value);
+                return currentUser.value;
+            })
+            .catch(error => {
+                errors.value.push(error.message);
+                throw error;
+            });
     }
 
     /**
@@ -207,16 +248,167 @@ const useIamStore = defineStore('iam', () => {
     }
 
     /**
-     * Loads all user accounts from the API.
+     * Loads all user accounts scoped to the given business from the API.
+     * @param {number|string} businessId
      * @returns {void}
      */
-    function fetchUsers() {
-        iamApi.getUsers().then(response => {
+    function fetchUsers(businessId) {
+        iamApi.getUsers(businessId).then(response => {
             users.value      = UserAccountAssembler.toEntitiesFromResponse(response);
             usersLoaded.value = true;
         }).catch(error => {
             errors.value.push(error.message);
         });
+    }
+
+    /**
+     * Loads all roles from the API. Roles are the single source of truth for
+     * role labels — presentation components must resolve a roleId to its
+     * `position` (ADMIN/CASHIER/WAREHOUSE) via getRolePosition instead of
+     * hardcoding their own numeric-id-to-label mapping.
+     * @returns {void}
+     */
+    function fetchRoles() {
+        iamApi.getRoles().then(response => {
+            roles.value = response.data instanceof Array ? response.data : [];
+            rolesLoaded.value = true;
+        }).catch(error => {
+            errors.value.push(error.message);
+        });
+    }
+
+    /**
+     * Resolves a roleId to its position (ADMIN/CASHIER/WAREHOUSE).
+     * @param {number|string} roleId
+     * @returns {string|null} The role's position, or null if not loaded/found.
+     */
+    function getRolePosition(roleId) {
+        const numericId = parseInt(roleId);
+        const role = roles.value.find(roleItem => roleItem.id === numericId);
+        return role ? role.position : null;
+    }
+
+    /**
+     * Loads the business (tenant) the given identifier points to.
+     * @param {number|string} businessId
+     * @returns {Promise<void>}
+     */
+    function fetchBusiness(businessId) {
+        if (!businessId) return Promise.resolve();
+        return iamApi.getBusinessById(businessId)
+            .then(response => {
+                currentBusiness.value = BusinessAssembler.toEntityFromResource(response.data);
+                businessLoaded.value  = true;
+            })
+            .catch(error => errors.value.push(error));
+    }
+
+    /**
+     * Updates profile fields (name, type, address) of the current business.
+     * Business rule: name and address must be non-empty (enforced by the caller/view).
+     *
+     * @param {Object} fields
+     * @param {string} [fields.name]
+     * @param {string} [fields.type]
+     * @param {string} [fields.address]
+     * @param {number} [fields.planId]
+     * @returns {Promise<{success: boolean}>}
+     */
+    async function updateBusiness({ name, type, address, planId } = {}) {
+        if (!currentBusiness.value) return { success: false };
+
+        const resource = BusinessAssembler.toResourceFromEntity({
+            ...currentBusiness.value,
+            name:    name    ?? currentBusiness.value.name,
+            type:    type    ?? currentBusiness.value.type,
+            address: address ?? currentBusiness.value.address,
+            planId:  planId  ?? currentBusiness.value.planId
+        });
+
+        try {
+            const response = await iamApi.updateBusiness(currentBusiness.value.id, resource);
+            currentBusiness.value = BusinessAssembler.toEntityFromResource(response.data);
+            return { success: true };
+        } catch (error) {
+            errors.value.push(error);
+            return { success: false };
+        }
+    }
+
+    /**
+     * Updates the plan assigned to the current business.
+     * Used by the Subscription & Plan Management upgrade flow (cross-context
+     * orchestration: Plan catalog lives in the subscription store, but the
+     * planId itself is a field of the Business aggregate, owned by IAM).
+     *
+     * @param {number|string} planId
+     * @returns {Promise<{success: boolean}>}
+     */
+    async function updateBusinessPlan(planId) {
+        if (!currentBusiness.value) return { success: false };
+        return updateBusiness({ planId: parseInt(planId) });
+    }
+
+    /**
+     * Updates profile fields (full name, phone) of the currently authenticated user.
+     * Fetches the raw stored resource first and merges changes into it, since
+     * the mock's PUT replaces the entire resource and the UserAccount entity
+     * intentionally excludes the password field — merging avoids wiping it.
+     *
+     * @param {Object} fields
+     * @param {string} fields.fullName
+     * @param {string} [fields.phone]
+     * @returns {Promise<{success: boolean}>}
+     */
+    async function updateUserProfile({ fullName, phone }) {
+        if (!currentUser.value) return { success: false };
+
+        try {
+            const existingResponse = await iamApi.getUserById(currentUser.value.id);
+            const nameParts = fullName.trim().split(' ');
+            const updatedResource = {
+                ...existingResponse.data,
+                name:     nameParts[0] ?? existingResponse.data.name,
+                lastName: nameParts.slice(1).join(' '),
+                phone:    phone ?? existingResponse.data.phone ?? ''
+            };
+            const response = await iamApi.updateUser(updatedResource);
+            currentUser.value = UserAccountAssembler.toEntityFromResource(response.data);
+            persistSession(currentUser.value);
+            return { success: true };
+        } catch (error) {
+            errors.value.push(error);
+            return { success: false };
+        }
+    }
+
+    /**
+     * Changes the password of the currently authenticated user.
+     *
+     * Business rule: currentPassword must match the stored value (client-side
+     * compare against the mock, same hack pattern as AuthProvider.signIn —
+     * this must move to the backend once real hashing/JWT is in place).
+     *
+     * @param {string} currentPassword
+     * @param {string} newPassword
+     * @returns {Promise<{success: boolean, errorKey: string|null}>}
+     */
+    async function changePassword(currentPassword, newPassword) {
+        if (!currentUser.value) return { success: false, errorKey: 'settings.error-current-password' };
+
+        try {
+            const existingResponse = await iamApi.getUserById(currentUser.value.id);
+            if (existingResponse.data.password !== currentPassword) {
+                return { success: false, errorKey: 'settings.error-current-password-invalid' };
+            }
+
+            const updatedResource = { ...existingResponse.data, password: newPassword };
+            await iamApi.updateUser(updatedResource);
+            return { success: true, errorKey: null };
+        } catch (error) {
+            errors.value.push(error);
+            return { success: false, errorKey: 'settings.error-password-change-failed' };
+        }
     }
 
     /**
@@ -230,32 +422,57 @@ const useIamStore = defineStore('iam', () => {
     }
 
     /**
-     * Creates a new user account and appends it to local state.
-     * @param {UserAccount} userAccount - UserAccount entity to persist.
-     * @returns {void}
+     * Creates a new user account (team invite) and appends it to local state.
+     *
+     * Business rule: invited users are scoped to the inviting admin's business
+     * (businessId is expected to already be set on userAccount by the caller).
+     *
+     * @param {UserAccount} userAccount - UserAccount entity to persist (no password).
+     * @param {string} password - Temporary password assigned to the invited user.
+     * @returns {Promise<{success: boolean}>}
      */
-    function addUser(userAccount) {
-        iamApi.signUp(userAccount).then(response => {
+    async function addUser(userAccount, password) {
+        const resource = UserAccountAssembler.toResourceFromEntity(userAccount, {
+            password,
+            createdAt: new Date().toISOString()
+        });
+
+        try {
+            const response = await iamApi.signUp(resource);
             const newUser = UserAccountAssembler.toEntityFromResource(response.data);
             users.value.push(newUser);
-        }).catch(error => {
-            errors.value.push(error.message);
-        });
+            return { success: true };
+        } catch (error) {
+            errors.value.push(error.message ?? error);
+            return { success: false };
+        }
     }
 
     /**
      * Updates an existing user account and synchronizes local state.
+     *
+     * Fetches the raw stored resource first and merges changes into it,
+     * since the mock's PUT replaces the entire resource and the UserAccount
+     * entity intentionally excludes the password field — merging avoids
+     * wiping it.
+     *
      * @param {UserAccount} userAccount - UserAccount entity with updated data.
-     * @returns {void}
+     * @returns {Promise<void>}
      */
-    function updateUser(userAccount) {
-        iamApi.updateUser(userAccount).then(response => {
+    async function updateUser(userAccount) {
+        try {
+            const existingResponse = await iamApi.getUserById(userAccount.id);
+            const resource = {
+                ...existingResponse.data,
+                ...UserAccountAssembler.toResourceFromEntity(userAccount)
+            };
+            const response = await iamApi.updateUser(resource);
             const updatedUser = UserAccountAssembler.toEntityFromResource(response.data);
             const index = users.value.findIndex(user => user.id === updatedUser.id);
             if (index !== -1) users.value[index] = updatedUser;
-        }).catch(error => {
-            errors.value.push(error.message);
-        });
+        } catch (error) {
+            errors.value.push(error.message ?? error);
+        }
     }
 
     /**
@@ -275,7 +492,11 @@ const useIamStore = defineStore('iam', () => {
     return {
         currentUser,
         users,
+        roles,
+        currentBusiness,
         usersLoaded,
+        rolesLoaded,
+        businessLoaded,
         isAuthenticated,
         errors,
         usersCount,
@@ -283,9 +504,16 @@ const useIamStore = defineStore('iam', () => {
         signUp,
         signOut,
         fetchUsers,
+        fetchRoles,
+        fetchBusiness,
+        getRolePosition,
         getUserById,
         addUser,
         updateUser,
+        updateBusiness,
+        updateBusinessPlan,
+        updateUserProfile,
+        changePassword,
         deleteUser
     };
 });

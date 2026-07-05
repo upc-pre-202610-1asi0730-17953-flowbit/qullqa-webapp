@@ -1,9 +1,10 @@
 <script setup>
-import { computed }    from 'vue';
+import { computed, onMounted } from 'vue';
 import { useI18n }     from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 import SalesStatsBar   from '../components/sales-stats-bar.vue';
 import useSalesStore   from '../../application/sales.store.js';
+import useIamStore     from '../../../iam/application/iam.store.js';
 
 /**
  * SalesLayout view for the Sales & POS Management bounded context.
@@ -22,6 +23,20 @@ const { t }    = useI18n();
 const route    = useRouter();
 const currentRoute = useRoute();
 const salesStore   = useSalesStore();
+const iamStore     = useIamStore();
+
+/**
+ * SalesStatsBar is mounted here (parent of all three sales tabs) and reads
+ * salesStore.sales directly, so sales must be loaded regardless of which
+ * tab the user lands on first — previously only sales-history/customer-list
+ * called fetchSales, leaving the stats bar stuck at 0 for anyone who only
+ * used the POS tab.
+ */
+onMounted(() => {
+  if (!salesStore.salesLoaded) {
+    salesStore.fetchSales(iamStore.currentUser?.businessId);
+  }
+});
 
 /**
  * Tab configuration for the three child views.
