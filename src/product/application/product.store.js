@@ -396,25 +396,29 @@ const useProductStore = defineStore('product', () => {
     }
 
     /**
-     * Registers a stock intake for a product by updating (or creating) its inventory record.
+     * Registers a stock intake for a product via the real backend's dedicated
+     * command endpoint (POST /products/{id}/stock-intake) — it sums into the
+     * existing InventoryItem for (product, warehouse) or creates one, and
+     * records the StockMovement, all server-side and atomically. This
+     * collapses what used to be a client-orchestrated "GET, then PUT-or-POST,
+     * then separately log a movement" sequence required by the mock API.
      *
-     * Business rules:
-     * - Topping up an existing record requires a positive quantity (zero/negative rejected)
-     *   — an intake of nothing isn't a real movement.
-     * - Creating a new record accepts quantity >= 0: a product can be registered in the
-     *   catalog with no stock yet (e.g. only a minimumStock threshold set), still
-     *   getting an InventoryItem to persist minimumStock against. Negative is rejected.
-     * - If an inventory record exists → increment currentStock via PUT.
-     * - If no inventory record exists → create a new one via POST.
+     * Business rule preserved from the mock: a quantity of exactly 0 (product
+     * registered with no initial stock, only a minimumStock threshold) skips
+     * calling the backend entirely — the real InventoryItem simply doesn't
+     * exist yet until the first real intake, since the backend command
+     * requires a positive quantity.
      *
      * @param {Object} resource
      * @param {number} resource.productId
-     * @param {number} resource.businessId
-     * @param {number} resource.quantity   - Must be > 0 to top up; >= 0 to create.
+     * @param {number} resource.quantity   - 0 skips the call; must be > 0 otherwise.
      * @param {number} [resource.warehouseId]
-     * @param {number} [resource.minimumStock] - Only applied when creating a new
-     *   inventory record; ignored (existing value preserved) on top-up.
-     * @returns {Promise<import('../domain/model/inventory-item.entity.js').InventoryItem>}
+     * @param {number} [resource.minimumStock]
+     * @param {number} [resource.purchasePrice]
+     * @param {string} [resource.expiration]
+     * @param {string} [resource.supplier]
+     * @param {string} [resource.note]
+     * @returns {Promise<import('../domain/model/inventory-item.entity.js').InventoryItem|null>}
      */
     function registerStockIntake(resource) {
         if (resource.quantity == null || resource.quantity < 0) {
@@ -423,73 +427,25 @@ const useProductStore = defineStore('product', () => {
             return Promise.reject(error);
         }
 
-        const existingItem = inventory.value.find(item => item.productId === parseInt(resource.productId));
+        if (resource.quantity === 0) return Promise.resolve(null);
 
-        if (existingItem) {
-            if (resource.quantity <= 0) {
-                const error = new Error('Stock intake quantity must be a positive integer greater than zero.');
-                errors.value.push(error);
-                return Promise.reject(error);
-            }
-            const updatedResource = {
-                id:           existingItem.id,
-                productId:    existingItem.productId,
-                businessId:   existingItem.businessId,
-                // Respects a warehouse explicitly chosen on this intake (e.g. the admin
-                // is moving the product to a different warehouse) — previously this
-                // always kept the product's existing warehouse no matter what was
-                // selected on the intake form, silently ignoring the choice.
-                warehouseId:  resource.warehouseId ?? existingItem.warehouseId,
-                minimumStock: existingItem.minimumStock,
-                stockUnit:    existingItem.currentStock + resource.quantity
-            };
-            return productApi.updateInventory(existingItem.id, updatedResource)
-                .then(response => {
-                    const updatedItem = InventoryItemAssembler.toEntityFromResource(response.data);
-                    const index = inventory.value.findIndex(item => item.id === updatedItem.id);
-                    if (index !== -1) inventory.value[index] = updatedItem;
-                    recordStockMovement({
-                        productId:    updatedItem.productId,
-                        businessId:   updatedItem.businessId,
-                        warehouseId:  updatedItem.warehouseId,
-                        type:         MovementType.INTAKE,
-                        quantity:     resource.quantity,
-                        supplier:     resource.supplier ?? '',
-                        note:         resource.note ?? '',
-                        registeredAt: new Date().toISOString()
-                    });
-                    return updatedItem;
-                })
-                .catch(error => {
-                    errors.value.push(error);
-                    throw error;
-                });
-        }
-
-        const newResource = {
-            productId:    parseInt(resource.productId),
-            businessId:   parseInt(resource.businessId),
-            warehouseId:  resource.warehouseId ? parseInt(resource.warehouseId) : null,
-            stockUnit:    resource.quantity,
-            minimumStock: resource.minimumStock != null ? parseInt(resource.minimumStock) || 0 : 0
+        const intakeResource = {
+            warehouseId:   resource.warehouseId ? parseInt(resource.warehouseId) : null,
+            quantity:      resource.quantity,
+            purchasePrice: resource.purchasePrice ?? null,
+            expiration:    resource.expiration ?? null,
+            supplier:      resource.supplier ?? '',
+            note:          resource.note ?? '',
+            minimumStock:  resource.minimumStock != null ? parseInt(resource.minimumStock) || 0 : null
         };
-        return productApi.createInventory(newResource)
+
+        return productApi.registerStockIntake(parseInt(resource.productId), intakeResource)
             .then(response => {
-                const createdItem = InventoryItemAssembler.toEntityFromResource(response.data);
-                inventory.value.push(createdItem);
-                if (resource.quantity > 0) {
-                    recordStockMovement({
-                        productId:    createdItem.productId,
-                        businessId:   createdItem.businessId,
-                        warehouseId:  createdItem.warehouseId,
-                        type:         MovementType.INTAKE,
-                        quantity:     resource.quantity,
-                        supplier:     resource.supplier ?? '',
-                        note:         resource.note ?? '',
-                        registeredAt: new Date().toISOString()
-                    });
-                }
-                return createdItem;
+                const updatedItem = InventoryItemAssembler.toEntityFromResource(response.data);
+                const index = inventory.value.findIndex(item => item.id === updatedItem.id);
+                if (index !== -1) inventory.value[index] = updatedItem;
+                else inventory.value.push(updatedItem);
+                return updatedItem;
             })
             .catch(error => {
                 errors.value.push(error);

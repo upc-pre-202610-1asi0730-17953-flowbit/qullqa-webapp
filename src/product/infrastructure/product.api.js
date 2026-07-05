@@ -125,6 +125,21 @@ export class ProductApi extends BaseApi {
     }
 
     /**
+     * Registers a stock intake for a product via the dedicated backend
+     * command endpoint — sums into the existing InventoryItem (per
+     * product+warehouse) or creates one, and records the StockMovement,
+     * all server-side and atomically. Replaces the old client-orchestrated
+     * "GET, then PUT-or-POST, then separately log a movement" sequence the
+     * mock API required.
+     * @param {number|string} productId
+     * @param {Object} resource
+     * @returns {Promise<import('axios').AxiosResponse>}
+     */
+    registerStockIntake(productId, resource) {
+        return this.http.post(`${productsEndpointPath}/${productId}/stock-intake`, resource);
+    }
+
+    /**
      * Fetches all batches for a specific product.
      * Batches are used to derive INTAKE stock movements client-side.
      * @param {number|string} productId
