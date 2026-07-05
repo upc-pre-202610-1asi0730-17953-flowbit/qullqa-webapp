@@ -255,7 +255,7 @@ const topStockProducts = computed(() => {
       .map(product => ({
         productId:    product.id,
         productName:  product.name,
-        currentStock: productStore.getInventoryByProduct(product.id)?.currentStock ?? 0
+        currentStock: productStore.getTotalInventoryForProduct(product.id)?.currentStock ?? 0
       }))
       .filter(product => product.currentStock > 0)
       .sort((a, b) => b.currentStock - a.currentStock)

@@ -262,11 +262,12 @@ async function handlePaymentConfirm({ paymentMethod, customerId }) {
   });
 
   if (result.success) {
-    // Deduct sold quantities from inventory now that the sale is persisted.
+    // The backend already decremented inventory server-side as part of
+    // confirming the sale (SaleRegisteredEvent -> Product's stock decrement) —
+    // refresh from that authoritative state rather than recomputing it here.
     try {
-      await Promise.all(soldLines.map(line =>
-          productStore.registerStockSale({ productId: line.productId, quantity: line.quantity })
-      ));
+      const businessId = iamStore.currentUser?.businessId;
+      await productStore.fetchInventory(businessId);
     } catch (error) {
       showStockError(t('pos.error-stock-deduction-failed'));
     }

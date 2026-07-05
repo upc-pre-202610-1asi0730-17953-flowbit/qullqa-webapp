@@ -5,10 +5,10 @@
  * - fetchProducts and fetchInventory load data scoped to the authenticated business.
  * - A product cannot be deleted when its inventory record has currentStock > 0.
  * - registerStockIntake quantity must be a positive integer greater than zero.
- * - On intake, if an inventory record exists it is updated (PUT); otherwise created (POST).
- * - Every successful registerStockIntake/registerStockSale records a StockMovement
- *   (best-effort: failures to log are swallowed so the underlying stock mutation,
- *   already persisted, is never rolled back over an audit-trail write failing).
+ * - registerStockIntake calls the backend's atomic stock-intake command, which
+ *   sums into the existing InventoryItem or creates one, and records the
+ *   StockMovement, all server-side — this store never persists a stock
+ *   movement directly (there is no POST /stock-movements on the real backend).
  * - stockStatusCounts joins products with their inventory items to compute
  *   { normal, low, critical } counts for the summary cards in the list view.
  *
@@ -19,6 +19,7 @@ import { computed, ref } from 'vue';
 import { ProductApi }               from '../infrastructure/product.api.js';
 import { ProductAssembler }         from '../infrastructure/product.assembler.js';
 import { InventoryItemAssembler }   from '../infrastructure/inventory-item.assembler.js';
+import { InventoryItem }            from '../domain/model/inventory-item.entity.js';
 import { StockMovementAssembler }   from '../infrastructure/stock-movement.assembler.js';
 import { MovementType }             from '../domain/model/stock-movement.entity.js';
 import { ProductStatus }            from '../domain/model/product.entity.js';
@@ -81,7 +82,8 @@ const useProductStore = defineStore('product', () => {
 
     /**
      * Summary counts for the three stock status categories.
-     * Joins each product with its InventoryItem by productId.
+     * Joins each product with its stock total across every warehouse it's
+     * split into (see getTotalInventoryForProduct).
      * Products with no inventory record are counted as CRITICAL.
      *
      * @type {import('vue').ComputedRef<{normal: number, low: number, critical: number}>}
@@ -89,7 +91,7 @@ const useProductStore = defineStore('product', () => {
     const stockStatusCounts = computed(() => {
         const counts = { normal: 0, low: 0, critical: 0 };
         products.value.forEach(product => {
-            const inventoryItem = inventory.value.find(item => item.productId === product.id);
+            const inventoryItem = getTotalInventoryForProduct(product.id);
             if (!inventoryItem) {
                 counts.critical += 1;
                 return;
@@ -115,11 +117,52 @@ const useProductStore = defineStore('product', () => {
 
     /**
      * Returns the first inventory record linked to the given productId.
+     * Only meaningful when the caller needs one specific record tied to a
+     * particular warehouse (e.g. defaulting the intake modal's warehouse
+     * selector) — for a product's stock total across warehouses, see
+     * getTotalInventoryForProduct.
      * @param {number|string} productId
      * @returns {import('../domain/model/inventory-item.entity.js').InventoryItem|undefined}
      */
     function getInventoryByProduct(productId) {
         return inventory.value.find(item => item.productId === parseInt(productId));
+    }
+
+    /**
+     * Returns a product's stock aggregated across every warehouse it's split
+     * into. InventoryItem is a real N:M relation (one row per product +
+     * warehouse, see the backend's architecture doc §5.6/§8.1) — a product
+     * stocked in 2+ warehouses has one row each, and showing only the first
+     * one (as getInventoryByProduct does) undercounts total stock whenever a
+     * secondary warehouse holds more than the default one.
+     *
+     * Returns a synthetic InventoryItem carrying the summed currentStock, so
+     * callers get isLowStock/isCritical/stockStatus for free from the same
+     * business rule InventoryItem already implements. minimumStock is NOT
+     * summed: the product edit form only exposes one "stock mínimo" field,
+     * and the backend's UpdateMinimumStockCommand applies it to every
+     * warehouse's InventoryItem in lockstep — so all of a product's items
+     * carry the same threshold. This takes the highest one rather than
+     * assuming that invariant always holds (e.g. a brand-new warehouse
+     * item created by an intake before the product was ever re-saved with
+     * a minimum), so "low stock" stays conservative instead of silently
+     * reading 0 from an unsynced item.
+     *
+     * @param {number|string} productId
+     * @returns {import('../domain/model/inventory-item.entity.js').InventoryItem|null}
+     */
+    function getTotalInventoryForProduct(productId) {
+        const numericId = parseInt(productId);
+        const items = inventory.value.filter(item => item.productId === numericId);
+        if (items.length === 0) return null;
+
+        return new InventoryItem({
+            productId:    numericId,
+            businessId:   items[0].businessId,
+            warehouseId:  null,
+            stockUnit:    items.reduce((sum, item) => sum + item.currentStock, 0),
+            minimumStock: Math.max(...items.map(item => item.minimumStock))
+        });
     }
 
     // ─── Commands ─────────────────────────────────────────────────────────────
@@ -175,8 +218,10 @@ const useProductStore = defineStore('product', () => {
 
     /**
      * Fetches the real, persisted stock movement history for a business
-     * (every INTAKE/SALE logged by registerStockIntake/registerStockSale),
-     * sorted most-recent-first. Used by the Inventory "Movimientos" tab.
+     * (every INTAKE/SALE the backend recorded server-side), sorted
+     * most-recent-first. Used by the Inventory "Movimientos" tab — callers
+     * must re-invoke this after an intake to reflect the new entry, since
+     * this store no longer mirrors movements into local state on its own.
      * @param {number|string} businessId
      */
     function fetchAllStockMovements(businessId) {
@@ -191,23 +236,6 @@ const useProductStore = defineStore('product', () => {
             .catch(error => {
                 errors.value.push(error);
                 stockMovementsLoaded.value = true;
-            });
-    }
-
-    /**
-     * Persists a StockMovement audit-trail entry. Best-effort: failures are
-     * logged but never rejected, so a logging outage never blocks or rolls
-     * back the stock mutation that already succeeded.
-     * @param {Object} resource
-     * @returns {Promise<void>}
-     */
-    function recordStockMovement(resource) {
-        return productApi.createStockMovement(resource)
-            .then(response => {
-                stockMovements.value.unshift(StockMovementAssembler.toEntityFromResource(response.data));
-            })
-            .catch(error => {
-                console.error('Failed to record stock movement (stock itself was already updated):', error);
             });
     }
 
@@ -474,15 +502,7 @@ const useProductStore = defineStore('product', () => {
         const existingItem = inventory.value.find(item => item.productId === parseInt(productId));
         if (!existingItem) return Promise.resolve();
 
-        const updatedResource = {
-            id:           existingItem.id,
-            productId:    existingItem.productId,
-            businessId:   existingItem.businessId,
-            warehouseId:  existingItem.warehouseId,
-            stockUnit:    existingItem.currentStock,
-            minimumStock: parseInt(minimumStock)
-        };
-        return productApi.updateInventory(existingItem.id, updatedResource)
+        return productApi.updateMinimumStock(existingItem.productId, { minimumStock: parseInt(minimumStock) })
             .then(response => {
                 const updatedItem = InventoryItemAssembler.toEntityFromResource(response.data);
                 const index = inventory.value.findIndex(item => item.id === updatedItem.id);
@@ -504,7 +524,9 @@ const useProductStore = defineStore('product', () => {
      * an active batch it is updated in place instead of creating another one —
      * otherwise re-editing a product would pile up batches and the "nearest
      * expiration" query would keep surfacing the oldest one instead of the
-     * date the user just entered.
+     * date the user just entered. The real backend's POST /batches already
+     * implements this upsert server-side (CreateOrUpdateBatchCommand) — there
+     * is no PATCH /batches/{id} endpoint, so this always POSTs.
      *
      * @param {Object} resource
      * @param {number} resource.productId
@@ -525,11 +547,7 @@ const useProductStore = defineStore('product', () => {
             inventoryId:   resource.inventoryId ?? existingBatch?.inventoryId ?? null
         };
 
-        const savePromise = existingBatch
-            ? productApi.updateBatch(existingBatch.id, { ...batchResource, id: existingBatch.id })
-            : productApi.createBatch(batchResource);
-
-        return savePromise
+        return productApi.createBatch(batchResource)
             .then(response => {
                 if (existingBatch) {
                     const index = batches.value.findIndex(batch => batch.id === existingBatch.id);
@@ -537,63 +555,6 @@ const useProductStore = defineStore('product', () => {
                 } else {
                     batches.value.push(response.data);
                 }
-            })
-            .catch(error => {
-                errors.value.push(error);
-                throw error;
-            });
-    }
-
-    /**
-     * Decrements a product's inventory after a confirmed sale.
-     *
-     * Business rules:
-     * - quantity must be a positive integer greater than zero.
-     * - Requires an existing inventory record (a sale cannot happen for a
-     *   product that was never stocked); errors otherwise.
-     * - Resulting stock is clamped at 0 to avoid negative inventory.
-     *
-     * @param {Object} resource
-     * @param {number} resource.productId
-     * @param {number} resource.quantity - Units sold. Must be > 0.
-     * @returns {Promise<import('../domain/model/inventory-item.entity.js').InventoryItem>}
-     */
-    function registerStockSale(resource) {
-        if (!resource.quantity || resource.quantity <= 0) {
-            const error = new Error('Sale stock deduction quantity must be a positive integer greater than zero.');
-            errors.value.push(error);
-            return Promise.reject(error);
-        }
-
-        const existingItem = inventory.value.find(item => item.productId === parseInt(resource.productId));
-        if (!existingItem) {
-            const error = new Error(`Cannot deduct stock for product #${resource.productId}: no inventory record found.`);
-            errors.value.push(error);
-            return Promise.reject(error);
-        }
-
-        const updatedResource = {
-            id:           existingItem.id,
-            productId:    existingItem.productId,
-            businessId:   existingItem.businessId,
-            warehouseId:  existingItem.warehouseId,
-            minimumStock: existingItem.minimumStock,
-            stockUnit:    Math.max(0, existingItem.currentStock - resource.quantity)
-        };
-        return productApi.updateInventory(existingItem.id, updatedResource)
-            .then(response => {
-                const updatedItem = InventoryItemAssembler.toEntityFromResource(response.data);
-                const index = inventory.value.findIndex(item => item.id === updatedItem.id);
-                if (index !== -1) inventory.value[index] = updatedItem;
-                recordStockMovement({
-                    productId:    updatedItem.productId,
-                    businessId:   updatedItem.businessId,
-                    warehouseId:  updatedItem.warehouseId,
-                    type:         MovementType.SALE,
-                    quantity:     resource.quantity,
-                    registeredAt: new Date().toISOString()
-                });
-                return updatedItem;
             })
             .catch(error => {
                 errors.value.push(error);
@@ -615,6 +576,7 @@ const useProductStore = defineStore('product', () => {
         stockStatusCounts,
         getProductById,
         getInventoryByProduct,
+        getTotalInventoryForProduct,
         getDaysToNearestExpiry,
         isProductExpiringSoon,
         isProductExpired,
@@ -631,8 +593,7 @@ const useProductStore = defineStore('product', () => {
         deleteProduct,
         registerStockIntake,
         updateMinimumStock,
-        createBatchForProduct,
-        registerStockSale
+        createBatchForProduct
     };
 });
 
