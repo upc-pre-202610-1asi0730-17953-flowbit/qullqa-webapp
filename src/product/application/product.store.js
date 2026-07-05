@@ -136,11 +136,17 @@ const useProductStore = defineStore('product', () => {
      * one (as getInventoryByProduct does) undercounts total stock whenever a
      * secondary warehouse holds more than the default one.
      *
-     * Returns a synthetic InventoryItem carrying the summed currentStock and
-     * minimumStock, so callers get isLowStock/isCritical/stockStatus for
-     * free from the same business rule InventoryItem already implements —
-     * "low stock" here means the sum on hand is at or below the sum of every
-     * warehouse's configured minimum.
+     * Returns a synthetic InventoryItem carrying the summed currentStock, so
+     * callers get isLowStock/isCritical/stockStatus for free from the same
+     * business rule InventoryItem already implements. minimumStock is NOT
+     * summed: the product edit form only exposes one "stock mínimo" field,
+     * and the backend's UpdateMinimumStockCommand applies it to every
+     * warehouse's InventoryItem in lockstep — so all of a product's items
+     * carry the same threshold. This takes the highest one rather than
+     * assuming that invariant always holds (e.g. a brand-new warehouse
+     * item created by an intake before the product was ever re-saved with
+     * a minimum), so "low stock" stays conservative instead of silently
+     * reading 0 from an unsynced item.
      *
      * @param {number|string} productId
      * @returns {import('../domain/model/inventory-item.entity.js').InventoryItem|null}
@@ -155,7 +161,7 @@ const useProductStore = defineStore('product', () => {
             businessId:   items[0].businessId,
             warehouseId:  null,
             stockUnit:    items.reduce((sum, item) => sum + item.currentStock, 0),
-            minimumStock: items.reduce((sum, item) => sum + item.minimumStock, 0)
+            minimumStock: Math.max(...items.map(item => item.minimumStock))
         });
     }
 
