@@ -19,7 +19,6 @@ import { UserAccountAssembler } from '../infrastructure/user-account.assembler.j
 import { BusinessAssembler } from '../infrastructure/business.assembler.js';
 import { UserAccount } from '../domain/model/user-account.entity.js';
 import { SESSION_EXPIRED_EVENT } from '../../shared/infrastructure/base-api.js';
-import useProductStore from '../../product/application/product.store.js';
 
 const iamApi = new IamApi();
 const authProvider = new AuthProvider();
@@ -194,11 +193,15 @@ const useIamStore = defineStore('iam', () => {
      * Business rule: businessName, fullName, valid email, password >= 6 chars,
      * and password confirmation must match (enforced by the Sign Up view).
      *
-     * businessName/businessType are forwarded to the payload even though the
-     * mock's /users endpoint has no matching columns: the point is that the
-     * data captured in the form is no longer silently dropped between the UI
-     * and the store. Wiring them into an actual Business record is a phase 2
-     * concern (needs a joint User+Business creation endpoint).
+     * Phase 2: the backend creates the User and its Business atomically in a
+     * single request and returns a JWT — this used to be a client-side chain
+     * of 3 calls (create user → create business → PUT user to link them),
+     * which is exactly the shape of bug that left businessId permanently null
+     * if any step failed partway. The backend also no longer provisions a
+     * default warehouse here (that's Product & Inventory's job once that
+     * bounded context exists — see the backend's TODO in
+     * UserCommandService.Handle(SignUpCommand)), so a freshly-registered
+     * business has zero warehouses until Phase 3.
      *
      * @param {Object} payload - Registration form data.
      * @param {string} payload.businessName - Name of the business.
@@ -212,56 +215,17 @@ const useIamStore = defineStore('iam', () => {
         errors.value = [];
 
         const resource = {
-            name:       payload.fullName.split(' ')[0] ?? payload.fullName,
-            lastName:   payload.fullName.split(' ').slice(1).join(' ') ?? '',
-            email:      payload.email,
-            password:   payload.password,
-            status:     'ACTIVE',
-            roleId:     1,
-            businessId: null
+            name:         payload.fullName.split(' ')[0] ?? payload.fullName,
+            lastName:     payload.fullName.split(' ').slice(1).join(' ') ?? '',
+            email:        payload.email,
+            password:     payload.password,
+            businessName: payload.businessName,
+            businessType: payload.businessType || 'BODEGA'
         };
 
-        // Sign-up used to only create the user, leaving businessId permanently
-        // null — nothing in the app works without one, since every fetch is
-        // scoped by businessId. This now also creates the Business itself,
-        // links the user to it, and provisions a default warehouse so the
-        // first product the admin registers has somewhere real to go.
-        let createdUser;
         return authProvider.signUp(resource)
-            .then(createdResource => {
-                createdUser = UserAccountAssembler.toEntityFromResource(createdResource);
-                return iamApi.createBusiness({
-                    name:    payload.businessName,
-                    type:    payload.businessType || 'BODEGA',
-                    address: '',
-                    ruc:     '',
-                    planId:  1,
-                    userId:  createdUser.id
-                });
-            })
-            .then(businessResponse => {
-                const createdBusiness = BusinessAssembler.toEntityFromResource(businessResponse.data);
-                return iamApi.updateUser(
-                    // toResourceFromEntity omits password (UserAccount never carries it) — since
-                    // updateUser does a full PUT, it must be passed explicitly here or this
-                    // silently wipes the password the account was just created with.
-                    UserAccountAssembler.toResourceFromEntity(createdUser, { businessId: createdBusiness.id, password: payload.password })
-                ).then(() => createdBusiness);
-            })
-            .then(createdBusiness => {
-                const productStore = useProductStore();
-                // Best-effort: a missing default warehouse shouldn't block account creation.
-                return productStore.createWarehouse({
-                    name:       'Almacén Principal',
-                    code:       'ALM-001',
-                    address:    '',
-                    capacity:   'MEDIUM',
-                    status:     'ACTIVE',
-                    businessId: createdBusiness.id
-                }).catch(() => null).then(() => createdBusiness);
-            })
-            .then(createdBusiness => {
-                currentUser.value = new UserAccount({ ...createdUser, businessId: createdBusiness.id });
+            .then(authenticatedResource => {
+                currentUser.value = UserAccountAssembler.toEntityFromResource(authenticatedResource);
                 isAuthenticated.value = true;
                 persistSession(currentUser.value);
                 return currentUser.value;

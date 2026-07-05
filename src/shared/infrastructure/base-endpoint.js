@@ -59,7 +59,7 @@ export class BaseEndpoint {
      * @returns {Promise<import('axios').AxiosResponse>} HTTP response with the updated resource.
      */
     update(id, resource) {
-        return this.http.put(`${this.endpointPath}/${id}`, resource);
+        return this.http.patch(`${this.endpointPath}/${id}`, resource);
     }
 
     /**

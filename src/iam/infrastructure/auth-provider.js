@@ -5,14 +5,14 @@ const iamApi = new IamApi();
 
 /**
  * Abstracts the authentication mechanism behind a stable interface so that
- * `iam.store.js` and the Sign In / Sign Up views never change when phase 2
- * swaps the mock (json-server) implementation for the real backend.
+ * `iam.store.js` and the Sign In / Sign Up views never change when the mock
+ * (json-server) implementation is swapped for the real backend.
  *
- * Today:   signIn  → GET /users?email= + client-side password compare.
- *          signUp  → POST /users.
- * Phase 2: signIn  → POST /authentication/sign-in (returns a real JWT).
- *          signUp  → POST /authentication/sign-up.
- * Only this class needs to change when that happens.
+ * Phase 2: signIn/signUp now call the real backend
+ * (POST /authentication/sign-in, POST /authentication/sign-up), which
+ * validates credentials server-side (BCrypt) and returns a real JWT —
+ * replacing the old mock hack of filtering /users by email and comparing
+ * the password in the client.
  *
  * @class AuthProvider
  */
@@ -20,31 +20,28 @@ export class AuthProvider {
     /**
      * @param {string} email
      * @param {string} password
-     * @returns {Promise<Object>} The matched user resource.
+     * @returns {Promise<Object>} The authenticated user resource (includes the JWT as `token`).
      * @throws {Error} With message 'sign-in.error-credentials' when invalid.
      */
     async signIn(email, password) {
-        const response = await iamApi.signIn(email);
-        const matchedUsers = response.data instanceof Array ? response.data : [];
-        const matched = matchedUsers.find(user => user.email === email && user.password === password);
-
-        if (!matched) {
-            throw new Error('sign-in.error-credentials');
+        try {
+            const response = await iamApi.signIn(email, password);
+            setSessionToken(response.data.token);
+            return response.data;
+        } catch (error) {
+            if (error.response?.status === 401) throw new Error('sign-in.error-credentials');
+            throw error;
         }
-
-        // The mock issues no real token; cleared so BaseApi sends no Authorization
-        // header until phase 2 sets a real one here after a successful sign-in.
-        setSessionToken(null);
-        return matched;
     }
 
     /**
-     * @param {Object} resource - IAM user resource payload.
-     * @returns {Promise<Object>} The created user resource.
+     * @param {Object} resource - IAM sign-up resource payload.
+     * @returns {Promise<Object>} The authenticated user resource (includes the JWT as `token`)
+     *   — the account is usable immediately, no separate sign-in step needed.
      */
     async signUp(resource) {
         const response = await iamApi.signUp(resource);
-        setSessionToken(null);
+        setSessionToken(response.data.token);
         return response.data;
     }
 }
