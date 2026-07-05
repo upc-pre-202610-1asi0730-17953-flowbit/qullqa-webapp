@@ -177,6 +177,9 @@ function resolveProductStatus(productId) {
  * critical product is by definition both low on stock and expiring soon.
  * 'expiring' also includes 'expired', so the "Por vencer" pill still shows
  * every expiration-related product, with the row badge itself telling them apart.
+ * 'critical' also includes 'out' and 'expired': those are urgent on their own
+ * terms even without the low+expiring combination, matching how the Alerts
+ * bounded context defines isCritical (OUT_OF_STOCK or EXPIRED or HIGH severity).
  * @param {string} productStatus
  * @param {string} filterKey
  * @returns {boolean}
@@ -185,6 +188,7 @@ function statusMatchesFilter(productStatus, filterKey) {
   if (filterKey === 'all')      return true;
   if (filterKey === 'low')      return productStatus === 'low' || productStatus === 'critical';
   if (filterKey === 'expiring') return productStatus === 'expiring' || productStatus === 'critical' || productStatus === 'expired';
+  if (filterKey === 'critical') return productStatus === 'critical' || productStatus === 'out' || productStatus === 'expired';
   return productStatus === filterKey;
 }
 
@@ -378,6 +382,10 @@ function saveProductFromModal() {
       .then(() => {
         toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('inventory.toast-save-success'), life: 3500 });
         showProductModal.value = false;
+        // A new product with initial stock just recorded a StockMovement
+        // server-side (see registerStockIntake) — refresh so "Movimientos"
+        // reflects it without requiring a full page reload.
+        if (!editingProduct.value) fetchAllStockMovements(businessId);
       })
       .catch(() => {
         toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('inventory.toast-save-error'), life: 4500 });
@@ -480,6 +488,9 @@ function saveIntake() {
       .then(() => {
         toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('inventory.toast-intake-success'), life: 3500 });
         showIntakeModal.value = false;
+        // The intake just recorded a StockMovement server-side — refresh so
+        // "Movimientos" reflects it without requiring a full page reload.
+        fetchAllStockMovements(businessId);
       })
       .catch(() => {
         toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('inventory.toast-intake-error'), life: 4500 });

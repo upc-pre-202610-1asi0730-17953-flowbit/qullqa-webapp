@@ -104,24 +104,15 @@ export class ProductApi extends BaseApi {
     }
 
     /**
-     * Updates an existing inventory record.
-     * Used to increase stock on intake registration.
-     * @param {number|string} id
+     * Updates a product's minimum stock threshold via the backend's
+     * dedicated command endpoint (PATCH /inventories/{productId}/minimum-stock).
+     * There is no generic PATCH /inventories/{id} on the real backend.
+     * @param {number|string} productId
      * @param {Object} resource
      * @returns {Promise<import('axios').AxiosResponse>}
      */
-    updateInventory(id, resource) {
-        return this.#inventoriesEndpoint.update(id, resource);
-    }
-
-    /**
-     * Creates a new inventory record.
-     * Used when a product has no prior inventory entry.
-     * @param {Object} resource
-     * @returns {Promise<import('axios').AxiosResponse>}
-     */
-    createInventory(resource) {
-        return this.#inventoriesEndpoint.create(resource);
+    updateMinimumStock(productId, resource) {
+        return this.http.patch(`${inventoriesEndpointPath}/${productId}/minimum-stock`, resource);
     }
 
     /**
@@ -156,16 +147,6 @@ export class ProductApi extends BaseApi {
      */
     createBatch(resource) {
         return this.#batchesEndpoint.create(resource);
-    }
-
-    /**
-     * Updates an existing batch resource.
-     * @param {number|string} id
-     * @param {Object} resource
-     * @returns {Promise<import('axios').AxiosResponse>}
-     */
-    updateBatch(id, resource) {
-        return this.#batchesEndpoint.update(id, resource);
     }
 
     /**
@@ -214,14 +195,5 @@ export class ProductApi extends BaseApi {
      */
     getStockMovements(businessId) {
         return this.#stockMovementsEndpoint.getAllByParam('businessId', businessId);
-    }
-
-    /**
-     * Persists a new stock movement record (audit trail entry).
-     * @param {Object} resource
-     * @returns {Promise<import('axios').AxiosResponse>}
-     */
-    createStockMovement(resource) {
-        return this.#stockMovementsEndpoint.create(resource);
     }
 }
