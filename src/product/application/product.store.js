@@ -19,6 +19,7 @@ import { computed, ref } from 'vue';
 import { ProductApi }               from '../infrastructure/product.api.js';
 import { ProductAssembler }         from '../infrastructure/product.assembler.js';
 import { InventoryItemAssembler }   from '../infrastructure/inventory-item.assembler.js';
+import { InventoryItem }            from '../domain/model/inventory-item.entity.js';
 import { StockMovementAssembler }   from '../infrastructure/stock-movement.assembler.js';
 import { MovementType }             from '../domain/model/stock-movement.entity.js';
 import { ProductStatus }            from '../domain/model/product.entity.js';
@@ -81,7 +82,8 @@ const useProductStore = defineStore('product', () => {
 
     /**
      * Summary counts for the three stock status categories.
-     * Joins each product with its InventoryItem by productId.
+     * Joins each product with its stock total across every warehouse it's
+     * split into (see getTotalInventoryForProduct).
      * Products with no inventory record are counted as CRITICAL.
      *
      * @type {import('vue').ComputedRef<{normal: number, low: number, critical: number}>}
@@ -89,7 +91,7 @@ const useProductStore = defineStore('product', () => {
     const stockStatusCounts = computed(() => {
         const counts = { normal: 0, low: 0, critical: 0 };
         products.value.forEach(product => {
-            const inventoryItem = inventory.value.find(item => item.productId === product.id);
+            const inventoryItem = getTotalInventoryForProduct(product.id);
             if (!inventoryItem) {
                 counts.critical += 1;
                 return;
@@ -115,11 +117,46 @@ const useProductStore = defineStore('product', () => {
 
     /**
      * Returns the first inventory record linked to the given productId.
+     * Only meaningful when the caller needs one specific record tied to a
+     * particular warehouse (e.g. defaulting the intake modal's warehouse
+     * selector) — for a product's stock total across warehouses, see
+     * getTotalInventoryForProduct.
      * @param {number|string} productId
      * @returns {import('../domain/model/inventory-item.entity.js').InventoryItem|undefined}
      */
     function getInventoryByProduct(productId) {
         return inventory.value.find(item => item.productId === parseInt(productId));
+    }
+
+    /**
+     * Returns a product's stock aggregated across every warehouse it's split
+     * into. InventoryItem is a real N:M relation (one row per product +
+     * warehouse, see the backend's architecture doc §5.6/§8.1) — a product
+     * stocked in 2+ warehouses has one row each, and showing only the first
+     * one (as getInventoryByProduct does) undercounts total stock whenever a
+     * secondary warehouse holds more than the default one.
+     *
+     * Returns a synthetic InventoryItem carrying the summed currentStock and
+     * minimumStock, so callers get isLowStock/isCritical/stockStatus for
+     * free from the same business rule InventoryItem already implements —
+     * "low stock" here means the sum on hand is at or below the sum of every
+     * warehouse's configured minimum.
+     *
+     * @param {number|string} productId
+     * @returns {import('../domain/model/inventory-item.entity.js').InventoryItem|null}
+     */
+    function getTotalInventoryForProduct(productId) {
+        const numericId = parseInt(productId);
+        const items = inventory.value.filter(item => item.productId === numericId);
+        if (items.length === 0) return null;
+
+        return new InventoryItem({
+            productId:    numericId,
+            businessId:   items[0].businessId,
+            warehouseId:  null,
+            stockUnit:    items.reduce((sum, item) => sum + item.currentStock, 0),
+            minimumStock: items.reduce((sum, item) => sum + item.minimumStock, 0)
+        });
     }
 
     // ─── Commands ─────────────────────────────────────────────────────────────
@@ -533,6 +570,7 @@ const useProductStore = defineStore('product', () => {
         stockStatusCounts,
         getProductById,
         getInventoryByProduct,
+        getTotalInventoryForProduct,
         getDaysToNearestExpiry,
         isProductExpiringSoon,
         isProductExpired,

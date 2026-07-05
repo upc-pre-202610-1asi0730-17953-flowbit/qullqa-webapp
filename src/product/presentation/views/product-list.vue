@@ -146,9 +146,10 @@ watch(activeTab, (tab) => {
  * Resolves a product's inventory status for the summary cards, filter pills
  * and status badge.
  *
- * Business rule: combines the InventoryItem's own stock-level state
- * (out/low/normal, see InventoryItem.stockStatus) with an independent
- * expiration check against active batches. A product that is both low on
+ * Business rule: combines the product's stock-level state, summed across
+ * every warehouse it's split into (out/low/normal, see
+ * getTotalInventoryForProduct), with an independent expiration check
+ * against active batches. A product that is both low on
  * stock and expiring soon is reported as 'critical' — the most urgent case.
  * An already-expired batch is reported as its own 'expired' state, distinct
  * from 'expiring' (soon, not yet expired) — this must match Alerts'
@@ -158,7 +159,7 @@ watch(activeTab, (tab) => {
  * @returns {'out'|'expired'|'critical'|'low'|'expiring'|'normal'}
  */
 function resolveProductStatus(productId) {
-  const inventoryItem = productStore.getInventoryByProduct(productId);
+  const inventoryItem = productStore.getTotalInventoryForProduct(productId);
   if (!inventoryItem || inventoryItem.currentStock === 0) return 'out';
   if (isProductExpired(productId)) return 'expired';
 
@@ -193,12 +194,12 @@ function statusMatchesFilter(productStatus, filterKey) {
 }
 
 function resolveCurrentStock(productId) {
-  const inventoryItem = productStore.getInventoryByProduct(productId);
+  const inventoryItem = productStore.getTotalInventoryForProduct(productId);
   return inventoryItem ? inventoryItem.currentStock : 0;
 }
 
 function resolveMinimumStock(productId) {
-  const inventoryItem = productStore.getInventoryByProduct(productId);
+  const inventoryItem = productStore.getTotalInventoryForProduct(productId);
   return inventoryItem ? inventoryItem.minimumStock : 0;
 }
 
