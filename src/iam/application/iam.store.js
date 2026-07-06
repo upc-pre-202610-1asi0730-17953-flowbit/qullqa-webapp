@@ -383,11 +383,13 @@ const useIamStore = defineStore('iam', () => {
     }
 
     /**
-     * Changes the password of the currently authenticated user.
-     *
-     * Business rule: currentPassword must match the stored value (client-side
-     * compare against the mock, same hack pattern as AuthProvider.signIn —
-     * this must move to the backend once real hashing/JWT is in place).
+     * Changes the password of the currently authenticated user via the real
+     * backend's dedicated endpoint, which verifies currentPassword
+     * server-side with BCrypt (401 on mismatch) and hashes newPassword
+     * before persisting — this can never succeed by comparing against
+     * GET /users/{id}'s `password` field: PasswordHash is [JsonIgnore] on
+     * the backend and is never sent to the client, so that comparison was
+     * always false regardless of what the user typed.
      *
      * @param {string} currentPassword
      * @param {string} newPassword
@@ -397,15 +399,12 @@ const useIamStore = defineStore('iam', () => {
         if (!currentUser.value) return { success: false, errorKey: 'settings.error-current-password' };
 
         try {
-            const existingResponse = await iamApi.getUserById(currentUser.value.id);
-            if (existingResponse.data.password !== currentPassword) {
-                return { success: false, errorKey: 'settings.error-current-password-invalid' };
-            }
-
-            const updatedResource = { ...existingResponse.data, password: newPassword };
-            await iamApi.updateUser(updatedResource);
+            await iamApi.changePassword(currentUser.value.id, currentPassword, newPassword);
             return { success: true, errorKey: null };
         } catch (error) {
+            if (error?.response?.status === 401) {
+                return { success: false, errorKey: 'settings.error-current-password-invalid' };
+            }
             errors.value.push(error);
             return { success: false, errorKey: 'settings.error-password-change-failed' };
         }
@@ -424,21 +423,24 @@ const useIamStore = defineStore('iam', () => {
     /**
      * Creates a new user account (team invite) and appends it to local state.
      *
+     * Calls the real backend's dedicated invite endpoint (POST /users), not
+     * sign-up: sign-up also creates a brand-new Business and requires
+     * businessName/businessType, which this modal never collects — sending
+     * an invite through sign-up always 400'd on those missing required
+     * fields before a single user field was even validated.
+     *
      * Business rule: invited users are scoped to the inviting admin's business
-     * (businessId is expected to already be set on userAccount by the caller).
+     * (resolved from the JWT server-side, not sent by the client).
      *
      * @param {UserAccount} userAccount - UserAccount entity to persist (no password).
      * @param {string} password - Temporary password assigned to the invited user.
      * @returns {Promise<{success: boolean}>}
      */
     async function addUser(userAccount, password) {
-        const resource = UserAccountAssembler.toResourceFromEntity(userAccount, {
-            password,
-            createdAt: new Date().toISOString()
-        });
+        const resource = UserAccountAssembler.toResourceFromEntity(userAccount, { password });
 
         try {
-            const response = await iamApi.signUp(resource);
+            const response = await iamApi.inviteUser(resource);
             const newUser = UserAccountAssembler.toEntityFromResource(response.data);
             users.value.push(newUser);
             return { success: true };
