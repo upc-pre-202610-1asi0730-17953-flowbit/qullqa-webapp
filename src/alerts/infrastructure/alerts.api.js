@@ -1,14 +1,16 @@
 import { BaseApi }      from '../../shared/infrastructure/base-api.js';
 import { BaseEndpoint } from '../../shared/infrastructure/base-endpoint.js';
 
-const alertsEndpointPath = import.meta.env.VITE_ALERTS_ENDPOINT_PATH;
+const alertsEndpointPath     = import.meta.env.VITE_ALERTS_ENDPOINT_PATH;
+const alertRulesEndpointPath = import.meta.env.VITE_ALERT_RULES_ENDPOINT_PATH;
 
 /**
  * Infrastructure gateway for the Alerts & Operational Monitoring bounded-context endpoints.
  *
- * Supports fetching, resolving, and filtering alerts scoped to a business.
- * Alert rules are managed client-side derived from inventory data because the
- * mock API does not expose a dedicated /alertRules endpoint.
+ * The real backend persists alerts server-side (a reactive event-driven
+ * engine plus a periodic expiration sweep) and exposes real, configurable
+ * AlertRule resources — there is no client-side re-evaluation or synthesis
+ * here anymore.
  *
  * @class AlertsApi
  * @extends BaseApi
@@ -23,53 +25,62 @@ export class AlertsApi extends BaseApi {
     }
 
     /**
-     * Fetches all alerts for a given business.
-     * @param {number|string} businessId
+     * Fetches active (non-resolved) alerts for the authenticated business.
+     * Scoping to the business happens server-side via the JWT.
      * @returns {Promise<import('axios').AxiosResponse>}
      */
-    getAlerts(businessId) {
-        return this.#alertsEndpoint.getAllByParam('businessId', businessId);
+    getActiveAlerts() {
+        return this.#alertsEndpoint.getAll();
     }
 
     /**
-     * Fetches a single alert by its identifier.
-     * @param {number|string} id
+     * Fetches resolved alerts (immutable history) for the authenticated business.
      * @returns {Promise<import('axios').AxiosResponse>}
      */
-    getAlertById(id) {
-        return this.#alertsEndpoint.getById(id);
+    getAlertHistory() {
+        return this.http.get(`${alertsEndpointPath}/history`);
     }
 
     /**
-     * Creates a new alert record. Used to persist a live-evaluated alert
-     * (see evaluateLiveAlerts) the first time a user acts on it (acknowledge
-     * or resolve), since live-evaluated alerts don't exist in the mock until then.
-     * @param {Object} resource
-     * @returns {Promise<import('axios').AxiosResponse>}
-     */
-    createAlert(resource) {
-        return this.#alertsEndpoint.create(resource);
-    }
-
-    /**
-     * Resolves an alert by patching its status to RESOLVED.
-     * Business rule: only ACTIVE or SENT alerts may be resolved.
-     * @param {number|string} id - Alert identifier.
-     * @param {Object} resource  - Full alert resource with updated status field.
-     * @returns {Promise<import('axios').AxiosResponse>}
-     */
-    resolveAlert(id, resource) {
-        return this.#alertsEndpoint.update(id, resource);
-    }
-
-    /**
-     * Acknowledges an alert by patching its status to ACKNOWLEDGED.
+     * Acknowledges an alert — a domain action (POST), not a field replacement.
      * Business rule: only ACTIVE alerts may be acknowledged.
-     * @param {number|string} id
-     * @param {Object} resource - Full alert resource with status: 'ACKNOWLEDGED'.
+     * @param {number|string} id - Alert identifier.
      * @returns {Promise<import('axios').AxiosResponse>}
      */
-    acknowledgeAlert(id, resource) {
-        return this.#alertsEndpoint.update(id, resource);
+    acknowledgeAlert(id) {
+        return this.http.post(`${alertsEndpointPath}/${id}/acknowledge`);
+    }
+
+    /**
+     * Resolves an alert — a domain action (POST), not a field replacement.
+     * Business rule: only non-RESOLVED alerts may be resolved (409 otherwise).
+     * @param {number|string} id - Alert identifier.
+     * @returns {Promise<import('axios').AxiosResponse>}
+     */
+    resolveAlert(id) {
+        return this.http.post(`${alertsEndpointPath}/${id}/resolve`);
+    }
+
+    // ─── Alert rules ────────────────────────────────────────────────────────
+
+    /**
+     * Fetches the configured alert rules for the authenticated business.
+     * Only rule types the business has explicitly saved come back — a type
+     * with no row yet behaves as Enabled=true server-side (see
+     * StockLevelChangedEventHandler/BatchRegisteredEventHandler).
+     * @returns {Promise<import('axios').AxiosResponse>}
+     */
+    getAlertRules() {
+        return this.http.get(alertRulesEndpointPath);
+    }
+
+    /**
+     * Creates or updates the rule for a given alert type (upsert — one rule
+     * per business+type).
+     * @param {Object} resource - { alertType, thresholdValue, enabled }
+     * @returns {Promise<import('axios').AxiosResponse>}
+     */
+    createOrUpdateAlertRule(resource) {
+        return this.http.post(alertRulesEndpointPath, resource);
     }
 }

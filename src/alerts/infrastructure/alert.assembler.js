@@ -18,6 +18,7 @@ export class AlertAssembler {
             businessId:   resource.businessId   ?? null,
             productId:    resource.productId    ?? null,
             batchId:      resource.batchId      ?? null,
+            warehouseId:  resource.warehouseId  ?? null,
             productName:  resource.productName  ?? '',
             type:         resource.type         ?? 'LOW_STOCK',
             severity:     resource.severity     ?? 'LOW',
