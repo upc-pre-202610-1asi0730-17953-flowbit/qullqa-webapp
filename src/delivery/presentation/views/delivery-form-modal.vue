@@ -279,11 +279,6 @@ async function handleSubmit() {
   if (!isFormValid.value || saving.value) return;
 
   saving.value = true;
-  const businessId = iamStore.currentUser?.businessId ?? null;
-
-  const productList = productLines
-      .filter(line => line.productId && line.quantity > 0)
-      .map(line => ({ productId: parseInt(line.productId), quantity: parseInt(line.quantity) }));
 
   const result = await deliveryStore.createDelivery({
     orderId:          formData.orderId.trim(),
@@ -294,11 +289,12 @@ async function handleSubmit() {
     driverPhone:      formData.driverPhone.trim(),
     vehicle:          formData.vehicle.trim(),
     licensePlate:     formData.licensePlate.trim(),
-    estimatedArrival: formData.estimatedArrival.trim(),
-    products:         productList,
+    // The datetime-local input yields "yyyy-MM-ddTHH:mm" with no timezone —
+    // the backend's EstimatedArrival is a DateTimeOffset and rejects that
+    // format outright, so this converts to a real ISO 8601 string with offset.
+    estimatedArrival: new Date(formData.estimatedArrival).toISOString(),
     totalWeightValue: parseFloat(formData.totalWeightValue) || 0,
     totalWeightUnit:  formData.totalWeightUnit,
-    businessId:       businessId,
     purchaseDetailId: selectedDetailId.value ? parseInt(selectedDetailId.value) : null
   });
 
@@ -397,7 +393,7 @@ async function handleSubmit() {
 
             <input
                 v-model="formData[field.key]"
-                type="text"
+                :type="field.key === 'estimatedArrival' ? 'datetime-local' : 'text'"
                 :disabled="!!selectedDetailId && (field.key === 'orderId' || field.key === 'supplierName')"
                 :placeholder="t(field.placeholderKey)"
                 class="w-full border-round-lg"
