@@ -56,6 +56,10 @@ export class Delivery {
      * @param {string}         [params.currentLabel='']       - Human-readable current location name.
      * @param {number}         [params.currentLatitude=0]     - Current GPS latitude.
      * @param {number}         [params.currentLongitude=0]    - Current GPS longitude.
+     * @param {{latitude: number, longitude: number}|null} [params.currentLocation=null] -
+     *   The real backend's DeliveryResource nests coordinates under
+     *   `currentLocation` instead of flat fields; used as a fallback when
+     *   currentLatitude/currentLongitude aren't given directly.
      * @param {Array<{productId: number, quantity: number}>} [params.products=[]] - Structured lines of products in the shipment.
      * @param {number}         [params.totalWeightValue=0]    - Total shipment weight (numeric).
      * @param {string}         [params.totalWeightUnit='kg']  - Unit for totalWeightValue ('kg' or 'lb').
@@ -79,8 +83,9 @@ export class Delivery {
                     estimatedArrival = '',
                     completedAt      = null,
                     currentLabel     = '',
-                    currentLatitude  = 0,
-                    currentLongitude = 0,
+                    currentLatitude  = null,
+                    currentLongitude = null,
+                    currentLocation  = null,
                     products         = [],
                     totalWeightValue = 0,
                     totalWeightUnit  = 'kg',
@@ -103,8 +108,8 @@ export class Delivery {
         this.estimatedArrival = estimatedArrival;
         this.completedAt      = completedAt;
         this.currentLabel     = currentLabel;
-        this.currentLatitude  = currentLatitude;
-        this.currentLongitude = currentLongitude;
+        this.currentLatitude  = currentLatitude  ?? currentLocation?.latitude  ?? 0;
+        this.currentLongitude = currentLongitude ?? currentLocation?.longitude ?? 0;
         this.products         = Array.isArray(products) ? [...products] : [];
         this.totalWeightValue = totalWeightValue;
         this.totalWeightUnit  = totalWeightUnit;
