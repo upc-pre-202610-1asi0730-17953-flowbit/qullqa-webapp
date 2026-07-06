@@ -168,6 +168,17 @@ export class Delivery {
             || this.status === DeliveryStatus.AT_DESTINATION;
     }
 
+    /**
+     * Returns true when the delivery can still be cancelled.
+     * Business rule: any non-final delivery can be cancelled — mirrors the
+     * guard in deliveryStore.cancelDelivery (only COMPLETED and CANCELLED
+     * are terminal).
+     * @returns {boolean}
+     */
+    get canCancel() {
+        return !this.isCompleted && !this.isCancelled;
+    }
+
     // ─── Route progress ───────────────────────────────────────────────────────
 
     /**
