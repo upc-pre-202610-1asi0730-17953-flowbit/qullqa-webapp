@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, toRefs } from 'vue';
+import { computed, onMounted, ref, toRefs } from 'vue';
 import { useRouter }                   from 'vue-router';
 import { useI18n }                     from 'vue-i18n';
 import useDashboardStore               from '../../application/dashboard.store.js';
@@ -7,6 +7,7 @@ import useAlertsStore                  from '../../../alerts/application/alerts.
 import useProductStore                 from '../../../product/application/product.store.js';
 import useSalesStore                   from '../../../sales/application/sales.store.js';
 import useIamStore                     from '../../../iam/application/iam.store.js';
+import { AlertType }                   from '../../../alerts/domain/model/alert.entity.js';
 import { toDateLocale }                from '../../../shared/presentation/date-locale.js';
 
 const { t, locale }  = useI18n();
@@ -27,14 +28,35 @@ const { alerts, alertsLoaded, expirationActiveCount } = toRefs(alertsStore);
 
 const { fetchSalesByDay, refreshMetrics } = dashboardStore;
 
-const { fetchAlerts, evaluateLiveAlerts } = alertsStore;
+const { fetchAlerts } = alertsStore;
+
+/**
+ * Warehouses of the current business — resolved client-side against an
+ * alert's warehouseId so the recent-alerts panel can say which specific
+ * warehouse a LOW_STOCK/OUT_OF_STOCK alert is about, same as the Alertas
+ * screen (see active-alerts-dashboard.vue).
+ * @type {import('vue').Ref<Array>}
+ */
+const warehouses = ref([]);
+
+/**
+ * @param {import('../../../alerts/domain/model/alert.entity.js').Alert} alert
+ * @returns {string|null}
+ */
+function resolveWarehouseName(alert) {
+  if (alert.type !== AlertType.LOW_STOCK && alert.type !== AlertType.OUT_OF_STOCK) return null;
+  if (alert.warehouseId == null) return t('alerts.field-unknown-warehouse');
+  const warehouse = warehouses.value.find(item => item.id === alert.warehouseId);
+  return warehouse ? warehouse.name : `#${alert.warehouseId}`;
+}
 
 onMounted(() => {
   const businessId = iamStore.currentUser?.businessId ?? null;
   if (businessId) {
-    // Always re-evaluated live (see alerts.store.js) so this widget can never
-    // drift out of sync with the Alertas screen the way it used to.
-    fetchAlerts(businessId).then(() => evaluateLiveAlerts(businessId));
+    fetchAlerts();
+    productStore.fetchWarehousesForBusiness(businessId).then(fetched => {
+      warehouses.value = fetched;
+    });
     if (!salesByDay.value.length)       fetchSalesByDay(businessId);
     if (!productStore.productsLoaded)   productStore.fetchProducts(businessId);
     if (!productStore.inventoryLoaded)  productStore.fetchInventory(businessId);
@@ -44,14 +66,14 @@ onMounted(() => {
 
 /**
  * Re-fetches everything the Panel shows from the server: products/inventory/
- * sales (liveMetrics + Mayor stock), the weekly chart and the live alerts.
+ * sales (liveMetrics + Mayor stock), the weekly chart and the alerts.
  */
 function handleRefresh() {
   const businessId = iamStore.currentUser?.businessId ?? null;
   if (!businessId) return;
   refreshMetrics(businessId);
   fetchSalesByDay(businessId);
-  fetchAlerts(businessId).then(() => evaluateLiveAlerts(businessId));
+  fetchAlerts();
 }
 
 // ─── Navigation ────────────────────────────────────────────────────────────
@@ -462,6 +484,9 @@ const quickActions = computed(() => [
               <div class="alert-card__body">
                 <p class="alert-card__product">
                   {{ alert.productName ?? t('dashboard.unknown-product') }}
+                  <span v-if="resolveWarehouseName(alert)" style="font-size: 0.72rem; color: #64748B; font-weight: 400;">
+                    · {{ resolveWarehouseName(alert) }}
+                  </span>
                 </p>
                 <p class="alert-card__message">{{ alert.message }}</p>
               </div>
