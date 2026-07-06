@@ -90,12 +90,36 @@ export class IamApi extends BaseApi {
     }
 
     /**
+     * Invites (creates) a new team member for the current business via the
+     * real backend's dedicated endpoint — distinct from signUp, which also
+     * creates a brand-new Business and is only for the first account.
+     * @param {Object} resource - { email, password, name, lastName, roleId, phone }
+     * @returns {Promise<import('axios').AxiosResponse>} Created user resource.
+     */
+    inviteUser(resource) {
+        return this.#usersEndpoint.create(resource);
+    }
+
+    /**
      * Updates an existing user account.
      * @param {Object} resource - Updated user resource payload (must include id).
      * @returns {Promise<import('axios').AxiosResponse>} Updated user resource.
      */
     updateUser(resource) {
         return this.#usersEndpoint.update(resource.id, resource);
+    }
+
+    /**
+     * Changes a user's password via the real backend's dedicated endpoint,
+     * which verifies currentPassword server-side with BCrypt (401 if wrong)
+     * and hashes newPassword before persisting.
+     * @param {number|string} id - User identifier.
+     * @param {string} currentPassword
+     * @param {string} newPassword
+     * @returns {Promise<import('axios').AxiosResponse>}
+     */
+    changePassword(id, currentPassword, newPassword) {
+        return this.http.post(`${usersEndpointPath}/${id}/change-password`, { currentPassword, newPassword });
     }
 
     /**
