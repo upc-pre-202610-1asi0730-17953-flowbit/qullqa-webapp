@@ -8,12 +8,11 @@
  *     2. A valid PaymentMethod is provided.
  *     3. No item quantity exceeds the available stock (validated in the POS view).
  * - A sale can only be cancelled when its status is OPEN or PAID.
- * - On confirmSale: the Sale is first persisted (POST), then each SaleDetail is
- *   persisted individually (POST), then the Sale status is updated to PAID (PUT).
+ * - On confirmSale: the sale and all of its lines are persisted atomically in
+ *   a single POST /sales (see confirmSale) — the backend validates stock,
+ *   decrements it, and returns the sale already PAID with lines embedded.
  * - totalAmount stored on the sale resource equals the sum of all line totals
  *   (pre-tax subtotal); IGV and grandTotal are derived in the domain entity.
- * - Stock decrement on sale confirmation is handled by the ProductStore and
- *   should be called from the POS view after this store confirms the sale.
  * - currentSale holds the in-progress POS session (null when no active session).
  *
  * @module useSalesStore
@@ -113,11 +112,9 @@ const useSalesStore = defineStore('sales', () => {
     /**
      * Loads all sales for the given business and updates local state.
      *
-     * Each sale's line items are hydrated eagerly (one /saleDetails fetch per
-     * sale, in parallel) because the mock's /sales resource doesn't embed
-     * them and Sale.subtotal/grandTotal — used across the stats bar, the
-     * history table and the customer detail modal — depend on `details`
-     * being populated, not just when a row happens to be expanded.
+     * The real backend already embeds each sale's line items in the /sales
+     * response (GetAllSalesByBusinessIdQuery eager-loads SaleDetails), so
+     * this no longer needs the mock-era one-fetch-per-sale hydration step.
      *
      * @param {number|string} businessId - Business identifier from the IAM store.
      * @returns {void}
@@ -125,19 +122,7 @@ const useSalesStore = defineStore('sales', () => {
     function fetchSales(businessId) {
         salesApi.getSales(businessId)
             .then(response => {
-                const rawSales = response.data instanceof Array ? response.data : [];
-                const hydratedSalePromises = rawSales.map(rawSale =>
-                    salesApi.getSaleDetailsBySale(rawSale.id)
-                        .then(detailsResponse => {
-                            const rawDetails = detailsResponse.data instanceof Array ? detailsResponse.data : [];
-                            return SaleAssembler.toEntityFromResource({ ...rawSale, details: rawDetails });
-                        })
-                        .catch(() => SaleAssembler.toEntityFromResource(rawSale))
-                );
-                return Promise.all(hydratedSalePromises);
-            })
-            .then(hydratedSales => {
-                sales.value        = hydratedSales;
+                sales.value        = SaleAssembler.toEntitiesFromResponse(response);
                 salesLoaded.value = true;
             })
             .catch(error => {
@@ -274,12 +259,14 @@ const useSalesStore = defineStore('sales', () => {
     /**
      * Confirms and persists the current POS sale.
      *
-     * Workflow (sequential):
-     * 1. Validate: cart is non-empty and paymentMethod is valid.
-     * 2. POST /sales with status OPEN and subtotal.
-     * 3. POST /saleDetails for each line item, referencing the new sale id.
-     * 4. PUT /sales/:id to update status to PAID and set paymentMethod.
-     * 5. Append the final Sale entity to local state.
+     * The real backend creates a sale atomically in one call — validates
+     * stock per line, persists the sale with its lines embedded, and
+     * decrements inventory, "todo o nada" (CreateSaleCommand). There is no
+     * OPEN status on the backend (see SaleStatus.cs): a sale is PAID the
+     * moment it's created. This replaces the mock-era 3-request sequence
+     * (POST sale header as OPEN, POST each line separately, PATCH to PAID)
+     * that the real backend's non-nullable PaymentMethod/Lines rejected
+     * with 400 on the very first request.
      *
      * @param {string} paymentMethod - One of the PaymentMethod enum values.
      * @param {number|null} customerId - Optional customer id.
@@ -297,50 +284,22 @@ const useSalesStore = defineStore('sales', () => {
             return { success: false, errorKey: 'pos.error-no-payment-method', sale: null };
         }
 
-        const subtotal = currentSale.value.subtotal;
-
         try {
-            // Step 1: Persist the sale header with status OPEN
             const saleResource = {
-                businessId:    currentSale.value.businessId,
                 customerId:    customerId,
-                status:        SaleStatus.OPEN,
-                totalAmount:   subtotal,
-                paymentMethod: null,
-                date:          currentSale.value.date,
+                paymentMethod: paymentMethod,
+                currency:      'PEN',
                 description:   description,
-                currency:      'PEN'
-            };
-            const saleResponse   = await salesApi.createSale(saleResource);
-            const persistedSale  = SaleAssembler.toEntityFromResource(saleResponse.data);
-
-            // Step 2: Persist each line item referencing the new sale id
-            const detailPromises = currentSale.value.details.map(detail => {
-                const detailResource = {
-                    saleId:    persistedSale.id,
+                lines: currentSale.value.details.map(detail => ({
                     productId: detail.productId,
                     quantity:  detail.quantity,
                     unitPrice: detail.unitPrice,
                     discount:  detail.discount
-                };
-                return salesApi.createSaleDetail(detailResource);
-            });
-            const detailResponses = await Promise.all(detailPromises);
-            const persistedDetails = detailResponses.map(response =>
-                SaleDetailAssembler.toEntityFromResource(response.data)
-            );
-
-            // Step 3: Mark sale as PAID with the chosen payment method
-            const updatedResource = {
-                ...saleResource,
-                status:        SaleStatus.PAID,
-                paymentMethod: paymentMethod
+                }))
             };
-            const updatedResponse = await salesApi.updateSale(persistedSale.id, updatedResource);
-            const finalSale       = SaleAssembler.toEntityFromResource(updatedResponse.data);
-            finalSale.details     = persistedDetails;
+            const saleResponse = await salesApi.createSale(saleResource);
+            const finalSale    = SaleAssembler.toEntityFromResource(saleResponse.data);
 
-            // Step 4: Update local state
             sales.value.push(finalSale);
             currentSale.value = null;
 
