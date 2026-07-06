@@ -91,13 +91,20 @@ const categoryFilters = computed(() => [
 /**
  * Products enriched with their current stock from the inventory.
  * Only ACTIVE products are included.
+ *
+ * Stock shown/validated here is the product's total across every warehouse
+ * it's split into (see getTotalInventoryForProduct) — a single-warehouse
+ * lookup would show only whichever InventoryItem happens to come first,
+ * which misrepresents both "out of stock" and the max quantity addable to
+ * the cart whenever a product is split across 2+ warehouses.
+ *
  * @type {import('vue').ComputedRef<Array>}
  */
 const enrichedProducts = computed(() =>
     productStore.products
         .filter(product => product.isActive)
         .map(product => {
-          const inventoryItem  = productStore.inventory.find(item => item.productId === product.id);
+          const inventoryItem  = productStore.getTotalInventoryForProduct(product.id);
           const availableStock = inventoryItem ? inventoryItem.currentStock : 0;
           return {
             id:             product.id,
