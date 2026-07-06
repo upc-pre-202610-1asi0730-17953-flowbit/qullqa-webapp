@@ -111,6 +111,15 @@ function confirmDeleteUser(userAccount) {
  * Persists the Profile tab (business fields + user fields) via the IAM store.
  * Both requests run in parallel since they touch independent aggregates
  * (Business and User).
+ *
+ * Business rule: re-syncs the form from both stores only after BOTH requests
+ * have settled. The `watch(currentBusiness, ...)` below also re-syncs the
+ * whole form (phone included) the instant updateBusiness resolves — if that
+ * happens before updateUserProfile finishes, it was reading currentUser.phone
+ * before the new value had landed, wiping the phone the user just typed back
+ * to its old value until a full reload later re-fetched everything fresh.
+ * Explicitly re-syncing here once both promises resolve makes the fix
+ * order-independent instead of relying on request timing.
  */
 async function saveProfile() {
   savingProfile.value = true;
@@ -127,6 +136,7 @@ async function saveProfile() {
       phone:    profileForm.value.phone
     })
   ]);
+  syncProfileFormFromStore();
 
   savingProfile.value = false;
   profileSaveState.value = (businessResult.success && userResult.success) ? 'success' : 'error';
