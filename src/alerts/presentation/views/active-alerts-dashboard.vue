@@ -4,13 +4,15 @@ import { useI18n }        from 'vue-i18n';
 import { useToast }       from 'primevue/usetoast';
 import useAlertsStore     from '../../application/alerts.store.js';
 import useIamStore        from '../../../iam/application/iam.store.js';
-import { AlertStatus } from '../../domain/model/alert.entity.js';
+import useProductStore    from '../../../product/application/product.store.js';
+import { AlertStatus, AlertType } from '../../domain/model/alert.entity.js';
 import { toDateLocale } from '../../../shared/presentation/date-locale.js';
 
 const { t, locale } = useI18n();
 const toast       = useToast();
 const alertsStore = useAlertsStore();
 const iamStore    = useIamStore();
+const productStore = useProductStore();
 
 const {
   alerts,
@@ -23,7 +25,30 @@ const {
   expirationActiveCount
 } = toRefs(alertsStore);
 
-const { fetchAlerts, evaluateLiveAlerts, acknowledgeAlert, resolveAlert, toggleAlertRule, updateAlertRuleThreshold } = alertsStore;
+const { fetchAlerts, fetchAlertRules, acknowledgeAlert, resolveAlert, toggleAlertRule, updateAlertRuleThreshold } = alertsStore;
+
+/**
+ * Warehouses of the current business, fetched once so LOW_STOCK/OUT_OF_STOCK
+ * alerts can show which specific warehouse they're about instead of reading
+ * as a business-wide problem (a product split across warehouses can be
+ * critically low in one and perfectly healthy in another).
+ * @type {import('vue').Ref<Array>}
+ */
+const warehouses = ref([]);
+
+/**
+ * Resolves an alert's warehouseId to its display name, falling back to the
+ * raw id (or a generic label when the alert has no warehouse at all, e.g.
+ * EXPIRATION/EXPIRED alerts, which are batch-scoped instead).
+ * @param {import('../../domain/model/alert.entity.js').Alert} alert
+ * @returns {string|null}
+ */
+function resolveWarehouseName(alert) {
+  if (alert.type !== AlertType.LOW_STOCK && alert.type !== AlertType.OUT_OF_STOCK) return null;
+  if (alert.warehouseId == null) return t('alerts.field-unknown-warehouse');
+  const warehouse = warehouses.value.find(item => item.id === alert.warehouseId);
+  return warehouse ? warehouse.name : `#${alert.warehouseId}`;
+}
 
 // ─── Tab state ─────────────────────────────────────────────────────────────────
 const activeTab = ref('activas');
@@ -37,7 +62,7 @@ const typeFilter   = ref('ALL');
 const selectedAlert = ref(null);
 
 // ─── Rule edit state ───────────────────────────────────────────────────────────
-const editingRuleId    = ref(null);
+const editingRuleType  = ref(null);
 const editingThreshold = ref('');
 
 // ─── Config maps ───────────────────────────────────────────────────────────────
@@ -65,15 +90,19 @@ function getStatusConfig(status)     { return statusConfig[status]     ?? status
 
 // ─── Lifecycle ─────────────────────────────────────────────────────────────────
 /**
- * Loads the persisted alert history and then re-evaluates which alerts are
- * currently ACTIVE live, from real inventory/batch data — so "Por vencer"/
- * "Vencido"/"Bajo stock" here always agrees with the same real-time state
- * Inventario shows, instead of trusting static pre-seeded rows that drift
- * out of sync with reality as time passes.
+ * Loads real, server-persisted alerts and rules, plus the business's
+ * warehouses (so LOW_STOCK/OUT_OF_STOCK alerts can show which one they're
+ * about — see resolveWarehouseName).
  */
 onMounted(() => {
   const businessId = iamStore.currentUser?.businessId ?? null;
-  fetchAlerts(businessId).then(() => evaluateLiveAlerts(businessId));
+  fetchAlerts();
+  fetchAlertRules();
+  if (businessId) {
+    productStore.fetchWarehousesForBusiness(businessId).then(fetched => {
+      warehouses.value = fetched;
+    });
+  }
 });
 
 // ─── Stats ─────────────────────────────────────────────────────────────────────
@@ -147,14 +176,14 @@ function handleResolve() {
 
 // ─── Rule editing ──────────────────────────────────────────────────────────────
 function startEditRule(rule) {
-  editingRuleId.value    = rule.id;
+  editingRuleType.value  = rule.type;
   editingThreshold.value = String(rule.threshold);
 }
 
-function saveRuleThreshold(ruleId) {
+function saveRuleThreshold(type) {
   const parsedValue = parseFloat(editingThreshold.value);
-  if (!isNaN(parsedValue) && parsedValue >= 0) updateAlertRuleThreshold(ruleId, parsedValue);
-  editingRuleId.value = null;
+  if (!isNaN(parsedValue) && parsedValue >= 0) updateAlertRuleThreshold(type, parsedValue);
+  editingRuleType.value = null;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -299,7 +328,12 @@ function formatDateTime(isoDate) {
                                         {{ t(getTypeConfig(alert.type).labelKey) }}
                                     </span>
               </td>
-              <td class="alerts-td alerts-td-product">{{ alert.productName || `#${alert.productId}` }}</td>
+              <td class="alerts-td alerts-td-product">
+                {{ alert.productName || `#${alert.productId}` }}
+                <span v-if="resolveWarehouseName(alert)" style="display: block; font-size: 0.72rem; color: #64748B; font-weight: 400;">
+                  <i class="pi pi-building" style="font-size: 0.65rem; margin-right: 0.2rem;" />{{ resolveWarehouseName(alert) }}
+                </span>
+              </td>
               <td class="alerts-td alerts-td-message">{{ alert.message }}</td>
               <td class="alerts-td">
                                     <span class="alerts-severity-badge" :style="{ backgroundColor: getSeverityConfig(alert.severity).background, color: getSeverityConfig(alert.severity).color }">
@@ -352,7 +386,12 @@ function formatDateTime(isoDate) {
                                             {{ t(getSeverityConfig(alert.severity).labelKey) }}
                                         </span>
                   </div>
-                  <p class="alerts-mobile-card-product">{{ alert.productName || `#${alert.productId}` }}</p>
+                  <p class="alerts-mobile-card-product">
+                    {{ alert.productName || `#${alert.productId}` }}
+                    <span v-if="resolveWarehouseName(alert)" style="font-size: 0.72rem; color: #64748B; font-weight: 400;">
+                      · {{ resolveWarehouseName(alert) }}
+                    </span>
+                  </p>
                   <p class="alerts-mobile-card-message">{{ alert.message }}</p>
                 </div>
               </div>
@@ -385,7 +424,7 @@ function formatDateTime(isoDate) {
         <div class="alerts-rules-list">
           <div
               v-for="rule in alertRules"
-              :key="rule.id"
+              :key="rule.type"
               class="alerts-rule-card"
               :style="{ borderColor: rule.active ? getTypeConfig(rule.type).border : '#E2E8F0', opacity: rule.active ? 1 : 0.65 }"
           >
@@ -399,24 +438,24 @@ function formatDateTime(isoDate) {
                   <p class="alerts-rule-desc">{{ t(rule.descKey) }}</p>
                 </div>
               </div>
-              <button class="alerts-rule-toggle" :style="{ backgroundColor: rule.active ? '#0E7490' : '#CBD5E1' }" @click="toggleAlertRule(rule.id)">
+              <button class="alerts-rule-toggle" :style="{ backgroundColor: rule.active ? '#0E7490' : '#CBD5E1' }" @click="toggleAlertRule(rule.type)">
                 <span class="alerts-rule-toggle-thumb" :style="{ left: rule.active ? '22px' : '2px' }" />
               </button>
             </div>
-            <div v-if="rule.type !== 'OUT_OF_STOCK' && rule.type !== 'EXPIRED'" class="alerts-rule-threshold">
+            <div v-if="rule.hasThreshold" class="alerts-rule-threshold">
               <span class="alerts-rule-threshold-label">{{ t('alerts.rule-threshold-label') }}:</span>
-              <template v-if="editingRuleId === rule.id">
+              <template v-if="editingRuleType === rule.type">
                 <input
                     v-model="editingThreshold"
                     type="number"
                     class="alerts-rule-threshold-input"
                     :style="{ borderColor: getTypeConfig(rule.type).color }"
-                    @keydown.enter="saveRuleThreshold(rule.id)"
-                    @keydown.escape="editingRuleId = null"
+                    @keydown.enter="saveRuleThreshold(rule.type)"
+                    @keydown.escape="editingRuleType = null"
                 />
                 <span class="alerts-rule-threshold-unit">{{ t(rule.unitKey) }}</span>
-                <button class="alerts-rule-threshold-save" @click="saveRuleThreshold(rule.id)">{{ t('alerts.rule-save') }}</button>
-                <button class="alerts-rule-threshold-cancel" @click="editingRuleId = null">{{ t('alerts.rule-cancel') }}</button>
+                <button class="alerts-rule-threshold-save" @click="saveRuleThreshold(rule.type)">{{ t('alerts.rule-save') }}</button>
+                <button class="alerts-rule-threshold-cancel" @click="editingRuleType = null">{{ t('alerts.rule-cancel') }}</button>
               </template>
               <template v-else>
                                 <span class="alerts-rule-threshold-value" :style="{ color: getTypeConfig(rule.type).color }">
@@ -464,11 +503,18 @@ function formatDateTime(isoDate) {
                 {{ t(getTypeConfig(selectedAlert.type).labelKey) }}
               </p>
               <p class="alerts-modal-product-name">{{ selectedAlert.productName || `#${selectedAlert.productId}` }}</p>
+              <p v-if="resolveWarehouseName(selectedAlert)" class="alerts-modal-detail-text" style="font-weight: 600;">
+                <i class="pi pi-building" style="font-size: 0.75rem; margin-right: 0.3rem;" />{{ resolveWarehouseName(selectedAlert) }}
+              </p>
               <p class="alerts-modal-detail-text">{{ selectedAlert.message }}</p>
             </div>
           </div>
           <!-- Info grid -->
           <div class="alerts-modal-info-grid">
+            <div v-if="resolveWarehouseName(selectedAlert)" class="alerts-modal-info-cell">
+              <p class="alerts-modal-info-label">{{ t('alerts.field-warehouse') }}</p>
+              <p class="alerts-modal-info-value">{{ resolveWarehouseName(selectedAlert) }}</p>
+            </div>
             <div class="alerts-modal-info-cell">
               <p class="alerts-modal-info-label">{{ t('alerts.field-severity') }}</p>
               <span class="alerts-severity-badge" :style="{ backgroundColor: getSeverityConfig(selectedAlert.severity).background, color: getSeverityConfig(selectedAlert.severity).color }">

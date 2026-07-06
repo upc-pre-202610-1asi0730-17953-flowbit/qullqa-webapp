@@ -6,7 +6,8 @@
  * real products/inventory/sales did, so every KPI reading it (total
  * products, inventory value, total sales, stock health) was stale by
  * construction. Alerts are likewise sourced directly from the Alerts
- * bounded context's own store (see alerts.store.js's evaluateLiveAlerts).
+ * bounded context's own store (see alerts.store.js's fetchAlerts), which the
+ * real backend now persists and evaluates entirely server-side.
  *
  * @module useDashboardStore
  */

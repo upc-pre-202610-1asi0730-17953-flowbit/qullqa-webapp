@@ -2,13 +2,24 @@
  * Application service store for the Alerts & Operational Monitoring bounded context.
  *
  * Business rules enforced here:
- * - fetchAlerts loads data scoped to the authenticated business.
+ * - fetchAlerts loads both active (ACTIVE/ACKNOWLEDGED/SENT) and resolved
+ *   alerts for the authenticated business — the real backend persists and
+ *   evaluates alerts entirely server-side (reactive event handlers +
+ *   AlertExpirationSweepJob), so there is no client-side re-evaluation here
+ *   anymore.
  * - Only ACTIVE alerts may be acknowledged (→ ACKNOWLEDGED).
- * - Only ACTIVE or ACKNOWLEDGED or SENT alerts may be resolved (→ RESOLVED).
+ * - Only non-RESOLVED alerts may be resolved (→ RESOLVED).
  * - OUT_OF_STOCK and EXPIRED alerts always count as critical regardless of severity field.
  * - filterByType sorts EXPIRATION/EXPIRED ascending by date (most urgent first).
  * - filterByType sorts LOW_STOCK/OUT_OF_STOCK descending by severity (HIGH first).
- * - Alert rules are managed in local state (no backend endpoint for rules in mock API).
+ * - LOW_STOCK/OUT_OF_STOCK alerts are scoped per (product, warehouse): a
+ *   product split across warehouses can be low in one and healthy in
+ *   another, so alert.warehouseId says which one — see
+ *   active-alerts-dashboard.vue's warehouse-name resolution.
+ * - Alert rules are real, per-business, backend-configured resources
+ *   (/alert-rules) — only Enabled matters for LOW_STOCK/OUT_OF_STOCK (the
+ *   real threshold is each product's own minimumStock); ThresholdValue is
+ *   only meaningful for EXPIRATION (days before expiry to warn).
  *
  * @module useAlertsStore
  */
@@ -16,8 +27,7 @@ import { defineStore }   from 'pinia';
 import { computed, ref } from 'vue';
 import { AlertsApi }     from '../infrastructure/alerts.api.js';
 import { AlertAssembler } from '../infrastructure/alert.assembler.js';
-import { Alert, AlertStatus, AlertType, AlertSeverity } from '../domain/model/alert.entity.js';
-import useProductStore   from '../../product/application/product.store.js';
+import { AlertStatus, AlertType, AlertSeverity } from '../domain/model/alert.entity.js';
 
 const alertsApi = new AlertsApi();
 
@@ -44,50 +54,51 @@ const useAlertsStore = defineStore('alerts', () => {
     const errors = ref([]);
 
     /**
-     * Alert rules managed in local state.
-     * These are derived from inventory policy and evaluated client-side.
-     * Each rule has: id, nameKey (i18n), type, active, threshold, unit (i18n key).
+     * Alert rules, one per real backend AlertType — LOW_STOCK and
+     * OUT_OF_STOCK only ever expose `active` (their threshold is each
+     * product's own minimumStock, not configurable here); EXPIRATION also
+     * exposes an editable `threshold` (days), which governs both the
+     * "expiring soon" and the "already expired" alerts server-side (there is
+     * no separate EXPIRED rule on the backend).
+     *
+     * Populated from the real /alert-rules endpoint on fetchAlertRules — a
+     * type with no saved row yet keeps this default (Enabled=true
+     * server-side, matching the backend's own `?? true` fallback).
      *
      * @type {import('vue').Ref<Object[]>}
      */
     const alertRules = ref([
         {
-            id:          'r1',
-            nameKey:     'alerts.rule-low-stock-name',
-            type:        AlertType.LOW_STOCK,
-            active:      true,
-            threshold:   10,
-            unitKey:     'alerts.rule-unit-units',
-            descKey:     'alerts.rule-low-stock-desc'
+            type:         AlertType.LOW_STOCK,
+            nameKey:      'alerts.rule-low-stock-name',
+            descKey:      'alerts.rule-low-stock-desc',
+            unitKey:      'alerts.rule-unit-units',
+            active:       true,
+            threshold:    0,
+            hasThreshold: false
         },
         {
-            id:          'r2',
-            nameKey:     'alerts.rule-out-of-stock-name',
-            type:        AlertType.OUT_OF_STOCK,
-            active:      true,
-            threshold:   0,
-            unitKey:     'alerts.rule-unit-units',
-            descKey:     'alerts.rule-out-of-stock-desc'
+            type:         AlertType.OUT_OF_STOCK,
+            nameKey:      'alerts.rule-out-of-stock-name',
+            descKey:      'alerts.rule-out-of-stock-desc',
+            unitKey:      'alerts.rule-unit-units',
+            active:       true,
+            threshold:    0,
+            hasThreshold: false
         },
         {
-            id:          'r3',
-            nameKey:     'alerts.rule-expiration-name',
-            type:        AlertType.EXPIRATION,
-            active:      true,
-            threshold:   7,
-            unitKey:     'alerts.rule-unit-days',
-            descKey:     'alerts.rule-expiration-desc'
-        },
-        {
-            id:          'r4',
-            nameKey:     'alerts.rule-expired-name',
-            type:        AlertType.EXPIRED,
-            active:      true,
-            threshold:   0,
-            unitKey:     'alerts.rule-unit-days',
-            descKey:     'alerts.rule-expired-desc'
+            type:         AlertType.EXPIRATION,
+            nameKey:      'alerts.rule-expiration-name',
+            descKey:      'alerts.rule-expiration-desc',
+            unitKey:      'alerts.rule-unit-days',
+            active:       true,
+            threshold:    7,
+            hasThreshold: true
         }
     ]);
+
+    /** @type {import('vue').Ref<boolean>} */
+    const alertRulesLoaded = ref(false);
 
     // ---- Computed ----
 
@@ -172,15 +183,18 @@ const useAlertsStore = defineStore('alerts', () => {
     // ----- Commands -----
 
     /**
-     * Loads all alerts for the given business.
-     * @param {number|string} businessId
+     * Loads both active (ACTIVE/ACKNOWLEDGED/SENT) and resolved alerts for
+     * the authenticated business — scoping happens server-side via the JWT,
+     * so no businessId parameter is needed anymore.
      * @returns {Promise<void>}
      */
-    function fetchAlerts(businessId) {
+    function fetchAlerts() {
         alertsLoaded.value = false;
-        return alertsApi.getAlerts(businessId)
-            .then(response => {
-                alerts.value      = AlertAssembler.toEntitiesFromResponse(response);
+        return Promise.all([alertsApi.getActiveAlerts(), alertsApi.getAlertHistory()])
+            .then(([activeResponse, historyResponse]) => {
+                const active  = AlertAssembler.toEntitiesFromResponse(activeResponse);
+                const history = AlertAssembler.toEntitiesFromResponse(historyResponse);
+                alerts.value       = [...active, ...history];
                 alertsLoaded.value = true;
             })
             .catch(error => {
@@ -190,144 +204,27 @@ const useAlertsStore = defineStore('alerts', () => {
     }
 
     /**
-     * Numeric weight used to rank days-to-expiry into the same severity bands
-     * documented on the Alert entity (HIGH ≤3d, MEDIUM ≤14d, LOW ≤30d).
-     * @param {number} daysToExpiry
-     * @returns {string}
-     */
-    function expirationSeverity(daysToExpiry) {
-        if (daysToExpiry <= 3)  return AlertSeverity.HIGH;
-        if (daysToExpiry <= 14) return AlertSeverity.MEDIUM;
-        return AlertSeverity.LOW;
-    }
-
-    /**
-     * Re-evaluates active alerts LIVE from real, current inventory/batch data —
-     * using the exact same functions Product & Inventory Management uses for its
-     * own "Por vencer"/"Vencido"/"Stock bajo" badges (isProductExpiringSoon,
-     * isProductExpired, InventoryItem.isLowStock) — instead of trusting static
-     * pre-seeded alert rows, which silently drift out of sync with reality as
-     * real time passes (see the 2026-07 alerts/inventory mismatch incident).
-     *
-     * For each currently-true condition (out of stock / low stock / expiring
-     * soon / already expired), reuses an existing non-RESOLVED persisted alert
-     * for that exact product+type if one exists (so acknowledge/resolve state
-     * and the original "Generada" date are preserved); otherwise synthesizes a
-     * new in-memory alert with id: null, which only gets persisted to the mock
-     * the first time the user acknowledges or resolves it (see acknowledgeAlert
-     * / resolveAlert below). RESOLVED alerts are pure history and pass through
-     * untouched — they intentionally are NOT re-evaluated against today's data.
-     *
-     * Business rules for what counts as "critical enough":
-     * - OUT_OF_STOCK / EXPIRED: always HIGH severity.
-     * - LOW_STOCK: MEDIUM if stock ≤ 50% of the minimum, otherwise LOW.
-     * - EXPIRATION (0–7 days out, not yet expired): HIGH if ≤3 days, else MEDIUM.
-     *
-     * @param {number|string} businessId
+     * Loads the configured alert rules for the authenticated business and
+     * merges them into the default rule list (a type with no saved row yet
+     * keeps its default: Enabled=true, matching the backend's own fallback).
      * @returns {Promise<void>}
      */
-    function evaluateLiveAlerts(businessId) {
-        const productStore = useProductStore();
-        const numericBusinessId = parseInt(businessId);
-
-        alertsLoaded.value = false;
-        const loaders = [];
-        if (!productStore.productsLoaded)  loaders.push(productStore.fetchProducts(numericBusinessId));
-        if (!productStore.inventoryLoaded) loaders.push(productStore.fetchInventory(numericBusinessId));
-        if (!productStore.batchesLoaded)   loaders.push(productStore.fetchBatches());
-
-        return Promise.all(loaders).then(() => {
-            const persisted = alerts.value;
-            const liveAlerts = [];
-
-            productStore.products
-                .filter(product => product.businessId === numericBusinessId && product.isActive)
-                .forEach(product => {
-                    const inventoryItem = productStore.getInventoryByProduct(product.id);
-                    const daysToExpiry  = productStore.getDaysToNearestExpiry(product.id);
-                    const conditions    = [];
-
-                    if (inventoryItem && inventoryItem.currentStock === 0) {
-                        conditions.push({
-                            type: AlertType.OUT_OF_STOCK, severity: AlertSeverity.HIGH,
-                            message: `${product.name} sin stock — 0 unidades disponibles`,
-                            currentStock: 0, minStock: inventoryItem.minimumStock, daysToExpiry: null
-                        });
-                    } else if (inventoryItem && inventoryItem.isLowStock) {
-                        const severity = inventoryItem.currentStock <= inventoryItem.minimumStock * 0.5
-                            ? AlertSeverity.MEDIUM : AlertSeverity.LOW;
-                        conditions.push({
-                            type: AlertType.LOW_STOCK, severity,
-                            message: `Stock de ${product.name} por debajo del mínimo (${inventoryItem.currentStock} unidades)`,
-                            currentStock: inventoryItem.currentStock, minStock: inventoryItem.minimumStock, daysToExpiry: null
-                        });
-                    }
-
-                    if (daysToExpiry !== null && daysToExpiry < 0) {
-                        conditions.push({
-                            type: AlertType.EXPIRED, severity: AlertSeverity.HIGH,
-                            message: `Lote de ${product.name} vencido hace ${Math.abs(daysToExpiry)} día(s)`,
-                            currentStock: null, minStock: null, daysToExpiry
-                        });
-                    } else if (daysToExpiry !== null && daysToExpiry <= 7) {
-                        conditions.push({
-                            type: AlertType.EXPIRATION, severity: expirationSeverity(daysToExpiry),
-                            message: `Lote de ${product.name} vence en ${daysToExpiry} día(s)`,
-                            currentStock: null, minStock: null, daysToExpiry
-                        });
-                    }
-
-                    conditions.forEach(condition => {
-                        const existing = persisted.find(alert =>
-                            alert.productId === product.id && alert.type === condition.type
-                            && alert.status !== AlertStatus.RESOLVED
-                        );
-                        liveAlerts.push(existing ?? new Alert({
-                            id:          null,
-                            businessId:  numericBusinessId,
-                            productId:   product.id,
-                            productName: product.name,
-                            batchId:     null,
-                            status:      AlertStatus.ACTIVE,
-                            date:        new Date().toISOString(),
-                            notified:    false,
-                            notifiedAt:  '',
-                            resolvedAt:  '',
-                            ...condition
-                        }));
-                    });
+    function fetchAlertRules() {
+        return alertsApi.getAlertRules()
+            .then(response => {
+                const rawRules = response.data instanceof Array ? response.data : [];
+                alertRules.value = alertRules.value.map(defaultRule => {
+                    const saved = rawRules.find(raw => raw.alertType === defaultRule.type);
+                    return saved
+                        ? { ...defaultRule, active: saved.enabled, threshold: saved.thresholdValue }
+                        : defaultRule;
                 });
-
-            const resolvedHistory = persisted.filter(alert => alert.status === AlertStatus.RESOLVED);
-            alerts.value = [...liveAlerts, ...resolvedHistory];
-            alertsLoaded.value = true;
-        });
-    }
-
-    /**
-     * Persists (or updates) an alert after a status change, replacing whichever
-     * in-memory entry corresponds to it. Live-evaluated alerts (id: null, see
-     * evaluateLiveAlerts) don't exist in the mock yet, so they're POSTed as a
-     * new record on their first action instead of PUT — this is what gives a
-     * live-detected condition a real, permanent history from that point on.
-     * @param {import('../domain/model/alert.entity.js').Alert} alert - Original alert (before the status change).
-     * @param {Object} resource - Full resource with the new status applied.
-     * @returns {Promise<import('../domain/model/alert.entity.js').Alert>}
-     */
-    function persistAlertChange(alert, resource) {
-        const request = alert.id === null
-            ? alertsApi.createAlert({ ...resource, id: undefined }) // let json-server assign a real id
-            : alertsApi.acknowledgeAlert(alert.id, resource); // update is a plain PUT either way
-
-        return request.then(response => {
-            const updatedAlert = AlertAssembler.toEntityFromResource(response.data);
-            const index = alert.id === null
-                ? alerts.value.findIndex(existing => existing.id === null
-                    && existing.productId === alert.productId && existing.type === alert.type)
-                : alerts.value.findIndex(existing => existing.id === alert.id);
-            if (index !== -1) alerts.value[index] = updatedAlert;
-            return updatedAlert;
-        });
+                alertRulesLoaded.value = true;
+            })
+            .catch(error => {
+                errors.value.push(error);
+                alertRulesLoaded.value = true;
+            });
     }
 
     /**
@@ -339,14 +236,13 @@ const useAlertsStore = defineStore('alerts', () => {
     function acknowledgeAlert(alert) {
         if (alert.status !== AlertStatus.ACTIVE) return Promise.resolve(alert);
 
-        const resource = {
-            ...alert,
-            status:     AlertStatus.ACKNOWLEDGED,
-            notified:   true,
-            notifiedAt: new Date().toISOString()
-        };
-
-        return persistAlertChange(alert, resource)
+        return alertsApi.acknowledgeAlert(alert.id)
+            .then(response => {
+                const updatedAlert = AlertAssembler.toEntityFromResource(response.data);
+                const index = alerts.value.findIndex(existing => existing.id === updatedAlert.id);
+                if (index !== -1) alerts.value[index] = updatedAlert;
+                return updatedAlert;
+            })
             .catch(error => {
                 errors.value.push(error);
                 throw error;
@@ -355,20 +251,20 @@ const useAlertsStore = defineStore('alerts', () => {
 
     /**
      * Resolves an alert — transitions ACTIVE/ACKNOWLEDGED/SENT → RESOLVED.
-     * Business rule: RESOLVED alerts are immutable.
+     * Business rule: RESOLVED alerts are immutable (409 from the backend).
      * @param {import('../domain/model/alert.entity.js').Alert} alert
      * @returns {Promise<import('../domain/model/alert.entity.js').Alert>}
      */
     function resolveAlert(alert) {
         if (alert.status === AlertStatus.RESOLVED) return Promise.resolve(alert);
 
-        const resource = {
-            ...alert,
-            status:     AlertStatus.RESOLVED,
-            resolvedAt: new Date().toISOString()
-        };
-
-        return persistAlertChange(alert, resource)
+        return alertsApi.resolveAlert(alert.id)
+            .then(response => {
+                const updatedAlert = AlertAssembler.toEntityFromResource(response.data);
+                const index = alerts.value.findIndex(existing => existing.id === updatedAlert.id);
+                if (index !== -1) alerts.value[index] = updatedAlert;
+                return updatedAlert;
+            })
             .catch(error => {
                 errors.value.push(error);
                 throw error;
@@ -376,24 +272,57 @@ const useAlertsStore = defineStore('alerts', () => {
     }
 
     /**
-     * Toggles a rule's active state on/off.
-     * @param {string} ruleId
+     * Toggles a rule's enabled state on/off, persisting it via the real
+     * alert-rules endpoint (upsert — creates the row the first time a type
+     * is ever touched).
+     * @param {string} type - One of AlertType values.
+     * @returns {Promise<void>}
      */
-    function toggleAlertRule(ruleId) {
-        const rule = alertRules.value.find(existingRule => existingRule.id === ruleId);
-        if (rule) rule.active = !rule.active;
+    function toggleAlertRule(type) {
+        const rule = alertRules.value.find(existingRule => existingRule.type === type);
+        if (!rule) return Promise.resolve();
+
+        return alertsApi.createOrUpdateAlertRule({
+            alertType:      type,
+            thresholdValue: rule.threshold,
+            enabled:        !rule.active
+        })
+            .then(response => {
+                rule.active    = response.data.enabled;
+                rule.threshold = response.data.thresholdValue;
+            })
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
     }
 
     /**
-     * Updates the threshold of a rule.
+     * Updates the threshold (days) of the EXPIRATION rule — the only rule
+     * type where a threshold is meaningful server-side.
      * Business rule: threshold must be ≥ 0.
-     * @param {string} ruleId
+     * @param {string} type - One of AlertType values.
      * @param {number} newThreshold
+     * @returns {Promise<void>}
      */
-    function updateAlertRuleThreshold(ruleId, newThreshold) {
-        if (newThreshold < 0) return;
-        const rule = alertRules.value.find(existingRule => existingRule.id === ruleId);
-        if (rule) rule.threshold = newThreshold;
+    function updateAlertRuleThreshold(type, newThreshold) {
+        if (newThreshold < 0) return Promise.resolve();
+        const rule = alertRules.value.find(existingRule => existingRule.type === type);
+        if (!rule) return Promise.resolve();
+
+        return alertsApi.createOrUpdateAlertRule({
+            alertType:      type,
+            thresholdValue: newThreshold,
+            enabled:        rule.active
+        })
+            .then(response => {
+                rule.threshold = response.data.thresholdValue;
+                rule.active    = response.data.enabled;
+            })
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
     }
 
     return {
@@ -401,6 +330,7 @@ const useAlertsStore = defineStore('alerts', () => {
         alertsLoaded,
         errors,
         alertRules,
+        alertRulesLoaded,
         alertsCount,
         activeAlertsCount,
         criticalActiveCount,
@@ -410,7 +340,7 @@ const useAlertsStore = defineStore('alerts', () => {
         filterByType,
         filterByStatus,
         fetchAlerts,
-        evaluateLiveAlerts,
+        fetchAlertRules,
         acknowledgeAlert,
         resolveAlert,
         toggleAlertRule,
