@@ -200,9 +200,10 @@ async function handleCancelSale(sale) {
   try {
     await Promise.all(result.restockedDetails.map(detail =>
         productStore.registerStockIntake({
-          productId:  detail.productId,
-          businessId: businessId,
-          quantity:   detail.quantity
+          productId:   detail.productId,
+          businessId:  businessId,
+          quantity:    detail.quantity,
+          warehouseId: productStore.getInventoryByProduct(detail.productId)?.warehouseId
         })
     ));
     toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('sales.toast-cancel-success'), life: 3500 });
