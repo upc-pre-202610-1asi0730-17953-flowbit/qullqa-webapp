@@ -21,6 +21,15 @@ const deliveryStore = useDeliveryStore();
 const savingNewOrder      = ref(false);
 const updatingOrderStatus = ref(false);
 
+/**
+ * Active warehouses for the current business — used as a fallback when
+ * receiving an order for a product that has no InventoryItem yet (e.g. a
+ * product created with 0 initial stock, so this purchase order is its
+ * first-ever intake).
+ * @type {import('vue').Ref<Array>}
+ */
+const warehouses = ref([]);
+
 const {
   purchaseOrders,
   purchaseOrdersLoaded,
@@ -101,6 +110,9 @@ onMounted(() => {
     if (!deliveryStore.deliveriesLoaded) {
       deliveryStore.fetchDeliveries(businessId);
     }
+    productStore.fetchWarehousesForBusiness(businessId).then(list => {
+      warehouses.value = list.filter(warehouse => warehouse.status === 'ACTIVE');
+    });
   }
 });
 
@@ -281,11 +293,12 @@ function receiveOrder() {
   updatePurchaseOrderStatus(order.id, PurchaseOrderStatus.RECEIVED)
       .then(() => Promise.all(order.details.map(detail =>
           productStore.registerStockIntake({
-            productId:  detail.productId,
-            businessId: businessId,
-            quantity:   detail.quantity,
-            supplier:   order.supplierName,
-            note:       `${t('suppliers.order-movement-note-prefix')} ${order.id}`
+            productId:   detail.productId,
+            businessId:  businessId,
+            quantity:    detail.quantity,
+            supplier:    order.supplierName,
+            note:        `${t('suppliers.order-movement-note-prefix')} ${order.id}`,
+            warehouseId: productStore.getInventoryByProduct(detail.productId)?.warehouseId ?? warehouses.value[0]?.id
           })
       )))
       .then(() => {
