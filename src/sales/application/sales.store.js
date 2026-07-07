@@ -8,12 +8,11 @@
  *     2. A valid PaymentMethod is provided.
  *     3. No item quantity exceeds the available stock (validated in the POS view).
  * - A sale can only be cancelled when its status is OPEN or PAID.
- * - On confirmSale: the Sale is first persisted (POST), then each SaleDetail is
- *   persisted individually (POST), then the Sale status is updated to PAID (PUT).
+ * - On confirmSale: the sale and all of its lines are persisted atomically in
+ *   a single POST /sales (see confirmSale) — the backend validates stock,
+ *   decrements it, and returns the sale already PAID with lines embedded.
  * - totalAmount stored on the sale resource equals the sum of all line totals
  *   (pre-tax subtotal); IGV and grandTotal are derived in the domain entity.
- * - Stock decrement on sale confirmation is handled by the ProductStore and
- *   should be called from the POS view after this store confirms the sale.
  * - currentSale holds the in-progress POS session (null when no active session).
  *
  * @module useSalesStore
@@ -66,7 +65,7 @@ const useSalesStore = defineStore('sales', () => {
      */
     const totalRevenue = computed(() => {
         const paidSales = sales.value.filter(sale => sale.status === SaleStatus.PAID);
-        const sum = paidSales.reduce((accumulator, sale) => accumulator + (sale.totalAmount || 0), 0);
+        const sum = paidSales.reduce((accumulator, sale) => accumulator + sale.subtotal, 0);
         return Math.round(sum * 100) / 100;
     });
 
@@ -112,16 +111,23 @@ const useSalesStore = defineStore('sales', () => {
 
     /**
      * Loads all sales for the given business and updates local state.
+     *
+     * The real backend already embeds each sale's line items in the /sales
+     * response (GetAllSalesByBusinessIdQuery eager-loads SaleDetails), so
+     * this no longer needs the mock-era one-fetch-per-sale hydration step.
+     *
      * @param {number|string} businessId - Business identifier from the IAM store.
      * @returns {void}
      */
     function fetchSales(businessId) {
-        salesApi.getSales(businessId).then(response => {
-            sales.value   = SaleAssembler.toEntitiesFromResponse(response);
-            salesLoaded.value = true;
-        }).catch(error => {
-            errors.value.push(error);
-        });
+        salesApi.getSales(businessId)
+            .then(response => {
+                sales.value        = SaleAssembler.toEntitiesFromResponse(response);
+                salesLoaded.value = true;
+            })
+            .catch(error => {
+                errors.value.push(error);
+            });
     }
 
     /**
@@ -253,80 +259,54 @@ const useSalesStore = defineStore('sales', () => {
     /**
      * Confirms and persists the current POS sale.
      *
-     * Workflow (sequential):
-     * 1. Validate: cart is non-empty and paymentMethod is valid.
-     * 2. POST /sales with status OPEN and subtotal.
-     * 3. POST /saleDetails for each line item, referencing the new sale id.
-     * 4. PUT /sales/:id to update status to PAID and set paymentMethod.
-     * 5. Append the final Sale entity to local state.
+     * The real backend creates a sale atomically in one call — validates
+     * stock per line, persists the sale with its lines embedded, and
+     * decrements inventory, "todo o nada" (CreateSaleCommand). There is no
+     * OPEN status on the backend (see SaleStatus.cs): a sale is PAID the
+     * moment it's created. This replaces the mock-era 3-request sequence
+     * (POST sale header as OPEN, POST each line separately, PATCH to PAID)
+     * that the real backend's non-nullable PaymentMethod/Lines rejected
+     * with 400 on the very first request.
      *
      * @param {string} paymentMethod - One of the PaymentMethod enum values.
      * @param {number|null} customerId - Optional customer id.
      * @param {string} description - Optional sale description/note.
-     * @returns {Promise<{ success: boolean, errorKey: string|null }>}
+     * @returns {Promise<{ success: boolean, errorKey: string|null, sale: Sale|null }>}
      */
     async function confirmSale({ paymentMethod, customerId = null, description = '' }) {
         if (!currentSale.value || !currentSale.value.isOpen) {
-            return { success: false, errorKey: 'pos.error-no-active-sale' };
+            return { success: false, errorKey: 'pos.error-no-active-sale', sale: null };
         }
         if (currentSale.value.details.length === 0) {
-            return { success: false, errorKey: 'pos.error-empty-cart' };
+            return { success: false, errorKey: 'pos.error-empty-cart', sale: null };
         }
         if (!paymentMethod || !Object.values(PaymentMethod).includes(paymentMethod)) {
-            return { success: false, errorKey: 'pos.error-no-payment-method' };
+            return { success: false, errorKey: 'pos.error-no-payment-method', sale: null };
         }
 
-        const subtotal = currentSale.value.subtotal;
-
         try {
-            // Step 1: Persist the sale header with status OPEN
             const saleResource = {
-                businessId:    currentSale.value.businessId,
                 customerId:    customerId,
-                status:        SaleStatus.OPEN,
-                totalAmount:   subtotal,
-                paymentMethod: null,
-                date:          currentSale.value.date,
+                paymentMethod: paymentMethod,
+                currency:      'PEN',
                 description:   description,
-                currency:      'PEN'
-            };
-            const saleResponse   = await salesApi.createSale(saleResource);
-            const persistedSale  = SaleAssembler.toEntityFromResource(saleResponse.data);
-
-            // Step 2: Persist each line item referencing the new sale id
-            const detailPromises = currentSale.value.details.map(detail => {
-                const detailResource = {
-                    saleId:    persistedSale.id,
+                lines: currentSale.value.details.map(detail => ({
                     productId: detail.productId,
                     quantity:  detail.quantity,
                     unitPrice: detail.unitPrice,
                     discount:  detail.discount
-                };
-                return salesApi.createSaleDetail(detailResource);
-            });
-            const detailResponses = await Promise.all(detailPromises);
-            const persistedDetails = detailResponses.map(response =>
-                SaleDetailAssembler.toEntityFromResource(response.data)
-            );
-
-            // Step 3: Mark sale as PAID with the chosen payment method
-            const updatedResource = {
-                ...saleResource,
-                status:        SaleStatus.PAID,
-                paymentMethod: paymentMethod
+                }))
             };
-            const updatedResponse = await salesApi.updateSale(persistedSale.id, updatedResource);
-            const finalSale       = SaleAssembler.toEntityFromResource(updatedResponse.data);
-            finalSale.details     = persistedDetails;
+            const saleResponse = await salesApi.createSale(saleResource);
+            const finalSale    = SaleAssembler.toEntityFromResource(saleResponse.data);
 
-            // Step 4: Update local state
             sales.value.push(finalSale);
             currentSale.value = null;
 
-            return { success: true, errorKey: null };
+            return { success: true, errorKey: null, sale: finalSale };
         } catch (error) {
             errors.value.push(error);
-            return { success: false, errorKey: 'pos.error-confirm-failed' };
+            return { success: false, errorKey: 'pos.error-confirm-failed', sale: null };
         }
     }
 
@@ -341,15 +321,40 @@ const useSalesStore = defineStore('sales', () => {
     }
 
     /**
+     * Fetches the persisted SaleDetail lines for a sale.
+     * Needed because sales loaded via fetchSales carry an empty `details`
+     * array (the mock API does not embed line items in the sale resource).
+     *
+     * @param {number|string} saleId
+     * @returns {Promise<SaleDetail[]>}
+     */
+    function fetchSaleDetailsForSale(saleId) {
+        return salesApi.getSaleDetailsBySale(saleId)
+            .then(response => SaleDetailAssembler.toEntitiesFromResponse(response))
+            .catch(error => {
+                errors.value.push(error);
+                return [];
+            });
+    }
+
+    /**
      * Cancels a previously persisted sale by updating its status to CANCELLED.
      *
      * Business rule: only OPEN or PAID sales can be cancelled.
      *
+     * Stock is NOT reverted here: reverting inventory belongs to the Product &
+     * Inventory Management bounded context, so this returns the line items
+     * that were sold and lets the caller (presentation layer) restock them
+     * via the ProductStore, mirroring how other cross-context orchestration
+     * is already done in this codebase (see purchase-order-list.vue).
+     *
      * @param {Sale} sale - The Sale entity to cancel.
-     * @returns {void}
+     * @returns {Promise<{ success: boolean, restockedDetails: SaleDetail[] }>}
      */
-    function cancelSale(sale) {
-        if (sale.status === SaleStatus.CANCELLED) return;
+    async function cancelSale(sale) {
+        if (sale.status === SaleStatus.CANCELLED) {
+            return { success: false, restockedDetails: [] };
+        }
 
         const updatedResource = {
             id:            sale.id,
@@ -363,15 +368,23 @@ const useSalesStore = defineStore('sales', () => {
             currency:      sale.currency
         };
 
-        salesApi.updateSale(sale.id, updatedResource).then(response => {
+        try {
+            const response = await salesApi.updateSale(sale.id, updatedResource);
             const cancelledSale = SaleAssembler.toEntityFromResource(response.data);
             const index = sales.value.findIndex(existingSale => existingSale.id === cancelledSale.id);
             if (index !== -1) {
                 sales.value[index] = cancelledSale;
             }
-        }).catch(error => {
+
+            const restockedDetails = sale.details.length > 0
+                ? sale.details
+                : await fetchSaleDetailsForSale(sale.id);
+
+            return { success: true, restockedDetails };
+        } catch (error) {
             errors.value.push(error);
-        });
+            return { success: false, restockedDetails: [] };
+        }
     }
 
     // ─── Customer CRUD ────────────────────────────────────────────────────────
@@ -379,47 +392,52 @@ const useSalesStore = defineStore('sales', () => {
     /**
      * Creates a new customer and appends it to local state.
      * @param {import('../domain/model/customer.entity.js').Customer} customer - Customer entity to persist.
-     * @returns {void}
+     * @returns {Promise<import('../domain/model/customer.entity.js').Customer>}
      */
     function addCustomer(customer) {
-        salesApi.createCustomer(customer).then(response => {
+        return salesApi.createCustomer(customer).then(response => {
             const newCustomer = CustomerAssembler.toEntityFromResource(response.data);
             customers.value.push(newCustomer);
+            return newCustomer;
         }).catch(error => {
             errors.value.push(error);
+            throw error;
         });
     }
 
     /**
      * Updates an existing customer and synchronises local state.
      * @param {import('../domain/model/customer.entity.js').Customer} customer - Customer entity with updated data.
-     * @returns {void}
+     * @returns {Promise<import('../domain/model/customer.entity.js').Customer>}
      */
     function updateCustomer(customer) {
-        salesApi.updateCustomer(customer.id, customer).then(response => {
+        return salesApi.updateCustomer(customer.id, customer).then(response => {
             const updatedCustomer = CustomerAssembler.toEntityFromResource(response.data);
             const index = customers.value.findIndex(existingCustomer => existingCustomer.id === updatedCustomer.id);
             if (index !== -1) {
                 customers.value[index] = updatedCustomer;
             }
+            return updatedCustomer;
         }).catch(error => {
             errors.value.push(error);
+            throw error;
         });
     }
 
     /**
      * Deletes a customer and removes it from local state.
      * @param {number|string} customerId - Identifier of the customer to delete.
-     * @returns {void}
+     * @returns {Promise<void>}
      */
     function deleteCustomer(customerId) {
-        salesApi.deleteCustomer(customerId).then(() => {
+        return salesApi.deleteCustomer(customerId).then(() => {
             const index = customers.value.findIndex(customer => customer.id === parseInt(customerId));
             if (index !== -1) {
                 customers.value.splice(index, 1);
             }
         }).catch(error => {
             errors.value.push(error);
+            throw error;
         });
     }
 
@@ -442,6 +460,7 @@ const useSalesStore = defineStore('sales', () => {
         // Fetch
         fetchSales,
         fetchCustomers,
+        fetchSaleDetailsForSale,
         // POS session
         startNewSale,
         addDetailToCurrentSale,

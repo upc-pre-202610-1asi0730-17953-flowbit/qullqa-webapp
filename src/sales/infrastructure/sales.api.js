@@ -58,9 +58,11 @@ export class SalesApi extends BaseApi {
     }
 
     /**
-     * Creates a new sale resource.
-     * The sale is created with status OPEN; details are persisted separately.
-     * @param {Object} resource - Sale resource payload.
+     * Creates a sale atomically with all of its lines embedded.
+     * The backend validates stock, decrements it, and persists the sale
+     * already PAID in one request (CreateSaleCommand) — there is no
+     * standalone endpoint to persist a line item separately.
+     * @param {Object} resource - { customerId, paymentMethod, currency, description, lines }.
      * @returns {Promise<import('axios').AxiosResponse>}
      */
     createSale(resource) {
@@ -68,8 +70,7 @@ export class SalesApi extends BaseApi {
     }
 
     /**
-     * Updates an existing sale resource by its identifier.
-     * Used to transition status (e.g., OPEN → PAID, OPEN → CANCELLED).
+     * Updates an existing sale's status (e.g., PAID → CANCELLED).
      * @param {number|string} id - Sale identifier.
      * @param {Object} resource - Updated sale resource payload.
      * @returns {Promise<import('axios').AxiosResponse>}
@@ -81,31 +82,14 @@ export class SalesApi extends BaseApi {
     // ─── Sale Details ─────────────────────────────────────────────────────────
 
     /**
-     * Fetches all sale details for a specific sale.
+     * Fetches the lines of a sale. Read-only: a sale's lines are always
+     * created atomically with the sale itself (see createSale) — the
+     * backend has no endpoint to create or delete a line independently.
      * @param {number|string} saleId - Sale identifier.
      * @returns {Promise<import('axios').AxiosResponse>}
      */
     getSaleDetailsBySale(saleId) {
         return this.#saleDetailsEndpoint.getAllByParam('saleId', saleId);
-    }
-
-    /**
-     * Creates a new sale detail resource (one line item).
-     * @param {Object} resource - SaleDetail resource payload.
-     * @returns {Promise<import('axios').AxiosResponse>}
-     */
-    createSaleDetail(resource) {
-        return this.#saleDetailsEndpoint.create(resource);
-    }
-
-    /**
-     * Deletes a sale detail resource by its identifier.
-     * Used when removing a line item from an OPEN sale.
-     * @param {number|string} id - SaleDetail identifier.
-     * @returns {Promise<import('axios').AxiosResponse>}
-     */
-    deleteSaleDetail(id) {
-        return this.#saleDetailsEndpoint.delete(id);
     }
 
     // ─── Customers ────────────────────────────────────────────────────────────

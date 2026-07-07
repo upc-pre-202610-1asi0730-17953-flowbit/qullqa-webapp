@@ -56,8 +56,13 @@ export class Delivery {
      * @param {string}         [params.currentLabel='']       - Human-readable current location name.
      * @param {number}         [params.currentLatitude=0]     - Current GPS latitude.
      * @param {number}         [params.currentLongitude=0]    - Current GPS longitude.
-     * @param {string[]}       [params.products=[]]           - List of product descriptions in the shipment.
-     * @param {string}         [params.totalWeight='']        - Total shipment weight description.
+     * @param {{latitude: number, longitude: number}|null} [params.currentLocation=null] -
+     *   The real backend's DeliveryResource nests coordinates under
+     *   `currentLocation` instead of flat fields; used as a fallback when
+     *   currentLatitude/currentLongitude aren't given directly.
+     * @param {Array<{productId: number, quantity: number}>} [params.products=[]] - Structured lines of products in the shipment.
+     * @param {number}         [params.totalWeightValue=0]    - Total shipment weight (numeric).
+     * @param {string}         [params.totalWeightUnit='kg']  - Unit for totalWeightValue ('kg' or 'lb').
      * @param {number|null}    [params.businessId=null]       - Business this delivery belongs to.
      * @param {number|null}    [params.purchaseDetailId=null] - Linked purchase detail identifier.
      * @param {Waypoint[]}     [params.waypoints=[]]          - Ordered route checkpoints.
@@ -78,10 +83,12 @@ export class Delivery {
                     estimatedArrival = '',
                     completedAt      = null,
                     currentLabel     = '',
-                    currentLatitude  = 0,
-                    currentLongitude = 0,
+                    currentLatitude  = null,
+                    currentLongitude = null,
+                    currentLocation  = null,
                     products         = [],
-                    totalWeight      = '',
+                    totalWeightValue = 0,
+                    totalWeightUnit  = 'kg',
                     businessId       = null,
                     purchaseDetailId = null,
                     waypoints        = []
@@ -101,10 +108,11 @@ export class Delivery {
         this.estimatedArrival = estimatedArrival;
         this.completedAt      = completedAt;
         this.currentLabel     = currentLabel;
-        this.currentLatitude  = currentLatitude;
-        this.currentLongitude = currentLongitude;
+        this.currentLatitude  = currentLatitude  ?? currentLocation?.latitude  ?? 0;
+        this.currentLongitude = currentLongitude ?? currentLocation?.longitude ?? 0;
         this.products         = Array.isArray(products) ? [...products] : [];
-        this.totalWeight      = totalWeight;
+        this.totalWeightValue = totalWeightValue;
+        this.totalWeightUnit  = totalWeightUnit;
         this.businessId       = businessId;
         this.purchaseDetailId = purchaseDetailId;
         this.waypoints        = waypoints
@@ -158,6 +166,17 @@ export class Delivery {
     get canComplete() {
         return this.status === DeliveryStatus.IN_TRANSIT
             || this.status === DeliveryStatus.AT_DESTINATION;
+    }
+
+    /**
+     * Returns true when the delivery can still be cancelled.
+     * Business rule: any non-final delivery can be cancelled — mirrors the
+     * guard in deliveryStore.cancelDelivery (only COMPLETED and CANCELLED
+     * are terminal).
+     * @returns {boolean}
+     */
+    get canCancel() {
+        return !this.isCompleted && !this.isCancelled;
     }
 
     // ─── Route progress ───────────────────────────────────────────────────────

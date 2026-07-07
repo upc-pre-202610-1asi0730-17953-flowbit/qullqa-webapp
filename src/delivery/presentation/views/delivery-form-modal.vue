@@ -1,8 +1,20 @@
 <script setup>
-import { reactive, computed } from 'vue';
+import { reactive, computed, onMounted, ref, watch, nextTick } from 'vue';
 import { useI18n }            from 'vue-i18n';
 import useDeliveryStore       from '../../application/delivery.store.js';
 import useIamStore            from '../../../iam/application/iam.store.js';
+import useProductStore        from '../../../product/application/product.store.js';
+import useSupplierStore       from '../../../suppliers/application/supplier.store.js';
+
+const props = defineProps({
+  /**
+   * Preselects the order-linkage dropdowns when the modal is opened from a
+   * Purchase Order's detail line (see purchase-order-list.vue's "Crear envío"
+   * action), so the admin doesn't have to look the order up again here.
+   * @type {{orderId: number, detailId: number}|null}
+   */
+  presetOrderDetail: { type: Object, default: null }
+});
 
 const emit = defineEmits([
   /** Emitted when the modal should close without saving. */
@@ -14,12 +26,92 @@ const emit = defineEmits([
 const { t }         = useI18n();
 const deliveryStore = useDeliveryStore();
 const iamStore      = useIamStore();
+const productStore  = useProductStore();
+const supplierStore = useSupplierStore();
+
+const availableProducts = computed(() =>
+    productStore.products.filter(product => product.isActive)
+);
+
+onMounted(async () => {
+  const businessId = iamStore.currentUser?.businessId ?? null;
+  if (businessId && !supplierStore.purchaseOrdersLoaded) {
+    await supplierStore.fetchPurchaseOrders(businessId);
+  }
+  if (props.presetOrderDetail) {
+    selectedOrderId.value = String(props.presetOrderDetail.orderId);
+    // The selectedOrderId watcher below resets selectedDetailId to '' — wait
+    // for that flush to happen first, so this explicit preset isn't wiped out.
+    await nextTick();
+    selectedDetailId.value = String(props.presetOrderDetail.detailId);
+  }
+});
+
+// ─── Optional purchase-order linkage ────────────────────────────────────────
+
+/**
+ * Purchase orders still awaiting delivery (PENDING or DELAYED) for the
+ * current business — the only ones that make sense to link a new shipment to.
+ * @type {import('vue').ComputedRef<Array>}
+ */
+const linkableOrders = computed(() =>
+    supplierStore.purchaseOrders.filter(order => order.isActionable)
+);
+
+/** @type {import('vue').Ref<string>} '' means no order linked (manual/standalone delivery). */
+const selectedOrderId = ref('');
+
+/** @type {import('vue').Ref<string>} '' means no specific line selected yet. */
+const selectedDetailId = ref('');
+
+/**
+ * Detail lines of the currently selected order, or [] when none is selected.
+ * @type {import('vue').ComputedRef<Array>}
+ */
+const selectedOrderDetails = computed(() => {
+  const order = linkableOrders.value.find(order => order.id === parseInt(selectedOrderId.value));
+  return order ? order.details : [];
+});
+
+watch(selectedOrderId, () => { selectedDetailId.value = ''; });
+
+/**
+ * Resolves a purchase order detail line's product name. Orders created in
+ * the current session already carry a denormalized productName; preexisting
+ * orders loaded from the mock don't, so fall back to the product catalog.
+ * @param {Object} detail - A purchase order detail line.
+ * @returns {string}
+ */
+function resolveDetailProductName(detail) {
+  if (detail.productName) return detail.productName;
+  const product = productStore.getProductById(detail.productId);
+  return product ? product.name : `#${detail.productId}`;
+}
+
+/**
+ * Auto-fills supplier, order reference and the product line from the linked
+ * order + detail line, so the admin doesn't retype data that's already known.
+ * Quantity stays editable afterwards (a shipment can be a partial delivery).
+ */
+watch(selectedDetailId, (newDetailId) => {
+  if (!newDetailId) return;
+  const order  = linkableOrders.value.find(order => order.id === parseInt(selectedOrderId.value));
+  const detail = selectedOrderDetails.value.find(detail => detail.id === parseInt(newDetailId));
+  if (!order || !detail) return;
+
+  formData.supplierName = order.supplierName;
+  formData.orderId       = `OC-${String(order.id).padStart(4, '0')}`;
+  productLines.splice(0, productLines.length, {
+    productId: String(detail.productId),
+    quantity:  detail.quantity
+  });
+});
 
 // ─── Form state ──────────────────────────────────────────────────────────────
 
 /**
  * Reactive form data for the new delivery registration.
- * All fields are strings and default to empty.
+ * All text fields default to empty; weight is numeric + unit.
  */
 const formData = reactive({
   supplierName:     '',
@@ -31,9 +123,32 @@ const formData = reactive({
   vehicle:          '',
   licensePlate:     '',
   estimatedArrival: '',
-  products:         '',
-  totalWeight:      ''
+  totalWeightValue: '',
+  totalWeightUnit:  'kg'
 });
+
+/**
+ * Structured product lines for the shipment: { productId, quantity }.
+ * Optional — a shipment can be registered without a product breakdown.
+ * @type {import('vue').Ref<Array<{ productId: string, quantity: number }>>}
+ */
+const productLines = reactive([{ productId: '', quantity: 1 }]);
+
+/**
+ * Adds a new empty product line.
+ */
+function addProductLine() {
+  productLines.push({ productId: '', quantity: 1 });
+}
+
+/**
+ * Removes a product line at the given index (keeps at least one).
+ * @param {number} lineIndex
+ */
+function removeProductLine(lineIndex) {
+  if (productLines.length <= 1) return;
+  productLines.splice(lineIndex, 1);
+}
 
 /**
  * Tracks whether a save attempt has been made (to show validation errors).
@@ -150,17 +265,6 @@ const formFields = [
     labelKey:       'tracking.field-estimated',
     placeholderKey: 'tracking.placeholder-estimated',
     required:       true
-  },
-  {
-    key:            'totalWeight',
-    labelKey:       'tracking.field-weight',
-    placeholderKey: 'tracking.placeholder-weight'
-  },
-  {
-    key:            'products',
-    labelKey:       'tracking.field-products-input',
-    placeholderKey: 'tracking.placeholder-products',
-    span:           true
   }
 ];
 
@@ -175,12 +279,6 @@ async function handleSubmit() {
   if (!isFormValid.value || saving.value) return;
 
   saving.value = true;
-  const businessId = iamStore.currentUser?.businessId ?? null;
-
-  const productList = formData.products
-      .split(',')
-      .map(productItem => productItem.trim())
-      .filter(productItem => productItem.length > 0);
 
   const result = await deliveryStore.createDelivery({
     orderId:          formData.orderId.trim(),
@@ -191,10 +289,13 @@ async function handleSubmit() {
     driverPhone:      formData.driverPhone.trim(),
     vehicle:          formData.vehicle.trim(),
     licensePlate:     formData.licensePlate.trim(),
-    estimatedArrival: formData.estimatedArrival.trim(),
-    products:         productList,
-    totalWeight:      formData.totalWeight.trim(),
-    businessId:       businessId
+    // The datetime-local input yields "yyyy-MM-ddTHH:mm" with no timezone —
+    // the backend's EstimatedArrival is a DateTimeOffset and rejects that
+    // format outright, so this converts to a real ISO 8601 string with offset.
+    estimatedArrival: new Date(formData.estimatedArrival).toISOString(),
+    totalWeightValue: parseFloat(formData.totalWeightValue) || 0,
+    totalWeightUnit:  formData.totalWeightUnit,
+    purchaseDetailId: selectedDetailId.value ? parseInt(selectedDetailId.value) : null
   });
 
   saving.value = false;
@@ -242,6 +343,40 @@ async function handleSubmit() {
 
       <!-- Form body -->
       <div class="px-5 py-4">
+
+        <!-- Optional purchase-order linkage -->
+        <div class="mb-4 p-3 border-round-lg" style="background: #F8FAFC; border: 1px solid #E2E8F0;">
+          <label class="block mb-1" style="font-size: 0.75rem; font-weight: 600; color: #64748B;">
+            {{ t('tracking.field-link-order') }}
+          </label>
+          <p class="m-0 mb-2" style="font-size: 0.7rem; color: #94A3B8;">
+            {{ t('tracking.field-link-order-hint') }}
+          </p>
+          <div class="flex gap-2">
+            <select
+                v-model="selectedOrderId"
+                class="border-round-lg"
+                style="flex: 1; min-width: 0; padding: 0.5rem 0.6rem; font-size: 0.85rem; color: #1E293B; outline: none; border: 1px solid #E2E8F0; background: #fff;"
+            >
+              <option value="">{{ t('tracking.field-link-order-none') }}</option>
+              <option v-for="order in linkableOrders" :key="order.id" :value="String(order.id)">
+                OC-{{ String(order.id).padStart(4, '0') }} — {{ order.supplierName }}
+              </option>
+            </select>
+            <select
+                v-if="selectedOrderId"
+                v-model="selectedDetailId"
+                class="border-round-lg"
+                style="flex: 1; min-width: 0; padding: 0.5rem 0.6rem; font-size: 0.85rem; color: #1E293B; outline: none; border: 1px solid #E2E8F0; background: #fff;"
+            >
+              <option value="">{{ t('tracking.field-link-order-select-line') }}</option>
+              <option v-for="detail in selectedOrderDetails" :key="detail.id" :value="String(detail.id)">
+                {{ resolveDetailProductName(detail) }} ({{ detail.quantity }})
+              </option>
+            </select>
+          </div>
+        </div>
+
         <div class="mb-4" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
 
           <div
@@ -258,14 +393,16 @@ async function handleSubmit() {
 
             <input
                 v-model="formData[field.key]"
-                type="text"
+                :type="field.key === 'estimatedArrival' ? 'datetime-local' : 'text'"
+                :disabled="!!selectedDetailId && (field.key === 'orderId' || field.key === 'supplierName')"
                 :placeholder="t(field.placeholderKey)"
                 class="w-full border-round-lg"
                 style="padding: 0.5rem 0.75rem; font-size: 0.88rem; color: #1E293B; outline: none; transition: border-color 0.15s;"
                 :style="{
                 border: submitted.value && validationErrors[field.key]
                   ? '1.5px solid #EF4444'
-                  : '1px solid #E2E8F0'
+                  : '1px solid #E2E8F0',
+                backgroundColor: (!!selectedDetailId && (field.key === 'orderId' || field.key === 'supplierName')) ? '#F1F5F9' : '#fff'
               }"
                 @focus="(event) => { event.target.style.borderColor = '#0E7490'; }"
                 @blur="(event) => {
@@ -285,6 +422,83 @@ async function handleSubmit() {
             </p>
           </div>
 
+        </div>
+
+        <!-- Total weight: numeric value + unit -->
+        <div class="mb-4">
+          <label class="block mb-1" style="font-size: 0.75rem; font-weight: 600; color: #64748B;">
+            {{ t('tracking.field-weight') }}
+          </label>
+          <div class="flex gap-2">
+            <input
+                v-model="formData.totalWeightValue"
+                type="number"
+                min="0"
+                step="0.1"
+                :placeholder="t('tracking.placeholder-weight-value')"
+                class="border-round-lg"
+                style="flex: 1; padding: 0.5rem 0.75rem; font-size: 0.88rem; color: #1E293B; outline: none; border: 1px solid #E2E8F0;"
+            />
+            <select
+                v-model="formData.totalWeightUnit"
+                class="border-round-lg"
+                style="padding: 0.5rem 0.75rem; font-size: 0.88rem; color: #1E293B; outline: none; border: 1px solid #E2E8F0; background: #fff;"
+            >
+              <option value="kg">kg</option>
+              <option value="lb">lb</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Products in shipment: structured lines -->
+        <div class="mb-4">
+          <div class="flex align-items-center justify-content-between mb-2">
+            <label style="font-size: 0.75rem; font-weight: 600; color: #64748B;">
+              {{ t('tracking.field-products') }}
+            </label>
+            <button
+                type="button"
+                class="border-none cursor-pointer border-round-lg px-2 py-1"
+                style="background-color: #E0F2FE; color: #0E7490; font-size: 0.72rem; font-weight: 600;"
+                @click="addProductLine"
+            >
+              + {{ t('tracking.btn-add-product-line') }}
+            </button>
+          </div>
+
+          <div
+              v-for="(line, lineIndex) in productLines"
+              :key="lineIndex"
+              class="flex align-items-center gap-2 mb-2"
+          >
+            <select
+                v-model="line.productId"
+                class="border-round-lg"
+                style="flex: 1; min-width: 0; padding: 0.45rem 0.6rem; font-size: 0.85rem; color: #1E293B; outline: none; border: 1px solid #E2E8F0; background: #fff;"
+            >
+              <option value="">{{ t('tracking.placeholder-product-select') }}</option>
+              <option v-for="product in availableProducts" :key="product.id" :value="String(product.id)">
+                {{ product.name }}
+              </option>
+            </select>
+            <input
+                v-model.number="line.quantity"
+                type="number"
+                min="1"
+                :placeholder="t('tracking.placeholder-product-qty')"
+                class="border-round-lg"
+                style="width: 5.5rem; padding: 0.45rem 0.6rem; font-size: 0.85rem; color: #1E293B; outline: none; border: 1px solid #E2E8F0; text-align: center;"
+            />
+            <button
+                type="button"
+                class="flex align-items-center justify-content-center border-none cursor-pointer border-round-lg"
+                style="width: 2rem; height: 2rem; flex-shrink: 0; background-color: #FEE2E2; color: #EF4444;"
+                :disabled="productLines.length === 1"
+                @click="removeProductLine(lineIndex)"
+            >
+              <i class="pi pi-times" style="font-size: 0.8rem;"/>
+            </button>
+          </div>
         </div>
 
         <!-- Action buttons -->

@@ -63,6 +63,8 @@ export class Alert {
      * @param {number|null} [params.businessId=null]
      * @param {number|null} [params.productId=null]
      * @param {number|null} [params.batchId=null]
+     * @param {number|null} [params.warehouseId=null] - Which warehouse this LOW_STOCK/
+     *   OUT_OF_STOCK alert is about (null for EXPIRATION/EXPIRED, scoped by batchId instead).
      * @param {string}      [params.productName='']
      * @param {string}      [params.type=AlertType.LOW_STOCK]
      * @param {string}      [params.severity=AlertSeverity.LOW]
@@ -81,6 +83,7 @@ export class Alert {
                     businessId   = null,
                     productId    = null,
                     batchId      = null,
+                    warehouseId  = null,
                     productName  = '',
                     type         = AlertType.LOW_STOCK,
                     severity     = AlertSeverity.LOW,
@@ -98,6 +101,7 @@ export class Alert {
         this.businessId   = businessId;
         this.productId    = productId;
         this.batchId      = batchId;
+        this.warehouseId  = warehouseId;
         this.productName  = productName;
         this.type         = type;
         this.severity     = severity;

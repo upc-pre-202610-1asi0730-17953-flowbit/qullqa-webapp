@@ -1,15 +1,25 @@
 <script setup>
 import { computed, onMounted, ref, toRefs } from 'vue';
 import { useI18n }        from 'vue-i18n';
+import { useToast }       from 'primevue/usetoast';
+import { useRouter }      from 'vue-router';
 import useSupplierStore   from '../../application/supplier.store.js';
 import useIamStore        from '../../../iam/application/iam.store.js';
 import useProductStore    from '../../../product/application/product.store.js';
+import useDeliveryStore   from '../../../delivery/application/delivery.store.js';
 import { PurchaseOrderStatus } from '../../domain/model/purchase-order.entity.js';
+import DeliveryFormModal  from '../../../delivery/presentation/views/delivery-form-modal.vue';
 
 const { t }         = useI18n();
+const toast         = useToast();
+const router        = useRouter();
 const supplierStore = useSupplierStore();
 const iamStore      = useIamStore();
 const productStore  = useProductStore();
+const deliveryStore = useDeliveryStore();
+
+const savingNewOrder      = ref(false);
+const updatingOrderStatus = ref(false);
 
 const {
   purchaseOrders,
@@ -84,6 +94,12 @@ onMounted(() => {
     }
     if (!productStore.productsLoaded) {
       productStore.fetchProducts(businessId);
+    }
+    if (!productStore.inventoryLoaded) {
+      productStore.fetchInventory(businessId);
+    }
+    if (!deliveryStore.deliveriesLoaded) {
+      deliveryStore.fetchDeliveries(businessId);
     }
   }
 });
@@ -213,6 +229,8 @@ function submitNewOrder() {
   if (!validateNewOrderForm()) return;
 
   const businessId = iamStore.currentUser?.businessId ?? null;
+
+  savingNewOrder.value = true;
   createPurchaseOrder({
     businessId:   businessId,
     supplierId:   parseInt(newOrderForm.value.supplierId),
@@ -225,9 +243,17 @@ function submitNewOrder() {
       unitPrice:   parseFloat(line.unitPrice),
       discount:    parseFloat(line.discount ?? 0)
     }))
-  });
-
-  showNewOrderModal.value = false;
+  })
+      .then(() => {
+        toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('suppliers.order-toast-create-success'), life: 3500 });
+        showNewOrderModal.value = false;
+      })
+      .catch(() => {
+        toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('suppliers.order-toast-create-error'), life: 4500 });
+      })
+      .finally(() => {
+        savingNewOrder.value = false;
+      });
 }
 
 // ─── Order detail modal ────────────────────────────────────────────────────────
@@ -242,33 +268,70 @@ function openOrderDetail(order) {
 }
 
 /**
- * Transitions the selected order to RECEIVED status.
+ * Transitions the selected order to RECEIVED status. The backend does the
+ * actual stock replenishment atomically, in the same transaction as the
+ * status change (see PurchaseOrderCommandService.MarkReceived, which calls
+ * IProductContextFacade.RegisterStockIntake per line) — this must NOT also
+ * call registerStockIntake client-side, or every line's quantity gets
+ * applied twice (once server-side, once from here).
  */
 function receiveOrder() {
-  if (selectedOrder.value) {
-    updatePurchaseOrderStatus(selectedOrder.value.id, PurchaseOrderStatus.RECEIVED);
-  }
-  showOrderDetailModal.value = false;
+  if (!selectedOrder.value) return;
+
+  const order = selectedOrder.value;
+
+  updatingOrderStatus.value = true;
+  updatePurchaseOrderStatus(order.id, PurchaseOrderStatus.RECEIVED)
+      .then(() => {
+        toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('suppliers.order-toast-receive-success'), life: 3500 });
+        showOrderDetailModal.value = false;
+      })
+      .catch(() => {
+        toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('suppliers.order-toast-status-error'), life: 4500 });
+      })
+      .finally(() => {
+        updatingOrderStatus.value = false;
+      });
 }
 
 /**
  * Transitions the selected order to DELAYED status.
  */
 function delayOrder() {
-  if (selectedOrder.value) {
-    updatePurchaseOrderStatus(selectedOrder.value.id, PurchaseOrderStatus.DELAYED);
-  }
-  showOrderDetailModal.value = false;
+  if (!selectedOrder.value) return;
+
+  updatingOrderStatus.value = true;
+  updatePurchaseOrderStatus(selectedOrder.value.id, PurchaseOrderStatus.DELAYED)
+      .then(() => {
+        toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('suppliers.order-toast-delay-success'), life: 3500 });
+        showOrderDetailModal.value = false;
+      })
+      .catch(() => {
+        toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('suppliers.order-toast-status-error'), life: 4500 });
+      })
+      .finally(() => {
+        updatingOrderStatus.value = false;
+      });
 }
 
 /**
  * Transitions the selected order to CANCELLED status.
  */
 function cancelOrder() {
-  if (selectedOrder.value) {
-    updatePurchaseOrderStatus(selectedOrder.value.id, PurchaseOrderStatus.CANCELLED);
-  }
-  showOrderDetailModal.value = false;
+  if (!selectedOrder.value) return;
+
+  updatingOrderStatus.value = true;
+  updatePurchaseOrderStatus(selectedOrder.value.id, PurchaseOrderStatus.CANCELLED)
+      .then(() => {
+        toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('suppliers.order-toast-cancel-success'), life: 3500 });
+        showOrderDetailModal.value = false;
+      })
+      .catch(() => {
+        toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('suppliers.order-toast-status-error'), life: 4500 });
+      })
+      .finally(() => {
+        updatingOrderStatus.value = false;
+      });
 }
 
 /**
@@ -278,6 +341,71 @@ function cancelOrder() {
  */
 function formatCurrency(amount) {
   return `S/ ${(amount || 0).toFixed(2)}`;
+}
+
+/**
+ * Resolves a purchase order detail line's product name. Orders created in the
+ * current session already carry a denormalized productName; preexisting
+ * orders loaded from the mock don't, so fall back to looking it up in the
+ * already-loaded product catalog before falling back to the raw id.
+ * @param {Object} detail - A purchase order detail line.
+ * @returns {string}
+ */
+function resolveProductName(detail) {
+  if (detail.productName) return detail.productName;
+  const product = productStore.getProductById(detail.productId);
+  return product ? product.name : `#${detail.productId}`;
+}
+
+// ─── Delivery Tracking linkage ──────────────────────────────────────────────
+
+/** Reuses the same status colors as Delivery Tracking, so a line's shipment
+ *  badge here looks like the one it corresponds to over there. */
+const deliveryStatusConfig = {
+  REGISTERED:     { labelKey: 'tracking.status-registered',     color: '#0891B2', background: '#CFFAFE' },
+  IN_TRANSIT:     { labelKey: 'tracking.status-in-transit',     color: '#D97706', background: '#FEF3C7' },
+  AT_DESTINATION: { labelKey: 'tracking.status-at-destination', color: '#7C3AED', background: '#EDE9FE' },
+  COMPLETED:      { labelKey: 'tracking.status-completed',      color: '#16A34A', background: '#DCFCE7' },
+  CANCELLED:      { labelKey: 'tracking.status-cancelled',      color: '#EF4444', background: '#FEE2E2' }
+};
+
+/**
+ * Resolves the real, live Delivery linked to a purchase order detail line
+ * (via Delivery.purchaseDetailId), instead of trusting the line's own static
+ * deliveryStatus/deliveryTrackingNum fields, which nothing keeps in sync.
+ * @param {Object} detail - A purchase order detail line.
+ * @returns {import('../../../delivery/domain/model/delivery.entity.js').Delivery|undefined}
+ */
+function resolveDeliveryForDetail(detail) {
+  return deliveryStore.deliveries.find(delivery => delivery.purchaseDetailId === detail.id);
+}
+
+const showDeliveryFormModal = ref(false);
+const deliveryFormPreset    = ref(null);
+
+/**
+ * Opens the delivery registration modal preselected to this order's detail
+ * line, so the admin doesn't have to look the order up again over there.
+ * @param {Object} detail - A purchase order detail line.
+ */
+function openCreateDeliveryForDetail(detail) {
+  deliveryFormPreset.value  = { orderId: selectedOrder.value.id, detailId: detail.id };
+  showDeliveryFormModal.value = true;
+}
+
+function handleDeliveryCreated() {
+  showDeliveryFormModal.value = false;
+  deliveryFormPreset.value    = null;
+  toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('suppliers.toast-delivery-linked'), life: 3500 });
+}
+
+/**
+ * Navigates to Delivery Tracking with the search box preloaded to this
+ * shipment's tracking number, so the link actually lands on the right delivery.
+ * @param {import('../../../delivery/domain/model/delivery.entity.js').Delivery} delivery
+ */
+function viewDeliveryTracking(delivery) {
+  router.push({ name: 'deliveries', query: { search: delivery.trackingNumber } });
 }
 </script>
 
@@ -568,39 +696,48 @@ function formatCurrency(amount) {
                 class="orders-line-row"
             >
               <!-- Product selector -->
-              <select
-                  v-model="line.productId"
-                  class="orders-line-product-select"
-                  @change="onProductSelected(lineIndex)"
-              >
-                <option value="" disabled>{{ t('suppliers.order-modal-product-placeholder') }}</option>
-                <option
-                    v-for="product in availableProducts"
-                    :key="product.id"
-                    :value="String(product.id)"
+              <div class="orders-line-field orders-line-field-product">
+                <label class="orders-line-field-label">{{ t('suppliers.order-detail-col-product') }}</label>
+                <select
+                    v-model="line.productId"
+                    class="orders-line-product-select"
+                    @change="onProductSelected(lineIndex)"
                 >
-                  {{ product.name }}
-                </option>
-              </select>
+                  <option value="" disabled>{{ t('suppliers.order-modal-product-placeholder') }}</option>
+                  <option
+                      v-for="product in availableProducts"
+                      :key="product.id"
+                      :value="String(product.id)"
+                  >
+                    {{ product.name }}
+                  </option>
+                </select>
+              </div>
 
               <!-- Quantity -->
-              <input
-                  v-model.number="line.quantity"
-                  type="number"
-                  min="1"
-                  class="orders-line-qty-input"
-                  :placeholder="t('suppliers.order-modal-qty-placeholder')"
-              />
+              <div class="orders-line-field">
+                <label class="orders-line-field-label">{{ t('suppliers.order-detail-col-qty') }}</label>
+                <input
+                    v-model.number="line.quantity"
+                    type="number"
+                    min="1"
+                    class="orders-line-qty-input"
+                    :placeholder="t('suppliers.order-modal-qty-placeholder')"
+                />
+              </div>
 
               <!-- Unit price -->
-              <input
-                  v-model.number="line.unitPrice"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  class="orders-line-price-input"
-                  :placeholder="t('suppliers.order-modal-price-placeholder')"
-              />
+              <div class="orders-line-field">
+                <label class="orders-line-field-label">{{ t('suppliers.order-detail-col-unit-price') }}</label>
+                <input
+                    v-model.number="line.unitPrice"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    class="orders-line-price-input"
+                    :placeholder="t('suppliers.order-modal-price-placeholder')"
+                />
+              </div>
 
               <!-- Remove line -->
               <button
@@ -632,11 +769,12 @@ function formatCurrency(amount) {
 
           <!-- Footer -->
           <div class="orders-modal-footer">
-            <button class="orders-modal-btn-cancel" @click="showNewOrderModal = false">
+            <button class="orders-modal-btn-cancel" :disabled="savingNewOrder" @click="showNewOrderModal = false">
               {{ t('suppliers.order-modal-cancel') }}
             </button>
-            <button class="orders-modal-btn-save" @click="submitNewOrder">
-              {{ t('suppliers.order-modal-submit') }}
+            <button class="orders-modal-btn-save" :disabled="savingNewOrder" @click="submitNewOrder">
+              <i v-if="savingNewOrder" class="pi pi-spin pi-spinner" style="margin-right: 0.4rem;"/>
+              {{ savingNewOrder ? t('suppliers.order-modal-saving') : t('suppliers.order-modal-submit') }}
             </button>
           </div>
         </div>
@@ -705,6 +843,7 @@ function formatCurrency(amount) {
                   <th class="orders-detail-th orders-detail-th-center">{{ t('suppliers.order-detail-col-qty') }}</th>
                   <th class="orders-detail-th orders-detail-th-right">{{ t('suppliers.order-detail-col-unit-price') }}</th>
                   <th class="orders-detail-th orders-detail-th-right">{{ t('suppliers.order-detail-col-subtotal') }}</th>
+                  <th class="orders-detail-th">{{ t('suppliers.order-detail-col-shipment') }}</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -713,13 +852,35 @@ function formatCurrency(amount) {
                     :key="detailIndex"
                     class="orders-detail-tr"
                 >
-                  <td class="orders-detail-td">{{ detail.productName || `#${detail.productId}` }}</td>
+                  <td class="orders-detail-td">{{ resolveProductName(detail) }}</td>
                   <td class="orders-detail-td orders-detail-td-center">{{ detail.quantity }}</td>
                   <td class="orders-detail-td orders-detail-td-right orders-detail-td-muted">
                     {{ formatCurrency(detail.unitPrice) }}
                   </td>
                   <td class="orders-detail-td orders-detail-td-right orders-detail-td-bold">
                     {{ formatCurrency(detail.lineTotal) }}
+                  </td>
+                  <td class="orders-detail-td">
+                    <template v-if="resolveDeliveryForDetail(detail)">
+                      <button
+                          class="orders-shipment-badge"
+                          :style="{
+                            color:           deliveryStatusConfig[resolveDeliveryForDetail(detail).status]?.color,
+                            backgroundColor: deliveryStatusConfig[resolveDeliveryForDetail(detail).status]?.background
+                          }"
+                          @click="viewDeliveryTracking(resolveDeliveryForDetail(detail))"
+                      >
+                        {{ t(deliveryStatusConfig[resolveDeliveryForDetail(detail).status]?.labelKey) }}
+                      </button>
+                    </template>
+                    <button
+                        v-else-if="selectedOrder.isActionable"
+                        class="orders-shipment-link-btn"
+                        @click="openCreateDeliveryForDetail(detail)"
+                    >
+                      + {{ t('suppliers.order-detail-btn-create-shipment') }}
+                    </button>
+                    <span v-else class="orders-detail-td-muted">—</span>
                   </td>
                 </tr>
                 </tbody>
@@ -731,6 +892,7 @@ function formatCurrency(amount) {
                   <td class="orders-detail-td orders-detail-td-right orders-detail-tfoot-total">
                     {{ formatCurrency(selectedOrder.totalAmount) }}
                   </td>
+                  <td class="orders-detail-td"></td>
                 </tr>
                 </tfoot>
               </table>
@@ -749,17 +911,21 @@ function formatCurrency(amount) {
           <!-- Status action buttons (only for actionable orders) -->
           <div v-if="selectedOrder.isActionable" class="orders-detail-actions-section">
             <p class="orders-detail-section-label">{{ t('suppliers.order-detail-update-status') }}</p>
+            <p class="orders-detail-receive-hint">
+              <i class="pi pi-info-circle" style="font-size: 0.78rem; margin-right: 0.3rem;"/>
+              {{ t('suppliers.order-detail-receive-hint') }}
+            </p>
             <div class="orders-detail-action-buttons">
-              <button class="orders-action-btn orders-action-btn-receive" @click="receiveOrder">
-                <i class="pi pi-check-circle" />
+              <button class="orders-action-btn orders-action-btn-receive" :disabled="updatingOrderStatus" @click="receiveOrder" :title="t('suppliers.order-detail-receive-hint')">
+                <i :class="updatingOrderStatus ? 'pi pi-spin pi-spinner' : 'pi pi-check-circle'" />
                 <span>{{ t('suppliers.order-action-receive') }}</span>
               </button>
-              <button class="orders-action-btn orders-action-btn-delay" @click="delayOrder">
-                <i class="pi pi-clock" />
+              <button class="orders-action-btn orders-action-btn-delay" :disabled="updatingOrderStatus" @click="delayOrder">
+                <i :class="updatingOrderStatus ? 'pi pi-spin pi-spinner' : 'pi pi-clock'" />
                 <span>{{ t('suppliers.order-action-delay') }}</span>
               </button>
-              <button class="orders-action-btn orders-action-btn-cancel" @click="cancelOrder">
-                <i class="pi pi-times-circle" />
+              <button class="orders-action-btn orders-action-btn-cancel" :disabled="updatingOrderStatus" @click="cancelOrder">
+                <i :class="updatingOrderStatus ? 'pi pi-spin pi-spinner' : 'pi pi-times-circle'" />
                 <span>{{ t('suppliers.order-action-cancel') }}</span>
               </button>
             </div>
@@ -772,6 +938,14 @@ function formatCurrency(amount) {
         </div>
       </div>
     </div>
+
+    <!-- Create-shipment modal, preselected to the order/detail line just clicked -->
+    <DeliveryFormModal
+        v-if="showDeliveryFormModal"
+        :preset-order-detail="deliveryFormPreset"
+        @close="showDeliveryFormModal = false"
+        @created="handleDeliveryCreated"
+    />
 
   </div>
 </template>
@@ -1259,13 +1433,29 @@ function formatCurrency(amount) {
 
 .orders-line-row {
   display:     flex;
-  align-items: center;
+  align-items: flex-end;
   gap:         0.4rem;
 }
 
+.orders-line-field {
+  display:        flex;
+  flex-direction: column;
+  gap:            0.2rem;
+}
+
+.orders-line-field-product {
+  flex:      1;
+  min-width: 0;
+}
+
+.orders-line-field-label {
+  font-size:   0.68rem;
+  font-weight: 600;
+  color:       #64748B;
+}
+
 .orders-line-product-select {
-  flex:          1;
-  min-width:     0;
+  width:         100%;
   padding:       0.45rem 0.6rem;
   border:        1px solid #E2E8F0;
   border-radius: 0.5rem;
@@ -1415,6 +1605,16 @@ function formatCurrency(amount) {
   margin-bottom: 0.5rem;
 }
 
+.orders-detail-receive-hint {
+  font-size:        0.74rem;
+  color:            #64748B;
+  background-color: #F8FAFC;
+  border:           1px solid #E2E8F0;
+  border-radius:    0.6rem;
+  padding:          0.55rem 0.7rem;
+  margin:           0 0 0.75rem 0;
+}
+
 .orders-detail-table-wrapper {
   border:        1px solid #E2E8F0;
   border-radius: 0.75rem;
@@ -1472,6 +1672,29 @@ function formatCurrency(amount) {
 .orders-detail-td-bold {
   font-weight: 600;
   color:       #0B3558;
+}
+
+.orders-shipment-badge {
+  border:        none;
+  cursor:        pointer;
+  font-size:     0.7rem;
+  font-weight:   600;
+  padding:       0.25rem 0.6rem;
+  border-radius: 999px;
+  white-space:   nowrap;
+}
+
+.orders-shipment-link-btn {
+  border:      none;
+  background:  none;
+  cursor:      pointer;
+  font-size:   0.72rem;
+  font-weight: 600;
+  color:       #0E7490;
+  white-space: nowrap;
+}
+.orders-shipment-link-btn:hover {
+  text-decoration: underline;
 }
 
 .orders-detail-tfoot-row {

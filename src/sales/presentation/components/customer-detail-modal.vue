@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue';
 import { useI18n }  from 'vue-i18n';
+import { toDateLocale } from '../../../shared/presentation/date-locale.js';
 
 /**
  * CustomerDetailModal component for the Sales & POS Management bounded context.
@@ -35,7 +36,7 @@ const emit = defineEmits([
   'close'
 ]);
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 /**
  * Two-letter avatar initials derived from the customer's full name.
@@ -68,7 +69,7 @@ const totalPurchases = computed(() =>
 const totalSpent = computed(() =>
     props.sales
         .filter(sale => sale.customerId === props.customer.id && sale.status === 'PAID')
-        .reduce((sum, sale) => sum + (sale.totalAmount || 0), 0)
+        .reduce((sum, sale) => sum + sale.subtotal, 0)
 );
 
 /**
@@ -78,7 +79,7 @@ const totalSpent = computed(() =>
  */
 function formatDate(dateString) {
   if (!dateString) return '—';
-  return new Date(dateString).toLocaleDateString('es-PE');
+  return new Date(dateString).toLocaleDateString(toDateLocale(locale.value));
 }
 
 /**

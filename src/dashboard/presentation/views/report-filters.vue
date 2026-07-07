@@ -1,17 +1,36 @@
 <script setup>
-import { ref }           from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter }     from 'vue-router';
 import { useI18n }       from 'vue-i18n';
 import useDashboardStore from '../../application/dashboard.store.js';
+import useProductStore   from '../../../product/application/product.store.js';
+import useSalesStore     from '../../../sales/application/sales.store.js';
 import useIamStore       from '../../../iam/application/iam.store.js';
 import { ReportType }    from '../../domain/model/report.entity.js';
+import { filterableCategoryOptions, isCustomCategory } from '../../../product/presentation/category-options.js';
 
 const { t }          = useI18n();
 const router         = useRouter();
 const dashboardStore = useDashboardStore();
+const productStore   = useProductStore();
+const salesStore     = useSalesStore();
 const iamStore       = useIamStore();
 
 const { errors, generateReport } = dashboardStore;
+
+/**
+ * Ensures the real product/inventory/sales data liveMetrics is computed from
+ * is loaded even when this screen is reached without ever visiting the Panel
+ * first (e.g. a direct link or a page refresh) — otherwise the generated
+ * report would silently show all zeros instead of real business metrics.
+ */
+onMounted(() => {
+  const businessId = iamStore.currentUser?.businessId ?? null;
+  if (!businessId) return;
+  if (!productStore.productsLoaded)  productStore.fetchProducts(businessId);
+  if (!productStore.inventoryLoaded) productStore.fetchInventory(businessId);
+  if (!salesStore.salesLoaded)       salesStore.fetchSales(businessId);
+});
 
 /** @type {import('vue').Ref<string>} */
 const validationError = ref('');
@@ -36,6 +55,34 @@ const reportTypeOptions = [
   { label: t('reports.type-low-stock'),     value: ReportType.LOW_STOCK     },
   { label: t('reports.type-replenishment'), value: ReportType.REPLENISHMENT }
 ];
+
+/**
+ * Translated label for a product category, reusing the same pos.category-*
+ * keys used throughout the app (see product-list.vue's categoryLabel) —
+ * custom free-text categories (typed in when "Otros" didn't fit) have no
+ * i18n key and are shown verbatim.
+ * @param {string} category
+ * @returns {string}
+ */
+function categoryLabel(category) {
+  if (isCustomCategory(category)) return category;
+  return t(`pos.category-${category.toLowerCase()}`);
+}
+
+/**
+ * Category dropdown options, scoped to categories this business actually
+ * uses (same categories Inventario's own filter shows) — a real dropdown
+ * instead of free text, since the report's category filter compares against
+ * Product.category's exact stored value, not a translated display label.
+ * @type {import('vue').ComputedRef<Array<{label: string, value: string}>>}
+ */
+const categoryOptions = computed(() => [
+  { label: t('reports.category-placeholder'), value: '' },
+  ...filterableCategoryOptions(productStore.products).map(category => ({
+    label: categoryLabel(category),
+    value: category
+  }))
+]);
 
 /** @type {Record<string, string>} Icon per report type value */
 const reportTypeIcons = {
@@ -157,10 +204,12 @@ function navigateBack() {
           <i class="pi pi-tag form-label__icon"/>
           {{ t('reports.category') }}
         </label>
-        <pv-input-text
+        <pv-select
             id="category"
             v-model="form.category"
-            :placeholder="t('reports.category-placeholder')"
+            :options="categoryOptions"
+            option-label="label"
+            option-value="value"
             class="w-full"
         />
       </div>

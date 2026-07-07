@@ -7,8 +7,8 @@
  * - A purchase order requires at least one detail line before being submitted.
  * - A purchase order can only transition to RECEIVED or CANCELLED when its current
  *   status is PENDING or DELAYED; attempts on final states are silently rejected.
- * - When a purchase order is created, its detail lines are persisted individually
- *   via /purchaseDetails after the parent order is confirmed.
+ * - A purchase order and all of its lines are persisted atomically in a
+ *   single POST /purchases (see createPurchaseOrder).
  * - totalAmount is computed client-side from detail lineTotals (entity getter).
  * - pendingOrderCount and pendingOrderTotal are derived computed refs for the stats bar.
  *
@@ -19,7 +19,6 @@ import { computed, ref } from 'vue';
 import { SupplierApi }              from '../infrastructure/supplier.api.js';
 import { SupplierAssembler }        from '../infrastructure/supplier.assembler.js';
 import { PurchaseOrderAssembler }   from '../infrastructure/purchase-order.assembler.js';
-import { Supplier, SupplierStatus } from '../domain/model/supplier.entity.js';
 import { PurchaseOrder, PurchaseOrderStatus } from '../domain/model/purchase-order.entity.js';
 
 const supplierApi = new SupplierApi();
@@ -112,9 +111,10 @@ const useSupplierStore = defineStore('supplier', () => {
     /**
      * Fetches all suppliers for the authenticated business.
      * @param {number|string} businessId
+     * @returns {Promise<void>}
      */
     function fetchSuppliers(businessId) {
-        supplierApi.getSuppliers(businessId)
+        return supplierApi.getSuppliers(businessId)
             .then(response => {
                 suppliers.value       = SupplierAssembler.toEntitiesFromResponse(response);
                 suppliersLoaded.value = true;
@@ -123,32 +123,35 @@ const useSupplierStore = defineStore('supplier', () => {
     }
 
     /**
-     * Fetches all purchase orders for the authenticated business and hydrates
-     * their detail lines by fetching /purchaseDetails for each order.
+     * Fetches all purchase orders for the authenticated business.
+     *
+     * The real backend already embeds each order's line items in the
+     * /purchases response (FindAllByBusinessIdAsync eager-loads Details), so
+     * this no longer needs a /purchaseDetails fetch per order — only
+     * supplierName still needs enriching client-side, since Suppliers'
+     * PurchaseOrderResource only carries supplierId.
+     *
+     * Ensures suppliers are loaded first (awaiting fetchSuppliers if needed) so
+     * each order's supplierName can be resolved regardless of whether the caller
+     * happened to load suppliers first — this view can be reached directly
+     * without visiting the Suppliers tab in the same session.
      *
      * @param {number|string} businessId
      */
     function fetchPurchaseOrders(businessId) {
-        supplierApi.getPurchaseOrders(businessId)
+        const suppliersReady = suppliersLoaded.value ? Promise.resolve() : fetchSuppliers(businessId);
+
+        return suppliersReady
+            .then(() => supplierApi.getPurchaseOrders(businessId))
             .then(response => {
                 const rawOrders = Array.isArray(response.data) ? response.data : [];
-                const hydratedOrderPromises = rawOrders.map(rawOrder =>
-                    supplierApi.getPurchaseDetailsByOrder(rawOrder.id)
-                        .then(detailsResponse => {
-                            const rawDetails = Array.isArray(detailsResponse.data)
-                                ? detailsResponse.data
-                                : [];
-                            return PurchaseOrderAssembler.toEntityFromResource({
-                                ...rawOrder,
-                                details: rawDetails
-                            });
-                        })
-                        .catch(() => PurchaseOrderAssembler.toEntityFromResource(rawOrder))
-                );
-                return Promise.all(hydratedOrderPromises);
-            })
-            .then(hydratedOrders => {
-                purchaseOrders.value       = hydratedOrders;
+                purchaseOrders.value = rawOrders.map(rawOrder => {
+                    const supplierEntity = suppliers.value.find(supplier => supplier.id === rawOrder.supplierId);
+                    return PurchaseOrderAssembler.toEntityFromResource({
+                        ...rawOrder,
+                        supplierName: supplierEntity ? supplierEntity.fullName : ''
+                    });
+                });
                 purchaseOrdersLoaded.value = true;
             })
             .catch(error => errors.value.push(error));
@@ -157,38 +160,54 @@ const useSupplierStore = defineStore('supplier', () => {
     /**
      * Creates a new supplier and appends it to local state.
      * @param {import('../domain/model/supplier.entity.js').Supplier} supplier
+     * @returns {Promise<import('../domain/model/supplier.entity.js').Supplier>}
      */
     function addSupplier(supplier) {
         const resource = SupplierAssembler.toResourceFromEntity(supplier);
-        supplierApi.createSupplier(resource)
+        return supplierApi.createSupplier(resource)
             .then(response => {
-                suppliers.value.push(SupplierAssembler.toEntityFromResource(response.data));
+                const createdSupplier = SupplierAssembler.toEntityFromResource(response.data);
+                suppliers.value.push(createdSupplier);
+                return createdSupplier;
             })
-            .catch(error => errors.value.push(error));
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
     }
 
     /**
      * Updates an existing supplier and synchronizes local state.
      * @param {import('../domain/model/supplier.entity.js').Supplier} supplier - Must include id.
+     * @returns {Promise<import('../domain/model/supplier.entity.js').Supplier>}
      */
     function updateSupplier(supplier) {
         const resource = SupplierAssembler.toResourceFromEntity(supplier);
-        supplierApi.updateSupplier(supplier.id, resource)
+        return supplierApi.updateSupplier(supplier.id, resource)
             .then(response => {
                 const updatedSupplier = SupplierAssembler.toEntityFromResource(response.data);
                 const index = suppliers.value.findIndex(existingSupplier => existingSupplier.id === updatedSupplier.id);
                 if (index !== -1) suppliers.value[index] = updatedSupplier;
+                return updatedSupplier;
             })
-            .catch(error => errors.value.push(error));
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
     }
 
     /**
-     * Deactivates a supplier by setting its status to INACTIVE.
+     * Deactivates a supplier via the backend's dedicated DELETE endpoint
+     * (soft-delete: flips Status to INACTIVE server-side). Previously sent a
+     * full supplier resource through the PATCH/edit endpoint, whose
+     * UpdateSupplierResource has no Status field — that request returned 200
+     * but silently left the supplier active.
      *
      * Business rule: deactivation is blocked when the supplier has any
      * PENDING or DELAYED purchase orders.
      *
      * @param {number|string} supplierId
+     * @returns {Promise<import('../domain/model/supplier.entity.js').Supplier>}
      */
     function deactivateSupplier(supplierId) {
         const numericId      = parseInt(supplierId);
@@ -197,42 +216,47 @@ const useSupplierStore = defineStore('supplier', () => {
         );
 
         if (activeOrders.length > 0) {
-            errors.value.push(
-                new Error(
-                    `Cannot deactivate supplier #${numericId}: it has ${activeOrders.length} active order(s).`
-                )
+            const error = new Error(
+                `Cannot deactivate supplier #${numericId}: it has ${activeOrders.length} active order(s).`
             );
-            return;
+            errors.value.push(error);
+            return Promise.reject(error);
         }
 
         const existingSupplier = suppliers.value.find(supplier => supplier.id === numericId);
-        if (!existingSupplier) return;
+        if (!existingSupplier) return Promise.reject(new Error(`Supplier #${numericId} not found.`));
 
-        const resource = SupplierAssembler.toResourceFromEntity(
-            new Supplier({ ...existingSupplier, status: SupplierStatus.INACTIVE })
-        );
-
-        supplierApi.deactivateSupplier(numericId, resource)
+        return supplierApi.deactivateSupplier(numericId)
             .then(response => {
                 const updatedSupplier = SupplierAssembler.toEntityFromResource(response.data);
                 const index = suppliers.value.findIndex(supplier => supplier.id === numericId);
                 if (index !== -1) suppliers.value[index] = updatedSupplier;
+                return updatedSupplier;
             })
-            .catch(error => errors.value.push(error));
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
     }
 
     /**
-     * Creates a new purchase order and its detail lines, then updates local state.
+     * Creates a purchase order atomically with all of its lines embedded.
+     *
+     * The real backend has no OPEN/PENDING-then-attach-lines flow — a single
+     * POST /purchases persists the order with its lines in one go
+     * (CreatePurchaseOrderCommand), the same "todo o nada" pattern as Sales.
+     * There is also no standalone endpoint to persist a line separately, and
+     * the backend's Date field is a DateOnly, not a full timestamp — sending
+     * new Date().toISOString() (which includes a time component) fails to
+     * bind, so this sends only the date portion.
      *
      * Business rules:
      * - detailLines must contain at least one item.
      * - Each detail line must have quantity > 0 and unitPrice > 0.
-     * - Details are persisted individually after the parent order is confirmed.
      *
      * @param {Object}   orderPayload
-     * @param {number}   orderPayload.businessId
      * @param {number}   orderPayload.supplierId
-     * @param {string}   orderPayload.expectedDate  - ISO date string.
+     * @param {string}   orderPayload.expectedDate  - yyyy-MM-dd date string.
      * @param {string}   [orderPayload.description]
      * @param {Object[]} orderPayload.detailLines
      * @param {number}   orderPayload.detailLines[].productId
@@ -240,11 +264,13 @@ const useSupplierStore = defineStore('supplier', () => {
      * @param {number}   orderPayload.detailLines[].quantity
      * @param {number}   orderPayload.detailLines[].unitPrice
      * @param {number}   [orderPayload.detailLines[].discount]
+     * @returns {Promise<import('../domain/model/purchase-order.entity.js').PurchaseOrder>}
      */
     function createPurchaseOrder(orderPayload) {
         if (!orderPayload.detailLines || orderPayload.detailLines.length === 0) {
-            errors.value.push(new Error('A purchase order requires at least one detail line.'));
-            return;
+            const error = new Error('A purchase order requires at least one detail line.');
+            errors.value.push(error);
+            return Promise.reject(error);
         }
 
         const invalidLines = orderPayload.detailLines.filter(
@@ -252,54 +278,47 @@ const useSupplierStore = defineStore('supplier', () => {
         );
 
         if (invalidLines.length > 0) {
-            errors.value.push(
-                new Error('All purchase order lines must have quantity > 0 and unitPrice > 0.')
-            );
-            return;
+            const error = new Error('All purchase order lines must have quantity > 0 and unitPrice > 0.');
+            errors.value.push(error);
+            return Promise.reject(error);
         }
 
         const supplierEntity = suppliers.value.find(supplier => supplier.id === parseInt(orderPayload.supplierId));
 
         const orderResource = {
-            businessId:   parseInt(orderPayload.businessId),
             supplierId:   parseInt(orderPayload.supplierId),
-            date:         new Date().toISOString(),
+            date:         new Date().toISOString().slice(0, 10),
             expectedDate: orderPayload.expectedDate,
-            status:       PurchaseOrderStatus.PENDING,
             currency:     'PEN',
-            description:  orderPayload.description ?? ''
+            description:  orderPayload.description ?? '',
+            lines: orderPayload.detailLines.map(line => ({
+                productId: parseInt(line.productId),
+                quantity:  parseInt(line.quantity),
+                unitPrice: parseFloat(line.unitPrice),
+                discount:  parseFloat(line.discount ?? 0)
+            }))
         };
 
-        supplierApi.createPurchaseOrder(orderResource)
+        return supplierApi.createPurchaseOrder(orderResource)
             .then(orderResponse => {
-                const createdOrder = orderResponse.data;
-                const detailPromises = orderPayload.detailLines.map(line =>
-                    supplierApi.createPurchaseDetail({
-                        purchaseId:          createdOrder.id,
-                        productId:           parseInt(line.productId),
-                        quantity:            parseInt(line.quantity),
-                        unitPrice:           parseFloat(line.unitPrice),
-                        discount:            parseFloat(line.discount ?? 0),
-                        deliveryStatus:      'PENDING',
-                        deliveryTrackingNum: ''
-                    }).then(detailResponse => ({
-                        ...detailResponse.data,
-                        productName: line.productName
-                    }))
-                );
-
-                return Promise.all(detailPromises).then(rawDetails => ({
-                    ...createdOrder,
+                const rawDetails = orderResponse.data.details.map(detail => ({
+                    ...detail,
+                    productName: orderPayload.detailLines.find(
+                        line => parseInt(line.productId) === detail.productId
+                    )?.productName ?? ''
+                }));
+                const createdOrder = PurchaseOrderAssembler.toEntityFromResource({
+                    ...orderResponse.data,
                     supplierName: supplierEntity ? supplierEntity.fullName : '',
                     details:      rawDetails
-                }));
+                });
+                purchaseOrders.value.unshift(createdOrder);
+                return createdOrder;
             })
-            .then(hydratedOrder => {
-                purchaseOrders.value.unshift(
-                    PurchaseOrderAssembler.toEntityFromResource(hydratedOrder)
-                );
-            })
-            .catch(error => errors.value.push(error));
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
     }
 
     /**
@@ -310,20 +329,20 @@ const useSupplierStore = defineStore('supplier', () => {
      *
      * @param {number|string}       orderId
      * @param {PurchaseOrderStatus} newStatus - Must be RECEIVED, DELAYED or CANCELLED.
+     * @returns {Promise<import('../domain/model/purchase-order.entity.js').PurchaseOrder>}
      */
     function updatePurchaseOrderStatus(orderId, newStatus) {
         const numericId    = parseInt(orderId);
         const existingOrder = purchaseOrders.value.find(order => order.id === numericId);
 
-        if (!existingOrder) return;
+        if (!existingOrder) return Promise.reject(new Error(`Purchase order #${numericId} not found.`));
 
         if (!existingOrder.isActionable) {
-            errors.value.push(
-                new Error(
-                    `Cannot update purchase order #${numericId}: it is already ${existingOrder.status}.`
-                )
+            const error = new Error(
+                `Cannot update purchase order #${numericId}: it is already ${existingOrder.status}.`
             );
-            return;
+            errors.value.push(error);
+            return Promise.reject(error);
         }
 
         const resource = PurchaseOrderAssembler.toResourceFromEntity(existingOrder);
@@ -333,7 +352,7 @@ const useSupplierStore = defineStore('supplier', () => {
             resource.receivedDate = new Date().toISOString().slice(0, 10);
         }
 
-        supplierApi.updatePurchaseOrder(numericId, resource)
+        return supplierApi.updatePurchaseOrder(numericId, resource)
             .then(response => {
                 const updatedOrder = PurchaseOrderAssembler.toEntityFromResource({
                     ...response.data,
@@ -342,8 +361,12 @@ const useSupplierStore = defineStore('supplier', () => {
                 });
                 const index = purchaseOrders.value.findIndex(order => order.id === numericId);
                 if (index !== -1) purchaseOrders.value[index] = updatedOrder;
+                return updatedOrder;
             })
-            .catch(error => errors.value.push(error));
+            .catch(error => {
+                errors.value.push(error);
+                throw error;
+            });
     }
 
     return {

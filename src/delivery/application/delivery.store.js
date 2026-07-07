@@ -6,14 +6,16 @@
  * - On loadDeliveryWaypoints: waypoints are fetched and injected into the
  *   matching delivery entity in local state; subsequent calls are skipped
  *   when the delivery already has waypoints loaded (cached).
- * - createDelivery: persists the delivery header (POST), then creates the
- *   initial waypoints (POST) and links them to the new delivery id.
- * - completeDelivery: only allowed when canComplete === true.
- *   Updates status to COMPLETED and sets completedAt (PUT).
- *   Also marks all waypoints as reached.
+ * - createDelivery: persists the delivery header (POST /deliveries), then
+ *   registers the 3 default waypoints (POST /waypoints each) linked to the
+ *   new delivery id — the real backend has no atomic "create with waypoints"
+ *   command, and coordinates must be nested under `location`/`currentLocation`
+ *   (GeoCoordinateResource), not flat lat/lng fields.
+ * - completeDelivery: only allowed when canComplete === true. Updates status
+ *   to COMPLETED (PATCH) — completedAt is set server-side automatically.
  * - simulateLocationUpdate: only allowed when canUpdateLocation === true.
  *   Finds the first unreached waypoint, marks it reached, updates currentLabel
- *   and currentLatitude/currentLongitude on the delivery (PUT).
+ *   and currentLocation on the delivery (PATCH).
  *   If all waypoints become reached the status transitions to AT_DESTINATION.
  * - cancelDelivery: allowed for any non-COMPLETED, non-CANCELLED delivery.
  * - inTransitDeliveries, atDestinationDeliveries, completedDeliveries are
@@ -109,10 +111,10 @@ const useDeliveryStore = defineStore('delivery', () => {
     /**
      * Loads all deliveries for the given business and updates local state.
      * @param {number|string} businessId - Business identifier from the IAM store.
-     * @returns {void}
+     * @returns {Promise<void>}
      */
     function fetchDeliveries(businessId) {
-        deliveryApi.getDeliveries(businessId).then(response => {
+        return deliveryApi.getDeliveries(businessId).then(response => {
             deliveries.value    = DeliveryAssembler.toEntitiesFromResponse(response);
             deliveriesLoaded.value = true;
         }).catch(error => {
@@ -149,9 +151,21 @@ const useDeliveryStore = defineStore('delivery', () => {
     /**
      * Creates a new delivery and its initial waypoints.
      *
-     * Workflow (sequential):
-     * 1. POST /deliveries with status REGISTERED and location at origin.
-     * 2. POST /waypoints for each initial checkpoint linked to the new delivery id.
+     * The real backend's CreateDeliveryResource has no status/currentLabel/
+     * currentLocation/products fields — a delivery is always born REGISTERED
+     * with no current location (those are set later via UpdateDeliveryStatus,
+     * see startTransit), and it has no line-item concept at all (only an
+     * optional purchaseDetailId link). It also has no OPEN-then-attach-lines
+     * flow: registering waypoints is a second, separate step (there's no
+     * atomic "create delivery with waypoints" command), each via its own
+     * POST /waypoints with coordinates nested under `location` — a flat
+     * latitude/longitude here would leave Location unset server-side.
+     *
+     * Workflow:
+     * 1. POST /deliveries.
+     * 2. POST /waypoints for each of the 3 default checkpoints (origin,
+     *    en-route, destination), all starting unreached — startTransit
+     *    marks the first one reached when the delivery actually departs.
      * 3. Append the new Delivery entity (with waypoints) to local state.
      *
      * @param {Object}   params
@@ -163,10 +177,12 @@ const useDeliveryStore = defineStore('delivery', () => {
      * @param {string}   params.driverPhone      - Driver contact phone.
      * @param {string}   params.vehicle          - Vehicle description.
      * @param {string}   params.licensePlate     - Vehicle license plate.
-     * @param {string}   params.estimatedArrival - Estimated arrival date-time string.
-     * @param {string[]} params.products         - List of product description strings.
-     * @param {string}   params.totalWeight      - Total weight description.
-     * @param {number}   params.businessId       - Business identifier.
+     * @param {string}   params.estimatedArrival - Estimated arrival ISO 8601 string (with offset).
+     * @param {number}   params.totalWeightValue - Total weight (numeric).
+     * @param {string}   params.totalWeightUnit  - Weight unit ('kg' or 'lb').
+     * @param {number|null} [params.purchaseDetailId=null] - Links this delivery to a real
+     *   PurchaseOrderDetail line, so the Suppliers bounded context can resolve this
+     *   delivery's live status instead of relying on a static denormalized string.
      * @returns {Promise<{ success: boolean, errorKey: string|null }>}
      */
     async function createDelivery({
@@ -179,11 +195,10 @@ const useDeliveryStore = defineStore('delivery', () => {
                                       vehicle,
                                       licensePlate,
                                       estimatedArrival,
-                                      products,
-                                      totalWeight,
-                                      businessId
+                                      totalWeightValue,
+                                      totalWeightUnit,
+                                      purchaseDetailId = null
                                   }) {
-        const nowIso         = new Date().toISOString();
         const trackingNumber = `TRK-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`;
 
         const deliveryResource = {
@@ -196,53 +211,38 @@ const useDeliveryStore = defineStore('delivery', () => {
             driverPhone:      driverPhone,
             vehicle:          vehicle || 'Vehículo de reparto',
             licensePlate:     licensePlate || '—',
-            status:           DeliveryStatus.REGISTERED,
-            registeredAt:     nowIso,
             estimatedArrival: estimatedArrival,
-            completedAt:      null,
-            currentLabel:     origin,
-            currentLatitude:  -12.0453,
-            currentLongitude: -77.0311,
-            products:         products,
-            totalWeight:      totalWeight || '—',
-            businessId:       businessId,
-            purchaseDetailId: null
+            totalWeightValue: totalWeightValue || 0,
+            totalWeightUnit:  totalWeightUnit || 'kg',
+            purchaseDetailId: purchaseDetailId
         };
 
         try {
             const deliveryResponse = await deliveryApi.createDelivery(deliveryResource);
             const persistedDelivery = DeliveryAssembler.toEntityFromResource(deliveryResponse.data);
 
-            // Create the 3 default waypoints: origin, en-route, destination
+            // Create the 3 default waypoints: origin, en-route, destination —
+            // all start unreached; startTransit marks the first one reached.
             const defaultWaypointDefinitions = [
                 {
                     deliveryId:    persistedDelivery.id,
                     label:         `Salida — ${origin}`,
                     district:      origin.split(',')[1]?.trim() || 'Lima',
-                    latitude:      -12.0453,
-                    longitude:     -77.0311,
-                    timestamp:     nowIso,
-                    reached:       true,
+                    location:      { latitude: -12.0453, longitude: -77.0311 },
                     sequenceOrder: 1
                 },
                 {
                     deliveryId:    persistedDelivery.id,
                     label:         'En ruta',
                     district:      '—',
-                    latitude:      -12.0700,
-                    longitude:     -77.0200,
-                    timestamp:     null,
-                    reached:       false,
+                    location:      { latitude: -12.0700, longitude: -77.0200 },
                     sequenceOrder: 2
                 },
                 {
                     deliveryId:    persistedDelivery.id,
                     label:         `Destino — ${destination}`,
                     district:      destination.split(',')[1]?.trim() || 'Lima',
-                    latitude:      -11.9944,
-                    longitude:     -77.0030,
-                    timestamp:     null,
-                    reached:       false,
+                    location:      { latitude: -11.9944, longitude: -77.0030 },
                     sequenceOrder: 3
                 }
             ];
@@ -302,40 +302,21 @@ const useDeliveryStore = defineStore('delivery', () => {
             ? DeliveryStatus.AT_DESTINATION
             : DeliveryStatus.IN_TRANSIT;
 
+        // The backend's UpdateDeliveryStatusResource only takes
+        // { status, currentLabel, currentLocation } — currentLocation must
+        // be nested (GeoCoordinateResource), not flat lat/lng fields.
         const updatedResource = {
-            id:               delivery.id,
-            trackingNumber:   delivery.trackingNumber,
-            orderId:          delivery.orderId,
-            supplierName:     delivery.supplierName,
-            origin:           delivery.origin,
-            destination:      delivery.destination,
-            driverName:       delivery.driverName,
-            driverPhone:      delivery.driverPhone,
-            vehicle:          delivery.vehicle,
-            licensePlate:     delivery.licensePlate,
-            status:           newStatus,
-            registeredAt:     delivery.registeredAt,
-            estimatedArrival: delivery.estimatedArrival,
-            completedAt:      null,
-            currentLabel:     targetWaypoint.label,
-            currentLatitude:  targetWaypoint.latitude,
-            currentLongitude: targetWaypoint.longitude,
-            products:         delivery.products,
-            totalWeight:      delivery.totalWeight,
-            businessId:       delivery.businessId,
-            purchaseDetailId: delivery.purchaseDetailId
+            status:          newStatus,
+            currentLabel:    targetWaypoint.label,
+            currentLocation: { latitude: targetWaypoint.latitude, longitude: targetWaypoint.longitude }
         };
 
         try {
             // Update delivery location on the API
             await deliveryApi.updateDelivery(delivery.id, updatedResource);
 
-            // Update the reached waypoint on the API
-            await deliveryApi.updateWaypoint(targetWaypoint.id, {
-                ...targetWaypoint,
-                reached:   true,
-                timestamp: nowIso
-            });
+            // Mark the waypoint reached — MarkWaypointReachedResource only needs deliveryId.
+            await deliveryApi.updateWaypoint(targetWaypoint.id, { deliveryId: delivery.id });
 
             // Sync local state
             const deliveryIndex = deliveries.value.findIndex(
@@ -370,28 +351,12 @@ const useDeliveryStore = defineStore('delivery', () => {
 
         const nowIso = new Date().toISOString();
 
+        // completedAt is set server-side automatically when status becomes
+        // COMPLETED (see Delivery.UpdateStatus) — not a resource field.
         const updatedResource = {
-            id:               delivery.id,
-            trackingNumber:   delivery.trackingNumber,
-            orderId:          delivery.orderId,
-            supplierName:     delivery.supplierName,
-            origin:           delivery.origin,
-            destination:      delivery.destination,
-            driverName:       delivery.driverName,
-            driverPhone:      delivery.driverPhone,
-            vehicle:          delivery.vehicle,
-            licensePlate:     delivery.licensePlate,
-            status:           DeliveryStatus.COMPLETED,
-            registeredAt:     delivery.registeredAt,
-            estimatedArrival: delivery.estimatedArrival,
-            completedAt:      nowIso,
-            currentLabel:     delivery.destination,
-            currentLatitude:  delivery.currentLatitude,
-            currentLongitude: delivery.currentLongitude,
-            products:         delivery.products,
-            totalWeight:      delivery.totalWeight,
-            businessId:       delivery.businessId,
-            purchaseDetailId: delivery.purchaseDetailId
+            status:          DeliveryStatus.COMPLETED,
+            currentLabel:    delivery.destination,
+            currentLocation: { latitude: delivery.currentLatitude, longitude: delivery.currentLongitude }
         };
 
         try {
@@ -432,43 +397,26 @@ const useDeliveryStore = defineStore('delivery', () => {
     async function startTransit(delivery) {
         if (!delivery.canStartTransit) return;
 
-        const nowIso = new Date().toISOString();
+        const nowIso         = new Date().toISOString();
+        const firstWaypoint  = delivery.waypoints[0];
 
+        // A freshly-registered delivery has no currentLocation yet (the real
+        // backend only sets it once UpdateDeliveryStatus is called) — the
+        // origin waypoint's coordinates are the meaningful starting point.
         const updatedResource = {
-            id:               delivery.id,
-            trackingNumber:   delivery.trackingNumber,
-            orderId:          delivery.orderId,
-            supplierName:     delivery.supplierName,
-            origin:           delivery.origin,
-            destination:      delivery.destination,
-            driverName:       delivery.driverName,
-            driverPhone:      delivery.driverPhone,
-            vehicle:          delivery.vehicle,
-            licensePlate:     delivery.licensePlate,
-            status:           DeliveryStatus.IN_TRANSIT,
-            registeredAt:     delivery.registeredAt,
-            estimatedArrival: delivery.estimatedArrival,
-            completedAt:      null,
-            currentLabel:     delivery.origin,
-            currentLatitude:  delivery.currentLatitude,
-            currentLongitude: delivery.currentLongitude,
-            products:         delivery.products,
-            totalWeight:      delivery.totalWeight,
-            businessId:       delivery.businessId,
-            purchaseDetailId: delivery.purchaseDetailId
+            status:          DeliveryStatus.IN_TRANSIT,
+            currentLabel:    delivery.origin,
+            currentLocation: firstWaypoint
+                ? { latitude: firstWaypoint.latitude, longitude: firstWaypoint.longitude }
+                : { latitude: delivery.currentLatitude, longitude: delivery.currentLongitude }
         };
 
         try {
             await deliveryApi.updateDelivery(delivery.id, updatedResource);
 
             // Mark the first waypoint as reached if it exists
-            const firstWaypoint = delivery.waypoints[0];
             if (firstWaypoint && !firstWaypoint.reached) {
-                await deliveryApi.updateWaypoint(firstWaypoint.id, {
-                    ...firstWaypoint,
-                    reached:   true,
-                    timestamp: nowIso
-                });
+                await deliveryApi.updateWaypoint(firstWaypoint.id, { deliveryId: delivery.id });
             }
 
             // Sync local state
@@ -476,8 +424,11 @@ const useDeliveryStore = defineStore('delivery', () => {
                 deliveryItem => deliveryItem.id === delivery.id
             );
             if (deliveryIndex !== -1) {
-                const syncedDelivery    = deliveries.value[deliveryIndex];
-                syncedDelivery.status   = DeliveryStatus.IN_TRANSIT;
+                const syncedDelivery         = deliveries.value[deliveryIndex];
+                syncedDelivery.status           = DeliveryStatus.IN_TRANSIT;
+                syncedDelivery.currentLabel      = updatedResource.currentLabel;
+                syncedDelivery.currentLatitude   = updatedResource.currentLocation.latitude;
+                syncedDelivery.currentLongitude  = updatedResource.currentLocation.longitude;
                 if (syncedDelivery.waypoints[0] && !syncedDelivery.waypoints[0].reached) {
                     syncedDelivery.waypoints[0].reached   = true;
                     syncedDelivery.waypoints[0].timestamp = nowIso;
@@ -501,27 +452,9 @@ const useDeliveryStore = defineStore('delivery', () => {
         if (delivery.isCompleted || delivery.isCancelled) return;
 
         const updatedResource = {
-            id:               delivery.id,
-            trackingNumber:   delivery.trackingNumber,
-            orderId:          delivery.orderId,
-            supplierName:     delivery.supplierName,
-            origin:           delivery.origin,
-            destination:      delivery.destination,
-            driverName:       delivery.driverName,
-            driverPhone:      delivery.driverPhone,
-            vehicle:          delivery.vehicle,
-            licensePlate:     delivery.licensePlate,
-            status:           DeliveryStatus.CANCELLED,
-            registeredAt:     delivery.registeredAt,
-            estimatedArrival: delivery.estimatedArrival,
-            completedAt:      null,
-            currentLabel:     delivery.currentLabel,
-            currentLatitude:  delivery.currentLatitude,
-            currentLongitude: delivery.currentLongitude,
-            products:         delivery.products,
-            totalWeight:      delivery.totalWeight,
-            businessId:       delivery.businessId,
-            purchaseDetailId: delivery.purchaseDetailId
+            status:          DeliveryStatus.CANCELLED,
+            currentLabel:    delivery.currentLabel,
+            currentLocation: { latitude: delivery.currentLatitude, longitude: delivery.currentLongitude }
         };
 
         try {

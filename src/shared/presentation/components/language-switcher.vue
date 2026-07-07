@@ -1,39 +1,53 @@
 <script setup>
 import { useI18n } from 'vue-i18n';
 
-const { locale, availableLocales } = useI18n();
+const { t, locale, availableLocales } = useI18n();
 </script>
 
 <template>
-  <pv-select-button v-model="locale" :options="availableLocales" class="lang-switch">
-    <template #option="slotProps">
-      <span>{{ slotProps.option.toUpperCase() }}</span>
-    </template>
-  </pv-select-button>
+  <div class="lang-switch-wrapper" :aria-label="t('sidebar.language-label')" :title="t('sidebar.language-label')">
+    <i class="pi pi-globe lang-switch-icon"/>
+    <pv-select-button v-model="locale" :options="availableLocales" class="lang-switch">
+      <template #option="slotProps">
+        <span>{{ slotProps.option.toUpperCase() }}</span>
+      </template>
+    </pv-select-button>
+  </div>
 </template>
 
 <style scoped>
+.lang-switch-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lang-switch-icon {
+  color: #CBD5E1;
+  font-size: 0.9rem;
+}
+
 /* Pill container (class falls through to PrimeVue's root .p-selectbutton) */
 .lang-switch {
   display: inline-flex;
   gap: 2px;
   padding: 3px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 10px;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 /* Each segment */
 .lang-switch :deep(.p-togglebutton) {
   border: none;
   margin: 0;
-  padding: 4px 12px;
-  min-width: 38px;
+  padding: 5px 13px;
+  min-width: 40px;
   border-radius: 3px;
   background: transparent;
-  color: #94A3B8;
-  font-size: 0.74rem;
-  font-weight: 600;
+  color: #CBD5E1;
+  font-size: 0.8rem;
+  font-weight: 700;
   letter-spacing: 0.03em;
   transition: background-color 0.18s ease, color 0.18s ease;
 }

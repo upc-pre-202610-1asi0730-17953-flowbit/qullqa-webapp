@@ -21,6 +21,10 @@ export class Waypoint {
      * @param {string}         [params.district='']        - District or zone name for display.
      * @param {number}         [params.latitude=0]         - Geographical latitude.
      * @param {number}         [params.longitude=0]        - Geographical longitude.
+     * @param {{latitude: number, longitude: number}|null} [params.location=null] -
+     *   The real backend's WaypointResource nests coordinates under `location`
+     *   instead of flat latitude/longitude fields; used as a fallback when
+     *   latitude/longitude aren't given directly.
      * @param {string|null}    [params.timestamp=null]     - ISO 8601 timestamp when this point was reached.
      * @param {boolean}        [params.reached=false]      - Whether the delivery has passed this point.
      * @param {number}         [params.sequenceOrder=1]    - 1-based ordering index along the route.
@@ -30,8 +34,9 @@ export class Waypoint {
                     deliveryId    = null,
                     label         = '',
                     district      = '',
-                    latitude      = 0,
-                    longitude     = 0,
+                    latitude      = null,
+                    longitude     = null,
+                    location      = null,
                     timestamp     = null,
                     reached       = false,
                     sequenceOrder = 1
@@ -40,8 +45,8 @@ export class Waypoint {
         this.deliveryId    = deliveryId;
         this.label         = label;
         this.district      = district;
-        this.latitude      = latitude;
-        this.longitude     = longitude;
+        this.latitude      = latitude  ?? location?.latitude  ?? 0;
+        this.longitude     = longitude ?? location?.longitude ?? 0;
         this.timestamp     = timestamp;
         this.reached       = reached;
         this.sequenceOrder = sequenceOrder;

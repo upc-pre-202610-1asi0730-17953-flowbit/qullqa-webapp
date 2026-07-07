@@ -1,17 +1,15 @@
 import { BaseApi }      from '../../shared/infrastructure/base-api.js';
 import { BaseEndpoint } from '../../shared/infrastructure/base-endpoint.js';
 
-const productsEndpointPath    = import.meta.env.VITE_PRODUCTS_ENDPOINT_PATH;
-const inventoriesEndpointPath = import.meta.env.VITE_INVENTORIES_ENDPOINT_PATH;
-const batchesEndpointPath     = import.meta.env.VITE_BATCHES_ENDPOINT_PATH;
-const warehousesEndpointPath  = import.meta.env.VITE_WAREHOUSES_ENDPOINT_PATH;
-const suppliersEndpointPath   = import.meta.env.VITE_SUPPLIERS_ENDPOINT_PATH;
+const productsEndpointPath       = import.meta.env.VITE_PRODUCTS_ENDPOINT_PATH;
+const inventoriesEndpointPath    = import.meta.env.VITE_INVENTORIES_ENDPOINT_PATH;
+const batchesEndpointPath        = import.meta.env.VITE_BATCHES_ENDPOINT_PATH;
+const warehousesEndpointPath     = import.meta.env.VITE_WAREHOUSES_ENDPOINT_PATH;
+const suppliersEndpointPath      = import.meta.env.VITE_SUPPLIERS_ENDPOINT_PATH;
+const stockMovementsEndpointPath = import.meta.env.VITE_STOCK_MOVEMENTS_ENDPOINT_PATH;
 
 /**
  * Infrastructure gateway for the Product & Inventory Management bounded-context endpoints.
- *
- * Stock movements are derived client-side from batches (INTAKE) because the mock API
- * does not expose a dedicated /stockMovements endpoint.
  *
  * @class ProductApi
  * @extends BaseApi
@@ -27,14 +25,17 @@ export class ProductApi extends BaseApi {
     #warehousesEndpoint;
     /** @type {BaseEndpoint} @private */
     #suppliersEndpoint;
+    /** @type {BaseEndpoint} @private */
+    #stockMovementsEndpoint;
 
     constructor() {
         super();
-        this.#productsEndpoint    = new BaseEndpoint(this, productsEndpointPath);
-        this.#inventoriesEndpoint = new BaseEndpoint(this, inventoriesEndpointPath);
-        this.#batchesEndpoint     = new BaseEndpoint(this, batchesEndpointPath);
-        this.#warehousesEndpoint  = new BaseEndpoint(this, warehousesEndpointPath);
-        this.#suppliersEndpoint   = new BaseEndpoint(this, suppliersEndpointPath);
+        this.#productsEndpoint       = new BaseEndpoint(this, productsEndpointPath);
+        this.#inventoriesEndpoint    = new BaseEndpoint(this, inventoriesEndpointPath);
+        this.#batchesEndpoint        = new BaseEndpoint(this, batchesEndpointPath);
+        this.#warehousesEndpoint     = new BaseEndpoint(this, warehousesEndpointPath);
+        this.#suppliersEndpoint      = new BaseEndpoint(this, suppliersEndpointPath);
+        this.#stockMovementsEndpoint = new BaseEndpoint(this, stockMovementsEndpointPath);
     }
 
     /**
@@ -103,24 +104,30 @@ export class ProductApi extends BaseApi {
     }
 
     /**
-     * Updates an existing inventory record.
-     * Used to increase stock on intake registration.
-     * @param {number|string} id
+     * Updates a product's minimum stock threshold via the backend's
+     * dedicated command endpoint (PATCH /inventories/{productId}/minimum-stock).
+     * There is no generic PATCH /inventories/{id} on the real backend.
+     * @param {number|string} productId
      * @param {Object} resource
      * @returns {Promise<import('axios').AxiosResponse>}
      */
-    updateInventory(id, resource) {
-        return this.#inventoriesEndpoint.update(id, resource);
+    updateMinimumStock(productId, resource) {
+        return this.http.patch(`${inventoriesEndpointPath}/${productId}/minimum-stock`, resource);
     }
 
     /**
-     * Creates a new inventory record.
-     * Used when a product has no prior inventory entry.
+     * Registers a stock intake for a product via the dedicated backend
+     * command endpoint — sums into the existing InventoryItem (per
+     * product+warehouse) or creates one, and records the StockMovement,
+     * all server-side and atomically. Replaces the old client-orchestrated
+     * "GET, then PUT-or-POST, then separately log a movement" sequence the
+     * mock API required.
+     * @param {number|string} productId
      * @param {Object} resource
      * @returns {Promise<import('axios').AxiosResponse>}
      */
-    createInventory(resource) {
-        return this.#inventoriesEndpoint.create(resource);
+    registerStockIntake(productId, resource) {
+        return this.http.post(`${productsEndpointPath}/${productId}/stock-intake`, resource);
     }
 
     /**
@@ -134,6 +141,26 @@ export class ProductApi extends BaseApi {
     }
 
     /**
+     * Creates a new batch resource for a product.
+     * @param {Object} resource
+     * @returns {Promise<import('axios').AxiosResponse>}
+     */
+    createBatch(resource) {
+        return this.#batchesEndpoint.create(resource);
+    }
+
+    /**
+     * Fetches all batches across every product.
+     * Batch resources carry no businessId of their own, so scoping to the
+     * authenticated business is done client-side by matching productId
+     * against the already-loaded, business-scoped products list.
+     * @returns {Promise<import('axios').AxiosResponse>}
+     */
+    getAllBatches() {
+        return this.#batchesEndpoint.getAll();
+    }
+
+    /**
      * Fetches all warehouses for a given business.
      * @param {number|string} businessId
      * @returns {Promise<import('axios').AxiosResponse>}
@@ -143,13 +170,12 @@ export class ProductApi extends BaseApi {
     }
 
     /**
-     * Fetches all inventory records for a specific warehouse.
-     * Used to populate the WarehouseStockView.
-     * @param {number|string} warehouseId
+     * Creates a new warehouse for a business.
+     * @param {Object} resource
      * @returns {Promise<import('axios').AxiosResponse>}
      */
-    getWarehouseStock(warehouseId) {
-        return this.#inventoriesEndpoint.getAllByParam('warehouseId', warehouseId);
+    createWarehouse(resource) {
+        return this.#warehousesEndpoint.create(resource);
     }
 
     /**
@@ -160,5 +186,14 @@ export class ProductApi extends BaseApi {
      */
     getSuppliers(businessId) {
         return this.#suppliersEndpoint.getAllByParam('businessId', businessId);
+    }
+
+    /**
+     * Fetches all stock movement records for a given business.
+     * @param {number|string} businessId
+     * @returns {Promise<import('axios').AxiosResponse>}
+     */
+    getStockMovements(businessId) {
+        return this.#stockMovementsEndpoint.getAllByParam('businessId', businessId);
     }
 }

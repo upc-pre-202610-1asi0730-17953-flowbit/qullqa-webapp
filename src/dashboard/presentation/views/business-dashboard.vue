@@ -1,39 +1,80 @@
 <script setup>
-import { computed, onMounted, toRefs } from 'vue';
+import { computed, onMounted, ref, toRefs } from 'vue';
 import { useRouter }                   from 'vue-router';
 import { useI18n }                     from 'vue-i18n';
 import useDashboardStore               from '../../application/dashboard.store.js';
+import useAlertsStore                  from '../../../alerts/application/alerts.store.js';
+import useProductStore                 from '../../../product/application/product.store.js';
+import useSalesStore                   from '../../../sales/application/sales.store.js';
 import useIamStore                     from '../../../iam/application/iam.store.js';
+import { AlertType }                   from '../../../alerts/domain/model/alert.entity.js';
+import { toDateLocale }                from '../../../shared/presentation/date-locale.js';
 
-const { t }          = useI18n();
+const { t, locale }  = useI18n();
 const router         = useRouter();
 const dashboardStore = useDashboardStore();
+const alertsStore    = useAlertsStore();
+const productStore   = useProductStore();
+const salesStore     = useSalesStore();
 const iamStore       = useIamStore();
 
 const {
-  metrics, metricsLoaded,
-  alerts,  alertsLoaded,
-  salesByDay, topProducts,
+  liveMetrics,
+  salesByDay,
   errors
 } = toRefs(dashboardStore);
 
-const {
-  fetchDashboardMetrics,
-  fetchAlerts,
-  fetchSalesByDay,
-  fetchTopProducts,
-  refreshMetrics
-} = dashboardStore;
+const { alerts, alertsLoaded, expirationActiveCount } = toRefs(alertsStore);
+
+const { fetchSalesByDay, refreshMetrics } = dashboardStore;
+
+const { fetchAlerts } = alertsStore;
+
+/**
+ * Warehouses of the current business — resolved client-side against an
+ * alert's warehouseId so the recent-alerts panel can say which specific
+ * warehouse a LOW_STOCK/OUT_OF_STOCK alert is about, same as the Alertas
+ * screen (see active-alerts-dashboard.vue).
+ * @type {import('vue').Ref<Array>}
+ */
+const warehouses = ref([]);
+
+/**
+ * @param {import('../../../alerts/domain/model/alert.entity.js').Alert} alert
+ * @returns {string|null}
+ */
+function resolveWarehouseName(alert) {
+  if (alert.type !== AlertType.LOW_STOCK && alert.type !== AlertType.OUT_OF_STOCK) return null;
+  if (alert.warehouseId == null) return t('alerts.field-unknown-warehouse');
+  const warehouse = warehouses.value.find(item => item.id === alert.warehouseId);
+  return warehouse ? warehouse.name : `#${alert.warehouseId}`;
+}
 
 onMounted(() => {
   const businessId = iamStore.currentUser?.businessId ?? null;
   if (businessId) {
-    if (!metricsLoaded.value)        fetchDashboardMetrics(businessId);
-    if (!alertsLoaded.value)         fetchAlerts(businessId);
-    if (!salesByDay.value.length)    fetchSalesByDay(businessId);
-    if (!topProducts.value.length)   fetchTopProducts(businessId);
+    fetchAlerts();
+    productStore.fetchWarehousesForBusiness(businessId).then(fetched => {
+      warehouses.value = fetched;
+    });
+    if (!salesByDay.value.length)       fetchSalesByDay(businessId);
+    if (!productStore.productsLoaded)   productStore.fetchProducts(businessId);
+    if (!productStore.inventoryLoaded)  productStore.fetchInventory(businessId);
+    if (!salesStore.salesLoaded)        salesStore.fetchSales(businessId);
   }
 });
+
+/**
+ * Re-fetches everything the Panel shows from the server: products/inventory/
+ * sales (liveMetrics + Mayor stock), the weekly chart and the alerts.
+ */
+function handleRefresh() {
+  const businessId = iamStore.currentUser?.businessId ?? null;
+  if (!businessId) return;
+  refreshMetrics(businessId);
+  fetchSalesByDay(businessId);
+  fetchAlerts();
+}
 
 // ─── Navigation ────────────────────────────────────────────────────────────
 
@@ -55,16 +96,27 @@ const activeAlerts = computed(() =>
 );
 
 /**
- * Count of active EXPIRATION alerts (used in the "Por Vencer" KPI).
+ * Count of active EXPIRATION/EXPIRED alerts (used in the "Por Vencer" KPI).
+ * Reuses alerts.store.js's own expirationActiveCount so both KPIs (here and
+ * on the Alertas screen) always agree on the same number.
  * @type {import('vue').ComputedRef<number>}
  */
 const expiringCount = computed(() =>
     alertsLoaded.value
-        ? alerts.value.filter(alert => alert.type === 'EXPIRATION' && alert.status === 'ACTIVE').length
+        ? expirationActiveCount.value
         : null
 );
 
 // ─── KPI card definitions ──────────────────────────────────────────────────
+
+/**
+ * Whether the real data liveMetrics is computed from has loaded at least
+ * once — used to show a loading state instead of a misleading "0" flash.
+ * @type {import('vue').ComputedRef<boolean>}
+ */
+const metricsReady = computed(() =>
+    productStore.productsLoaded && productStore.inventoryLoaded && salesStore.salesLoaded
+);
 
 /**
  * The six KPI cards rendered in the top grid.
@@ -74,7 +126,7 @@ const expiringCount = computed(() =>
 const kpiCards = computed(() => [
   {
     labelKey:   'dashboard.total-products',
-    value:      metricsLoaded.value && metrics.value ? metrics.value.totalProducts : null,
+    value:      metricsReady.value ? liveMetrics.value.totalProducts : null,
     icon:       'pi pi-box',
     iconColor:  '#0E7490',
     iconBg:     '#E0F2FE',
@@ -82,7 +134,7 @@ const kpiCards = computed(() => [
   },
   {
     labelKey:   'dashboard.low-stock',
-    value:      metricsLoaded.value && metrics.value ? metrics.value.lowStockProducts : null,
+    value:      metricsReady.value ? liveMetrics.value.lowStockProducts : null,
     icon:       'pi pi-exclamation-triangle',
     iconColor:  '#F97316',
     iconBg:     '#FFEDD5',
@@ -98,7 +150,7 @@ const kpiCards = computed(() => [
   },
   {
     labelKey:    'dashboard.inventory-value',
-    value:       metricsLoaded.value && metrics.value ? formatCurrency(metrics.value.inventoryValue) : null,
+    value:       metricsReady.value ? formatCurrency(liveMetrics.value.inventoryValue) : null,
     icon:        'pi pi-warehouse',
     iconColor:   '#22C55E',
     iconBg:      '#DCFCE7',
@@ -106,7 +158,7 @@ const kpiCards = computed(() => [
   },
   {
     labelKey:   'dashboard.total-sales',
-    value:      metricsLoaded.value && metrics.value ? formatCurrency(metrics.value.totalSales) : null,
+    value:      metricsReady.value ? formatCurrency(liveMetrics.value.totalSales) : null,
     icon:       'pi pi-shopping-cart',
     iconColor:  '#6366F1',
     iconBg:     '#EEF2FF',
@@ -114,7 +166,7 @@ const kpiCards = computed(() => [
   },
   {
     labelKey:   'dashboard.stock-health',
-    value:      metricsLoaded.value && metrics.value ? (metrics.value.stockHealthPercentage + '%') : null,
+    value:      metricsReady.value ? (liveMetrics.value.stockHealthPercentage + '%') : null,
     icon:       'pi pi-heart',
     iconColor:  '#0E7490',
     iconBg:     '#CFFAFE',
@@ -138,7 +190,7 @@ function formatCurrency(amount) {
  */
 function formatDateTime(isoString) {
   if (!isoString) return '—';
-  return new Date(isoString).toLocaleString('es-PE', {
+  return new Date(isoString).toLocaleString(toDateLocale(locale.value), {
     day: '2-digit', month: '2-digit', year: 'numeric',
     hour: '2-digit', minute: '2-digit', hour12: false
   });
@@ -160,12 +212,30 @@ function alertSeverityKey(severity) {
 const gridLines = [0, 25, 50, 75];
 
 /**
- * Current date formatted in Spanish long format (e.g. "Viernes, 12 de junio de 2026").
- * Capitalized because toLocaleDateString returns lowercase weekday in es-PE.
+ * i18n key suffixes for weekday abbreviations, indexed Monday(0)..Sunday(6),
+ * matching the dayIndex convention used by dashboard.store.js's salesByDay.
+ * @type {string[]}
+ */
+const WEEKDAY_KEY_SUFFIXES = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+
+/**
+ * Translates a salesByDay entry's dayIndex (0=Monday..6=Sunday) into a
+ * locale-aware short weekday label.
+ * @param {number} dayIndex
+ * @returns {string}
+ */
+function weekdayLabel(dayIndex) {
+  return t(`dashboard.weekday-${WEEKDAY_KEY_SUFFIXES[dayIndex]}`);
+}
+
+/**
+ * Current date formatted in long format (e.g. "Viernes, 12 de junio de 2026"),
+ * following the active UI locale rather than a hardcoded Spanish one.
+ * Capitalized because toLocaleDateString returns a lowercase weekday.
  * @type {import('vue').ComputedRef<string>}
  */
 const currentDateLabel = computed(() => {
-  const formatted = new Date().toLocaleDateString('es-PE', {
+  const formatted = new Date().toLocaleDateString(toDateLocale(locale.value), {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   });
   return formatted.charAt(0).toUpperCase() + formatted.slice(1);
@@ -193,23 +263,38 @@ const currentUserFirstName = computed(() => {
 });
 
 /**
- * Top 3 products sorted descending by stock quantity for the "Mayor stock" panel.
- * stockPercent is relative to the highest-quantity item (max badge = +12%).
+ * Top 5 products sorted descending by REAL current inventory stock, for the
+ * "Mayor stock" panel. This used to be wired to sales quantity (how much of
+ * each product had been SOLD), which produced numbers that didn't match
+ * Inventario at all and even ranked out-of-stock products highly if they'd
+ * sold well in the past — it's now sourced from the same InventoryItem data
+ * Inventario itself uses, so the numbers always agree.
+ * stockPercent is each product's stock relative to the highest-stocked item.
  * @type {import('vue').ComputedRef<Array>}
  */
 const topStockProducts = computed(() => {
-  if (!topProducts.value.length) return [];
-  const sorted = [...topProducts.value].sort((a, b) => b.totalQuantity - a.totalQuantity);
-  const maxQty = sorted[0].totalQuantity;
-  return sorted.slice(0, 3).map(product => ({
+  const ranked = productStore.products
+      .map(product => ({
+        productId:    product.id,
+        productName:  product.name,
+        currentStock: productStore.getTotalInventoryForProduct(product.id)?.currentStock ?? 0
+      }))
+      .filter(product => product.currentStock > 0)
+      .sort((a, b) => b.currentStock - a.currentStock)
+      .slice(0, 5);
+
+  const maxStock = ranked[0]?.currentStock ?? 0;
+  return ranked.map(product => ({
     ...product,
-    stockPercent: maxQty > 0 ? Math.max(1, Math.round((product.totalQuantity / maxQty) * 12)) : 0
+    stockPercent: maxStock > 0 ? Math.round((product.currentStock / maxStock) * 100) : 0
   }));
 });
 
 /**
- * The 6 quick-action cards shown in the 2×3 grid.
+ * The quick-action cards shown in the actions grid.
  * Each card declares its i18n keys, icon, colors, and navigation handler.
+ * Includes "View reports" (navigateToReports) — its only entry point in the
+ * whole app, since neither the sidebar nor any other view links to it.
  * @type {import('vue').ComputedRef<Array>}
  */
 const quickActions = computed(() => [
@@ -260,6 +345,14 @@ const quickActions = computed(() => [
     iconBg:   '#DBEAFE',
     iconColor:'#2563EB',
     handler:  navigateToNewProduct
+  },
+  {
+    labelKey: 'dashboard.action-view-reports',
+    subKey:   'dashboard.action-view-reports-sub',
+    icon:     'pi pi-chart-bar',
+    iconBg:   '#F1F5F9',
+    iconColor:'#475569',
+    handler:  navigateToReports
   }
 ]);
 </script>
@@ -279,7 +372,7 @@ const quickActions = computed(() => [
         <button
             class="refresh-btn"
             :title="t('dashboard.refresh')"
-            @click="refreshMetrics"
+            @click="handleRefresh"
         >
           <i class="pi pi-refresh"/>
         </button>
@@ -339,17 +432,19 @@ const quickActions = computed(() => [
             <div class="chart-bars">
               <div
                   v-for="dayEntry in salesByDay"
-                  :key="dayEntry.dayLabel"
+                  :key="dayEntry.dayIndex"
                   class="chart-bar-col"
               >
                 <span class="chart-bar-col__amount">
                   {{ dayEntry.totalAmount > 0 ? formatCurrency(dayEntry.totalAmount) : '' }}
                 </span>
-                <div
-                    class="chart-bar-col__bar"
-                    :style="{ height: dayEntry.barHeightPercent + '%' }"
-                />
-                <span class="chart-bar-col__label">{{ dayEntry.dayLabel }}</span>
+                <div class="chart-bar-col__track">
+                  <div
+                      class="chart-bar-col__bar"
+                      :style="{ height: dayEntry.barHeightPercent + '%' }"
+                  />
+                </div>
+                <span class="chart-bar-col__label">{{ weekdayLabel(dayEntry.dayIndex) }}</span>
               </div>
             </div>
             <div class="chart-axis"/>
@@ -389,6 +484,9 @@ const quickActions = computed(() => [
               <div class="alert-card__body">
                 <p class="alert-card__product">
                   {{ alert.productName ?? t('dashboard.unknown-product') }}
+                  <span v-if="resolveWarehouseName(alert)" style="font-size: 0.72rem; color: #64748B; font-weight: 400;">
+                    · {{ resolveWarehouseName(alert) }}
+                  </span>
                 </p>
                 <p class="alert-card__message">{{ alert.message }}</p>
               </div>
@@ -455,16 +553,20 @@ const quickActions = computed(() => [
               <div class="stock-row__info">
                 <p class="stock-row__name">{{ stockItem.productName }}</p>
                 <p class="stock-row__qty">
-                  {{ stockItem.totalQuantity }} {{ t('dashboard.units') }}
+                  {{ stockItem.currentStock }} {{ t('dashboard.units') }}
                 </p>
               </div>
-              <span class="stock-row__badge">+{{ stockItem.stockPercent }}%</span>
+              <span class="stock-row__badge">{{ stockItem.stockPercent }}%</span>
             </div>
           </div>
 
-          <div v-else class="panel__loading">
+          <div v-else-if="!productStore.productsLoaded || !productStore.inventoryLoaded" class="panel__loading">
             <i class="pi pi-spin pi-spinner"/>
           </div>
+
+          <p v-else class="m-0" style="font-size: 0.88rem; color: #64748B;">
+            {{ t('dashboard.no-stock-data') }}
+          </p>
         </div>
       </div>
     </div>
@@ -738,6 +840,17 @@ const quickActions = computed(() => [
 }
 @media (min-width: 640px) {
   .chart-bar-col__amount { font-size: 0.65rem; }
+}
+/* Fixed-height reference so the bar's height:X% below actually has a real
+   pixel height to resolve against — without this, .chart-bar-col__bar's
+   percentage height resolves against an auto-sized (content-fit) parent per
+   the CSS spec, which computes to nothing, so every bar silently collapsed
+   to its min-height regardless of barHeightPercent. */
+.chart-bar-col__track {
+  width: 100%;
+  height: 140px;
+  display: flex;
+  align-items: flex-end;
 }
 .chart-bar-col__bar {
   width: 100%;

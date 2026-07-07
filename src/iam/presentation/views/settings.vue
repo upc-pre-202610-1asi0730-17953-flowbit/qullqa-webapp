@@ -1,16 +1,21 @@
 <script setup>
-import { onMounted, ref, toRefs } from 'vue';
+import { onMounted, ref, toRefs, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useConfirm } from 'primevue';
 import useIamStore from '../../application/iam.store.js';
+import useSubscriptionStore from '../../../subscription/application/subscription.store.js';
 import LanguageSwitcher from '../../../shared/presentation/components/language-switcher.vue';
+import InviteUserModal from '../components/invite-user-modal.vue';
+import { roleLabelKey, roleStyleByPosition } from '../role-labels.js';
 
 const { t }    = useI18n();
 const confirm  = useConfirm();
 const iamStore = useIamStore();
+const subscriptionStore = useSubscriptionStore();
 
-const { users, usersLoaded } = toRefs(iamStore);
-const { fetchUsers, deleteUser } = iamStore;
+const { users, usersLoaded, rolesLoaded, currentBusiness, businessLoaded } = toRefs(iamStore);
+const { fetchUsers, fetchRoles, fetchBusiness, getRolePosition, deleteUser } = iamStore;
+const { plans, plansLoaded } = toRefs(subscriptionStore);
 
 const activeTab = ref('profile');
 
@@ -23,7 +28,7 @@ const tabs = [
 ];
 
 const profileForm = ref({
-  businessName: 'Bodega Lima Norte',
+  businessName: '',
   businessType: 'BODEGA',
   address:      '',
   phone:        '',
@@ -31,27 +36,61 @@ const profileForm = ref({
   email:        iamStore.currentUser ? iamStore.currentUser.email    : ''
 });
 
+const businessTypeOptions = [
+  { value: 'BODEGA',   labelKey: 'sign-up.type-bodega'   },
+  { value: 'FARMACIA', labelKey: 'sign-up.type-farmacia' }
+];
+
+/** Populates the profile form once the business/user data has loaded. */
+function syncProfileFormFromStore() {
+  if (currentBusiness.value) {
+    profileForm.value.businessName = currentBusiness.value.name;
+    profileForm.value.businessType = currentBusiness.value.type;
+    profileForm.value.address      = currentBusiness.value.address;
+  }
+  if (iamStore.currentUser) {
+    profileForm.value.fullName = iamStore.currentUser.fullName;
+    profileForm.value.email    = iamStore.currentUser.email;
+    profileForm.value.phone    = iamStore.currentUser.phone;
+  }
+}
+watch(currentBusiness, syncProfileFormFromStore);
+
+const savingProfile = ref(false);
+const profileSaveState = ref(''); // '' | 'success' | 'error'
+
 const securityForm   = ref({ currentPassword: '', newPassword: '', confirmPassword: '' });
 const securityErrors = ref({ currentPassword: '', newPassword: '', confirmPassword: '' });
 const securitySuccess = ref(false);
+const securitySubmitting = ref(false);
 const showNewPassword = ref(false);
+
+const showInviteModal = ref(false);
+const upgradingPlanId = ref(null);
 
 const notificationsEnabled = ref(true);
 
-onMounted(() => { if (!usersLoaded.value) fetchUsers(); });
+onMounted(() => {
+  if (!usersLoaded.value) fetchUsers(iamStore.currentUser?.businessId);
+  if (!rolesLoaded.value) fetchRoles();
+  if (!plansLoaded.value) subscriptionStore.fetchPlans();
+  if (!businessLoaded.value && iamStore.currentUser?.businessId) {
+    fetchBusiness(iamStore.currentUser.businessId).then(syncProfileFormFromStore);
+  } else {
+    syncProfileFormFromStore();
+  }
+});
 
+/**
+ * Resolves a roleId to its display label via roles.position (the single
+ * source of truth), instead of a hardcoded roleId → label mapping.
+ */
 function resolveRoleLabel(roleId) {
-  const roleMap = { 1: t('settings.role-admin'), 2: t('settings.role-collaborator'), 3: t('settings.role-seller') };
-  return roleMap[roleId] ?? t('settings.role-seller');
+  return t(roleLabelKey(getRolePosition(roleId)));
 }
 
 function resolveRoleStyle(roleId) {
-  const styles = {
-    1: { bg: '#FEE2E2', color: '#DC2626' },
-    2: { bg: '#EDE9FE', color: '#7C3AED' },
-    3: { bg: '#DBEAFE', color: '#1D4ED8' }
-  };
-  return styles[roleId] ?? styles[3];
+  return roleStyleByPosition(getRolePosition(roleId));
 }
 
 function resolveStatusStyle(status) {
@@ -68,16 +107,95 @@ function confirmDeleteUser(userAccount) {
   });
 }
 
-function submitPasswordChange() {
+/**
+ * Persists the Profile tab (business fields + user fields) via the IAM store.
+ * Both requests run in parallel since they touch independent aggregates
+ * (Business and User).
+ *
+ * Business rule: re-syncs the form from both stores only after BOTH requests
+ * have settled. The `watch(currentBusiness, ...)` below also re-syncs the
+ * whole form (phone included) the instant updateBusiness resolves — if that
+ * happens before updateUserProfile finishes, it was reading currentUser.phone
+ * before the new value had landed, wiping the phone the user just typed back
+ * to its old value until a full reload later re-fetched everything fresh.
+ * Explicitly re-syncing here once both promises resolve makes the fix
+ * order-independent instead of relying on request timing.
+ */
+async function saveProfile() {
+  savingProfile.value = true;
+  profileSaveState.value = '';
+
+  const [businessResult, userResult] = await Promise.all([
+    iamStore.updateBusiness({
+      name:    profileForm.value.businessName,
+      type:    profileForm.value.businessType,
+      address: profileForm.value.address
+    }),
+    iamStore.updateUserProfile({
+      fullName: profileForm.value.fullName,
+      phone:    profileForm.value.phone
+    })
+  ]);
+  syncProfileFormFromStore();
+
+  savingProfile.value = false;
+  profileSaveState.value = (businessResult.success && userResult.success) ? 'success' : 'error';
+  setTimeout(() => { profileSaveState.value = ''; }, 3500);
+}
+
+async function submitPasswordChange() {
   securityErrors.value = { currentPassword: '', newPassword: '', confirmPassword: '' };
+  securitySuccess.value = false;
   let isValid = true;
   if (!securityForm.value.currentPassword)                                              { securityErrors.value.currentPassword = t('settings.error-current-password'); isValid = false; }
   if (!securityForm.value.newPassword || securityForm.value.newPassword.length < 8)     { securityErrors.value.newPassword     = t('settings.error-new-password');     isValid = false; }
   if (securityForm.value.newPassword !== securityForm.value.confirmPassword)            { securityErrors.value.confirmPassword  = t('settings.error-confirm-password'); isValid = false; }
   if (!isValid) return;
+
+  securitySubmitting.value = true;
+  const result = await iamStore.changePassword(securityForm.value.currentPassword, securityForm.value.newPassword);
+  securitySubmitting.value = false;
+
+  if (!result.success) {
+    securityErrors.value.currentPassword = t(result.errorKey);
+    return;
+  }
+
   securitySuccess.value = true;
   securityForm.value    = { currentPassword: '', newPassword: '', confirmPassword: '' };
   setTimeout(() => { securitySuccess.value = false; }, 3500);
+}
+
+/** Called by InviteUserModal after a successful invite; refreshes the list state. */
+function handleUserInvited() {
+  showInviteModal.value = false;
+}
+
+/**
+ * Colour/gradient palette applied to plan cards, cycling by catalog order
+ * (Basic → gray, Pro → teal, Enterprise → purple, repeats for any extra plan).
+ */
+const planPalette = [
+  { color: '#64748B', gradFrom: '#64748B', gradTo: '#475569' },
+  { color: '#0E7490', gradFrom: '#0E7490', gradTo: '#0B3558' },
+  { color: '#7C3AED', gradFrom: '#7C3AED', gradTo: '#5B21B6' }
+];
+
+function planStyle(index) {
+  return planPalette[index % planPalette.length];
+}
+
+function confirmUpgradePlan(plan) {
+  confirm.require({
+    message: t('settings.plan-upgrade-confirm', { name: plan.name }),
+    header:  t('settings.plan-upgrade-header'),
+    icon:    'pi pi-crown',
+    accept:  async () => {
+      upgradingPlanId.value = plan.id;
+      await iamStore.updateBusinessPlan(plan.id);
+      upgradingPlanId.value = null;
+    }
+  });
 }
 
 function computePasswordStrength(password) {
@@ -88,7 +206,8 @@ function computePasswordStrength(password) {
   return 4;
 }
 const strengthColors = ['', '#EF4444', '#FACC15', '#0E7490', '#16A34A'];
-const strengthLabels = ['', 'Débil', 'Regular', 'Buena', 'Fuerte'];
+const strengthLabelKeys = ['', 'sign-up.strength-weak', 'sign-up.strength-fair', 'sign-up.strength-good', 'sign-up.strength-strong'];
+function strengthLabel(level) { return strengthLabelKeys[level] ? t(strengthLabelKeys[level]) : ''; }
 </script>
 
 <template>
@@ -148,7 +267,7 @@ const strengthLabels = ['', 'Débil', 'Regular', 'Buena', 'Fuerte'];
           <div>
             <p class="m-0" style="font-size: 1.1rem; font-weight: 700; color: #fff;">{{ iamStore.currentUser ? iamStore.currentUser.fullName : '—' }}</p>
             <p class="m-0 mt-1" style="font-size: 0.82rem; color: rgba(255,255,255,0.7);">{{ iamStore.currentUser ? iamStore.currentUser.email : '—' }}</p>
-            <span class="inline-block mt-2 border-round-3xl px-2 py-1" style="background-color: rgba(255,255,255,0.15); font-size: 0.72rem; font-weight: 600; color: #7DD3E8;">Administrador</span>
+            <span v-if="iamStore.currentUser" class="inline-block mt-2 border-round-3xl px-2 py-1" style="background-color: rgba(255,255,255,0.15); font-size: 0.72rem; font-weight: 600; color: #7DD3E8;">{{ resolveRoleLabel(iamStore.currentUser.roleId) }}</span>
           </div>
         </div>
       </div>
@@ -166,6 +285,12 @@ const strengthLabels = ['', 'Débil', 'Regular', 'Buena', 'Fuerte'];
               <input v-model="profileForm.businessName" type="text" class="settings-input"/>
             </div>
             <div class="settings-field">
+              <label class="settings-label"><i class="pi pi-tag" style="font-size: 0.7rem;"/> {{ t('settings.field-business-type') }}</label>
+              <select v-model="profileForm.businessType" class="settings-input">
+                <option v-for="option in businessTypeOptions" :key="option.value" :value="option.value">{{ t(option.labelKey) }}</option>
+              </select>
+            </div>
+            <div class="settings-field">
               <label class="settings-label"><i class="pi pi-map-marker" style="font-size: 0.7rem;"/> {{ t('settings.field-address') }}</label>
               <input v-model="profileForm.address" type="text" class="settings-input"/>
             </div>
@@ -181,15 +306,25 @@ const strengthLabels = ['', 'Débil', 'Regular', 'Buena', 'Fuerte'];
         </div>
       </div>
 
-      <div class="flex justify-content-end px-5 pb-5 pt-2">
+      <div class="flex align-items-center justify-content-end gap-3 px-5 pb-5 pt-2">
+        <span v-if="profileSaveState === 'success'" style="color: #16A34A; font-size: 0.82rem; font-weight: 600;">
+          <i class="pi pi-check-circle"/> {{ t('settings.save-success') }}
+        </span>
+        <span v-else-if="profileSaveState === 'error'" style="color: #DC2626; font-size: 0.82rem; font-weight: 600;">
+          <i class="pi pi-exclamation-circle"/> {{ t('settings.save-error') }}
+        </span>
         <button
             class="flex align-items-center gap-2 px-5 py-2 border-round-xl border-none cursor-pointer"
             style="background: linear-gradient(135deg, #0E7490, #0B3558); color: #fff; font-size: 0.9rem; font-weight: 700; box-shadow: 0 2px 10px rgba(14,116,144,0.3); transition: all 0.18s;"
+            :style="{ opacity: savingProfile ? 0.7 : 1, cursor: savingProfile ? 'not-allowed' : 'pointer' }"
+            :disabled="savingProfile"
+            @click="saveProfile"
             @mouseenter="(e) => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(14,116,144,0.45)'; e.currentTarget.style.transform = 'translateY(-1px)'; }"
             @mouseleave="(e) => { e.currentTarget.style.boxShadow = '0 2px 10px rgba(14,116,144,0.3)'; e.currentTarget.style.transform = 'translateY(0)'; }"
         >
-          <i class="pi pi-check"/>
-          {{ t('settings.save-changes') }}
+          <i v-if="savingProfile" class="pi pi-spin pi-spinner"/>
+          <i v-else class="pi pi-check"/>
+          {{ savingProfile ? t('settings.saving') : t('settings.save-changes') }}
         </button>
       </div>
     </div>
@@ -208,6 +343,7 @@ const strengthLabels = ['', 'Débil', 'Regular', 'Buena', 'Fuerte'];
         <button
             class="flex align-items-center gap-2 px-4 py-2 border-round-xl border-none cursor-pointer"
             style="background: linear-gradient(135deg, #0E7490, #0B3558); color: #fff; font-size: 0.82rem; font-weight: 700; box-shadow: 0 2px 8px rgba(14,116,144,0.3); transition: all 0.18s;"
+            @click="showInviteModal = true"
             @mouseenter="(e) => { e.currentTarget.style.boxShadow = '0 4px 14px rgba(14,116,144,0.45)'; e.currentTarget.style.transform = 'translateY(-1px)'; }"
             @mouseleave="(e) => { e.currentTarget.style.boxShadow = '0 2px 8px rgba(14,116,144,0.3)'; e.currentTarget.style.transform = 'translateY(0)'; }"
         >
@@ -215,6 +351,12 @@ const strengthLabels = ['', 'Débil', 'Regular', 'Buena', 'Fuerte'];
           {{ t('settings.invite-user') }}
         </button>
       </div>
+
+      <InviteUserModal
+          v-if="showInviteModal"
+          @close="showInviteModal = false"
+          @invited="handleUserInvited"
+      />
 
       <!-- Loading -->
       <div v-if="!usersLoaded" class="flex justify-content-center align-items-center gap-3 py-8">
@@ -436,7 +578,7 @@ const strengthLabels = ['', 'Débil', 'Regular', 'Buena', 'Fuerte'];
                 />
               </div>
               <span style="font-size: 0.72rem; font-weight: 600; min-width: 42px; text-align: right;" :style="{ color: strengthColors[computePasswordStrength(securityForm.newPassword)] }">
-                {{ strengthLabels[computePasswordStrength(securityForm.newPassword)] }}
+                {{ strengthLabel(computePasswordStrength(securityForm.newPassword)) }}
               </span>
             </div>
             <p v-if="securityErrors.newPassword" class="settings-error"><i class="pi pi-exclamation-circle" style="font-size: 0.7rem;"/> {{ securityErrors.newPassword }}</p>
@@ -453,10 +595,13 @@ const strengthLabels = ['', 'Débil', 'Regular', 'Buena', 'Fuerte'];
               type="submit"
               class="flex align-items-center gap-2 px-5 py-2 border-round-xl border-none cursor-pointer"
               style="background: linear-gradient(135deg, #0E7490, #0B3558); color: #fff; font-size: 0.9rem; font-weight: 700; width: fit-content; box-shadow: 0 2px 10px rgba(14,116,144,0.3); transition: all 0.18s;"
+              :style="{ opacity: securitySubmitting ? 0.7 : 1, cursor: securitySubmitting ? 'not-allowed' : 'pointer' }"
+              :disabled="securitySubmitting"
               @mouseenter="(e) => { e.currentTarget.style.boxShadow = '0 4px 16px rgba(14,116,144,0.45)'; e.currentTarget.style.transform = 'translateY(-1px)'; }"
               @mouseleave="(e) => { e.currentTarget.style.boxShadow = '0 2px 10px rgba(14,116,144,0.3)'; e.currentTarget.style.transform = 'translateY(0)'; }"
           >
-            <i class="pi pi-lock"/>
+            <i v-if="securitySubmitting" class="pi pi-spin pi-spinner"/>
+            <i v-else class="pi pi-lock"/>
             {{ t('settings.change-password') }}
           </button>
         </form>
@@ -471,39 +616,32 @@ const strengthLabels = ['', 'Débil', 'Regular', 'Buena', 'Fuerte'];
         <i class="pi pi-crown" style="color: #0E7490; font-size: 0.9rem;"/>
         <h3 class="m-0" style="color: #0B3558; font-size: 0.92rem; font-weight: 700;">{{ t('settings.plan-title') }}</h3>
       </div>
-      <div class="plan-grid">
+      <div v-if="!plansLoaded" class="flex justify-content-center align-items-center gap-3 py-8">
+        <i class="pi pi-spin pi-spinner" style="font-size: 1.3rem; color: #0E7490;"/>
+      </div>
+      <div v-else class="plan-grid">
         <div
-            v-for="plan in [
-              { key: 'basic',      labelKey: 'settings.plan-basic',      price: '19.90', isCurrent: false,
-                color: '#64748B', gradFrom: '#64748B', gradTo: '#475569',
-                features: ['Inventario básico', 'Ventas POS', '1 almacén', 'Hasta 100 productos'] },
-              { key: 'pro',        labelKey: 'settings.plan-pro',        price: '49.90', isCurrent: true,
-                color: '#0E7490', gradFrom: '#0E7490', gradTo: '#0B3558',
-                features: ['Todo el Plan Básico', 'Alertas inteligentes', '3 almacenes', 'Tracking IoT'] },
-              { key: 'enterprise', labelKey: 'settings.plan-enterprise', price: '99.90', isCurrent: false,
-                color: '#7C3AED', gradFrom: '#7C3AED', gradTo: '#5B21B6',
-                features: ['Todo el Plan Pro', 'Almacenes ilimitados', 'Soporte prioritario', 'Multi-negocio'] }
-            ]"
-            :key="plan.key"
+            v-for="(plan, index) in plans"
+            :key="plan.id"
         >
           <div
               class="border-round-xl overflow-hidden"
               style="display: flex; flex-direction: column; height: 100%; transition: transform 0.18s, box-shadow 0.18s;"
               :style="{
-                border:    plan.isCurrent ? `2px solid ${plan.color}` : '1.5px solid #E2E8F0',
-                boxShadow: plan.isCurrent ? `0 4px 24px ${plan.color}30` : '0 1px 4px rgba(0,0,0,0.05)'
+                border:    currentBusiness?.planId === plan.id ? `2px solid ${planStyle(index).color}` : '1.5px solid #E2E8F0',
+                boxShadow: currentBusiness?.planId === plan.id ? `0 4px 24px ${planStyle(index).color}30` : '0 1px 4px rgba(0,0,0,0.05)'
               }"
-              @mouseenter="(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = plan.isCurrent ? `0 8px 32px ${plan.color}40` : '0 6px 20px rgba(0,0,0,0.10)'; }"
-              @mouseleave="(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = plan.isCurrent ? `0 4px 24px ${plan.color}30` : '0 1px 4px rgba(0,0,0,0.05)'; }"
+              @mouseenter="(e) => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = currentBusiness?.planId === plan.id ? `0 8px 32px ${planStyle(index).color}40` : '0 6px 20px rgba(0,0,0,0.10)'; }"
+              @mouseleave="(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = currentBusiness?.planId === plan.id ? `0 4px 24px ${planStyle(index).color}30` : '0 1px 4px rgba(0,0,0,0.05)'; }"
           >
             <!-- Plan header with gradient -->
-            <div class="p-5" :style="{ background: `linear-gradient(135deg, ${plan.gradFrom}, ${plan.gradTo})` }">
+            <div class="p-5" :style="{ background: `linear-gradient(135deg, ${planStyle(index).gradFrom}, ${planStyle(index).gradTo})` }">
               <div class="flex align-items-start justify-content-between">
-                <p class="m-0" style="font-size: 1rem; font-weight: 700; color: #fff;">{{ t(plan.labelKey) }}</p>
-                <span v-if="plan.isCurrent" class="border-round-3xl px-2 py-1" style="background-color: rgba(255,255,255,0.2); font-size: 0.65rem; font-weight: 700; color: #fff; white-space: nowrap;">ACTUAL</span>
+                <p class="m-0" style="font-size: 1rem; font-weight: 700; color: #fff;">{{ plan.name }}</p>
+                <span v-if="currentBusiness?.planId === plan.id" class="border-round-3xl px-2 py-1" style="background-color: rgba(255,255,255,0.2); font-size: 0.65rem; font-weight: 700; color: #fff; white-space: nowrap;">{{ t('settings.plan-badge-current') }}</span>
               </div>
               <p class="m-0 mt-3" style="font-size: 2rem; font-weight: 700; color: #fff; line-height: 1;">
-                {{ t('settings.plan-price', { price: plan.price }) }}
+                {{ t('settings.plan-price', { price: plan.price.toFixed(2) }) }}
               </p>
             </div>
 
@@ -511,8 +649,8 @@ const strengthLabels = ['', 'Débil', 'Regular', 'Buena', 'Fuerte'];
             <div class="p-5" style="flex: 1; background-color: #fff;">
               <div style="display: flex; flex-direction: column; gap: 10px;">
                 <div v-for="feature in plan.features" :key="feature" class="flex align-items-center gap-2">
-                  <div class="flex align-items-center justify-content-center border-circle flex-shrink-0" style="width: 20px; height: 20px;" :style="{ backgroundColor: plan.color + '18' }">
-                    <i class="pi pi-check" style="font-size: 0.6rem;" :style="{ color: plan.color }"/>
+                  <div class="flex align-items-center justify-content-center border-circle flex-shrink-0" style="width: 20px; height: 20px;" :style="{ backgroundColor: planStyle(index).color + '18' }">
+                    <i class="pi pi-check" style="font-size: 0.6rem;" :style="{ color: planStyle(index).color }"/>
                   </div>
                   <span style="font-size: 0.82rem; color: #64748B;">{{ feature }}</span>
                 </div>
@@ -525,13 +663,16 @@ const strengthLabels = ['', 'Débil', 'Regular', 'Buena', 'Fuerte'];
                   class="w-full py-2 border-round-xl border-none cursor-pointer"
                   style="font-size: 0.875rem; font-weight: 700; transition: all 0.18s;"
                   :style="{
-                    background: plan.isCurrent ? '#F1F5F9' : `linear-gradient(135deg, ${plan.gradFrom}, ${plan.gradTo})`,
-                    color:      plan.isCurrent ? '#94A3B8' : '#fff',
-                    cursor:     plan.isCurrent ? 'default' : 'pointer',
-                    boxShadow:  plan.isCurrent ? 'none' : `0 2px 10px ${plan.color}30`
+                    background: currentBusiness?.planId === plan.id ? '#F1F5F9' : `linear-gradient(135deg, ${planStyle(index).gradFrom}, ${planStyle(index).gradTo})`,
+                    color:      currentBusiness?.planId === plan.id ? '#94A3B8' : '#fff',
+                    cursor:     currentBusiness?.planId === plan.id || upgradingPlanId ? 'default' : 'pointer',
+                    boxShadow:  currentBusiness?.planId === plan.id ? 'none' : `0 2px 10px ${planStyle(index).color}30`
                   }"
+                  :disabled="currentBusiness?.planId === plan.id || upgradingPlanId !== null"
+                  @click="confirmUpgradePlan(plan)"
               >
-                {{ plan.isCurrent ? t('settings.plan-current') : t('settings.plan-upgrade') }}
+                <i v-if="upgradingPlanId === plan.id" class="pi pi-spin pi-spinner"/>
+                <span v-else>{{ currentBusiness?.planId === plan.id ? t('settings.plan-current') : t('settings.plan-upgrade') }}</span>
               </button>
             </div>
           </div>

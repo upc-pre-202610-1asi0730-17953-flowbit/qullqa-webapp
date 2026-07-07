@@ -14,23 +14,6 @@ export const SupplierStatus = Object.freeze({
 });
 
 /**
- * Enumeration of the supported supplier product categories.
- * Used to classify what kind of products a supplier provides.
- *
- * @enum {string}
- */
-export const SupplierCategory = Object.freeze({
-    BEVERAGES: 'BEVERAGES',
-    GROCERIES: 'GROCERIES',
-    DAIRY:     'DAIRY',
-    CLEANING:  'CLEANING',
-    PHARMACY:  'PHARMACY',
-    SNACKS:    'SNACKS',
-    FRESH:     'FRESH',
-    GENERAL:   'GENERAL'
-});
-
-/**
  * Supplier entity within the Supplier & Replenishment Management bounded context.
  * Represents a company or individual that provides products to the business.
  *
@@ -39,7 +22,11 @@ export const SupplierCategory = Object.freeze({
  * - ruc must be exactly 11 digits (Peruvian tax identifier).
  * - phone must be provided; email and address are optional.
  * - status defaults to ACTIVE on creation.
- * - category defaults to GENERAL when not specified.
+ * - category shares the same taxonomy as Product & Inventory Management's
+ *   ProductCategory (see product/presentation/category-options.js), instead
+ *   of a separate fixed enum — a supplier's category represents what kind of
+ *   products it supplies, so it reuses the categories the business already
+ *   manages for its products. Defaults to 'OTHER' when not specified.
  *
  * @class Supplier
  */
@@ -55,7 +42,7 @@ export class Supplier {
      * @param {string}      [params.phone='']
      * @param {string}      [params.address='']
      * @param {string}      [params.contactPerson=''] - Representative contact name.
-     * @param {string}      [params.category=SupplierCategory.GENERAL]
+     * @param {string}      [params.category='OTHER']
      * @param {string}      [params.status=SupplierStatus.ACTIVE]
      * @param {string}      [params.since='']         - ISO date when supplier relationship started.
      */
@@ -69,7 +56,7 @@ export class Supplier {
                     phone         = '',
                     address       = '',
                     contactPerson = '',
-                    category      = SupplierCategory.GENERAL,
+                    category      = 'OTHER',
                     status        = SupplierStatus.ACTIVE,
                     since         = ''
                 }) {

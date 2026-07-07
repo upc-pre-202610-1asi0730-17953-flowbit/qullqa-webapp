@@ -2,7 +2,9 @@
 import { computed } from 'vue';
 import { useI18n }  from 'vue-i18n';
 import useDeliveryStore from '../../application/delivery.store.js';
+import useProductStore  from '../../../product/application/product.store.js';
 import { DeliveryStatus } from '../../domain/model/delivery.entity.js';
+import { toDateLocale } from '../../../shared/presentation/date-locale.js';
 
 const props = defineProps({
   /**
@@ -24,8 +26,19 @@ const emit = defineEmits([
   'completed'
 ]);
 
-const { t }         = useI18n();
+const { t, locale } = useI18n();
 const deliveryStore = useDeliveryStore();
+const productStore  = useProductStore();
+
+/**
+ * Resolves a productId to its display name, falling back to the raw id.
+ * @param {number} productId
+ * @returns {string}
+ */
+function getProductName(productId) {
+  const product = productStore.products.find(productItem => productItem.id === productId);
+  return product ? product.name : `#${productId}`;
+}
 
 // ─── Status config ─────────────────────────────────────────────────────────
 
@@ -73,6 +86,12 @@ const canUpdateLocation = computed(() => props.delivery.canUpdateLocation);
  */
 const canComplete = computed(() => props.delivery.canComplete);
 
+/**
+ * Whether the cancel action is available.
+ * @type {import('vue').ComputedRef<boolean>}
+ */
+const canCancel = computed(() => props.delivery.canCancel);
+
 // ─── Waypoint helpers ───────────────────────────────────────────────────────
 
 /**
@@ -96,7 +115,7 @@ function isCurrentWaypoint(waypointItem, waypointIndex) {
  */
 function formatDateTime(isoString) {
   if (!isoString) return '—';
-  return new Date(isoString).toLocaleString('es-PE', {
+  return new Date(isoString).toLocaleString(toDateLocale(locale.value), {
     day:    '2-digit',
     month:  '2-digit',
     year:   'numeric',
@@ -134,6 +153,15 @@ async function handleComplete() {
   if (!canComplete.value) return;
   await deliveryStore.completeDelivery(props.delivery);
   emit('completed');
+}
+
+/**
+ * Cancels the delivery and emits the updated event.
+ */
+async function handleCancel() {
+  if (!canCancel.value) return;
+  await deliveryStore.cancelDelivery(props.delivery);
+  emit('updated');
 }
 </script>
 
@@ -228,7 +256,7 @@ async function handleComplete() {
                     style="width: 8px; height: 8px; background-color: #38BDF8; display: block;"
                 />
               </span>
-              <span style="color: #38BDF8; font-size: 0.65rem; font-weight: 700;">EN VIVO</span>
+              <span style="color: #38BDF8; font-size: 0.65rem; font-weight: 700;">{{ t('tracking.live-badge') }}</span>
             </div>
           </div>
 
@@ -403,7 +431,7 @@ async function handleComplete() {
               { label: t('tracking.field-registered'), value: formatDateTime(delivery.registeredAt) },
               { label: t('tracking.field-estimated'),  value: formatDateTime(delivery.estimatedArrival) },
               ...(delivery.completedAt ? [{ label: t('tracking.field-completed'), value: formatDateTime(delivery.completedAt) }] : []),
-              { label: t('tracking.field-weight'),    value: delivery.totalWeight || '—' }
+              { label: t('tracking.field-weight'),    value: delivery.totalWeightValue ? `${delivery.totalWeightValue} ${delivery.totalWeightUnit}` : '—' }
             ]"
               :key="infoField.label"
               class="border-round-xl p-3"
@@ -429,12 +457,14 @@ async function handleComplete() {
           </p>
           <div class="flex flex-column gap-2">
             <div
-                v-for="(productDescription, productIndex) in delivery.products"
+                v-for="(productLine, productIndex) in delivery.products"
                 :key="productIndex"
                 class="flex align-items-center gap-2"
             >
               <i class="pi pi-box" style="color: #0E7490; font-size: 0.75rem; flex-shrink: 0;"/>
-              <span style="font-size: 0.82rem; color: #1E293B;">{{ productDescription }}</span>
+              <span style="font-size: 0.82rem; color: #1E293B;">
+                {{ getProductName(productLine.productId) }} ×{{ productLine.quantity }}
+              </span>
             </div>
           </div>
         </div>
@@ -469,7 +499,7 @@ async function handleComplete() {
         </div>
 
         <!-- ── Action buttons ────────────────────────────────────────────── -->
-        <div v-if="canStartTransit || canUpdateLocation || canComplete" class="flex flex-column gap-2">
+        <div v-if="canStartTransit || canUpdateLocation || canComplete || canCancel" class="flex flex-column gap-2">
 
           <!-- Start transit button (REGISTERED → IN_TRANSIT) -->
           <button
@@ -508,6 +538,19 @@ async function handleComplete() {
           >
             <i class="pi pi-check-circle" style="font-size: 0.88rem;"/>
             {{ t('tracking.btn-mark-completed') }}
+          </button>
+
+          <!-- Cancel delivery button -->
+          <button
+              v-if="canCancel"
+              class="w-full flex align-items-center justify-content-center gap-2 py-2 border-none border-round-xl cursor-pointer"
+              style="background-color: #FEE2E2; color: #DC2626; font-size: 0.88rem; font-weight: 600; transition: background-color 0.15s;"
+              @click="handleCancel"
+              @mouseenter="(event) => { event.currentTarget.style.backgroundColor = '#FECACA'; }"
+              @mouseleave="(event) => { event.currentTarget.style.backgroundColor = '#FEE2E2'; }"
+          >
+            <i class="pi pi-times-circle" style="font-size: 0.88rem;"/>
+            {{ t('tracking.btn-cancel') }}
           </button>
 
         </div>

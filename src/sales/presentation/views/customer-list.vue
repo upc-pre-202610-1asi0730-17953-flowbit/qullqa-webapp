@@ -1,11 +1,13 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useI18n }           from 'vue-i18n';
+import { useToast }          from 'primevue/usetoast';
 import useSalesStore         from '../../application/sales.store.js';
 import useIamStore           from '../../../iam/application/iam.store.js';
 import CustomerModal         from '../components/customer-modal.vue';
 import CustomerDetailModal   from '../components/customer-detail-modal.vue';
 import { Customer }          from '../../domain/model/customer.entity.js';
+import { toDateLocale }      from '../../../shared/presentation/date-locale.js';
 
 /**
  * CustomerList view for the Sales & POS Management bounded context.
@@ -22,7 +24,8 @@ import { Customer }          from '../../domain/model/customer.entity.js';
  * @view CustomerList
  */
 
-const { t }      = useI18n();
+const { t, locale } = useI18n();
+const toast      = useToast();
 const salesStore = useSalesStore();
 const iamStore   = useIamStore();
 
@@ -33,6 +36,9 @@ const searchQuery = ref('');
 
 /** @type {import('vue').Ref<boolean>} Whether the CustomerModal is visible. */
 const showRegisterModal = ref(false);
+
+/** @type {import('vue').Ref<boolean>} Whether a customer registration request is in flight. */
+const savingCustomer = ref(false);
 
 /** @type {import('vue').Ref<import('../../domain/model/customer.entity.js').Customer|null>} The customer shown in the detail modal. */
 const selectedCustomer = ref(null);
@@ -77,7 +83,7 @@ function getAvatarInitials(fullName) {
  */
 function formatDate(dateString) {
   if (!dateString) return '—';
-  return new Date(dateString).toLocaleDateString('es-PE');
+  return new Date(dateString).toLocaleDateString(toDateLocale(locale.value));
 }
 
 // ─── Actions ───────────────────────────────────────────────────────────────
@@ -97,8 +103,19 @@ function handleRegisterCustomer(formData) {
     email:          formData.email,
     registeredAt:   new Date().toISOString()
   });
-  salesStore.addCustomer(customer);
-  showRegisterModal.value = false;
+
+  savingCustomer.value = true;
+  salesStore.addCustomer(customer)
+      .then(() => {
+        toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('customers.toast-save-success'), life: 3500 });
+        showRegisterModal.value = false;
+      })
+      .catch(() => {
+        toast.add({ severity: 'error', summary: t('common.toast-error-title'), detail: t('customers.toast-save-error'), life: 4500 });
+      })
+      .finally(() => {
+        savingCustomer.value = false;
+      });
 }
 
 /**
@@ -296,6 +313,7 @@ onMounted(() => {
     <!-- Customer register modal -->
     <customer-modal
         v-if="showRegisterModal"
+        :saving="savingCustomer"
         @save="handleRegisterCustomer"
         @close="showRegisterModal = false"
     />

@@ -71,15 +71,18 @@ export class SupplierApi extends BaseApi {
     }
 
     /**
-     * Deactivates a supplier by setting its status to INACTIVE.
-     * Business rule: suppliers with active pending orders cannot be deleted;
-     * the store layer must verify this before calling this method.
+     * Deactivates (soft-deletes) a supplier via the dedicated DELETE endpoint,
+     * which flips its Status to INACTIVE server-side. Business rule: suppliers
+     * with active pending orders cannot be deactivated; the store layer must
+     * verify this before calling this method. Note this is NOT a PATCH — the
+     * edit endpoint's UpdateSupplierResource has no Status field at all, so a
+     * PATCH with status: 'INACTIVE' would return 200 while silently leaving
+     * the supplier active.
      * @param {number|string} id
-     * @param {Object} resource - Full updated resource with status: 'INACTIVE'.
      * @returns {Promise<import('axios').AxiosResponse>}
      */
-    deactivateSupplier(id, resource) {
-        return this.#suppliersEndpoint.update(id, resource);
+    deactivateSupplier(id) {
+        return this.#suppliersEndpoint.delete(id);
     }
 
     // ─── Purchase order operations ────────────────────────────────────────────
@@ -112,8 +115,11 @@ export class SupplierApi extends BaseApi {
     }
 
     /**
-     * Creates a new purchase order resource.
-     * @param {Object} resource
+     * Creates a purchase order atomically with all of its lines embedded.
+     * There is no standalone endpoint to persist a line item separately —
+     * a purchase order's lines are always created together with the order
+     * itself (CreatePurchaseOrderCommand).
+     * @param {Object} resource - { supplierId, date, expectedDate, currency, description, lines }.
      * @returns {Promise<import('axios').AxiosResponse>}
      */
     createPurchaseOrder(resource) {
@@ -133,20 +139,14 @@ export class SupplierApi extends BaseApi {
     // ─── Purchase detail operations ───────────────────────────────────────────
 
     /**
-     * Fetches all detail lines for a specific purchase order.
+     * Fetches the lines of a purchase order. Read-only: a purchase order's
+     * lines are always created atomically with the order itself (see
+     * createPurchaseOrder) — the backend has no endpoint to create or delete
+     * a line independently.
      * @param {number|string} purchaseId
      * @returns {Promise<import('axios').AxiosResponse>}
      */
     getPurchaseDetailsByOrder(purchaseId) {
         return this.#purchaseDetailsEndpoint.getAllByParam('purchaseId', purchaseId);
-    }
-
-    /**
-     * Creates a new purchase order detail line.
-     * @param {Object} resource
-     * @returns {Promise<import('axios').AxiosResponse>}
-     */
-    createPurchaseDetail(resource) {
-        return this.#purchaseDetailsEndpoint.create(resource);
     }
 }
