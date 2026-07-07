@@ -21,15 +21,6 @@ const deliveryStore = useDeliveryStore();
 const savingNewOrder      = ref(false);
 const updatingOrderStatus = ref(false);
 
-/**
- * Active warehouses for the current business — used as a fallback when
- * receiving an order for a product that has no InventoryItem yet (e.g. a
- * product created with 0 initial stock, so this purchase order is its
- * first-ever intake).
- * @type {import('vue').Ref<Array>}
- */
-const warehouses = ref([]);
-
 const {
   purchaseOrders,
   purchaseOrdersLoaded,
@@ -110,9 +101,6 @@ onMounted(() => {
     if (!deliveryStore.deliveriesLoaded) {
       deliveryStore.fetchDeliveries(businessId);
     }
-    productStore.fetchWarehousesForBusiness(businessId).then(list => {
-      warehouses.value = list.filter(warehouse => warehouse.status === 'ACTIVE');
-    });
   }
 });
 
@@ -280,27 +268,20 @@ function openOrderDetail(order) {
 }
 
 /**
- * Transitions the selected order to RECEIVED status and increments inventory
- * for each ordered line — this is the central stock replenishment flow.
+ * Transitions the selected order to RECEIVED status. The backend does the
+ * actual stock replenishment atomically, in the same transaction as the
+ * status change (see PurchaseOrderCommandService.MarkReceived, which calls
+ * IProductContextFacade.RegisterStockIntake per line) — this must NOT also
+ * call registerStockIntake client-side, or every line's quantity gets
+ * applied twice (once server-side, once from here).
  */
 function receiveOrder() {
   if (!selectedOrder.value) return;
 
-  const order      = selectedOrder.value;
-  const businessId = iamStore.currentUser?.businessId ?? null;
+  const order = selectedOrder.value;
 
   updatingOrderStatus.value = true;
   updatePurchaseOrderStatus(order.id, PurchaseOrderStatus.RECEIVED)
-      .then(() => Promise.all(order.details.map(detail =>
-          productStore.registerStockIntake({
-            productId:   detail.productId,
-            businessId:  businessId,
-            quantity:    detail.quantity,
-            supplier:    order.supplierName,
-            note:        `${t('suppliers.order-movement-note-prefix')} ${order.id}`,
-            warehouseId: productStore.getInventoryByProduct(detail.productId)?.warehouseId ?? warehouses.value[0]?.id
-          })
-      )))
       .then(() => {
         toast.add({ severity: 'success', summary: t('common.toast-success-title'), detail: t('suppliers.order-toast-receive-success'), life: 3500 });
         showOrderDetailModal.value = false;
