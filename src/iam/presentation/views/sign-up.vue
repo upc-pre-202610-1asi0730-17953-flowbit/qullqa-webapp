@@ -52,7 +52,15 @@ async function submitSignUp() {
   localError.value = '';
   try {
     await iamStore.signUp({ fullName: form.value.fullName, businessName: form.value.businessName, businessType: form.value.businessType, email: form.value.email, password: form.value.password });
-    router.push({ name: 'dashboard' });
+
+   const stripePaymentLinkUrl = import.meta.env.VITE_STRIPE_PAYMENT_LINK_URL;
+    if (stripePaymentLinkUrl) {
+      const checkoutUrl = new URL(stripePaymentLinkUrl);
+      checkoutUrl.searchParams.set('prefilled_email', form.value.email);
+      window.location.href = checkoutUrl.toString();
+    } else {
+      router.push({ name: 'dashboard' });
+    }
   } catch {
     localError.value = t('sign-up.error-submit-failed');
   } finally {
